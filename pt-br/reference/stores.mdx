@@ -1,6 +1,6 @@
 ---
 title: "Referência de stores"
-description: "Opções de config para cada pacote de backend de armazenamento."
+description: "Referência de configuração dos pacotes de backend SQLite, PostgreSQL, MySQL, Redis e MongoDB, com campos, padrões e exemplos de uso."
 icon: "database"
 ---
 
@@ -29,7 +29,7 @@ const sqlite = createSqliteStore({
 | `batchSizes` | `WaSqliteBatchSizeSelection` | Ajusta os tamanhos de lote. |
 | `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | TTLs de cache. |
 
-Informe exatamente um entre `path` e `connection`. Com `path`, a biblioteca abre (e faz ref-count d)a própria connection e a fecha em `store.destroy()`. Com `connection`, você é dono do ciclo de vida — `store.destroy()` mantém a connection aberta para você continuar usando em outros lugares.
+Informe exatamente um entre `path` e `connection`. Com `path`, a biblioteca abre (e faz ref-count d)e sua própria connection e a fecha em `store.destroy()`. Com `connection`, você é dono do ciclo de vida — `store.destroy()` mantém a connection aberta para você continuar usando em outros lugares.
 
 ### Use sua própria connection {#bring-your-own-connection}
 
