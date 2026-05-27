@@ -1,0 +1,30 @@
+---
+title: "Changelog"
+description: "Atualizações de produto e mudanças relevantes lançadas no zapo."
+icon: "rss"
+---
+
+<Update label="27 de maio de 2026" tags={["feature", "reliability"]}>
+  ## Recuperação automática do erro HTTP 405
+
+  Quando o WhatsApp Web publica uma nova revisão de cliente, sessões antigas são rejeitadas no handshake do Noise com `failure_client_too_old` (HTTP `405`). O zapo agora consegue se recuperar automaticamente.
+
+  - **Nova opção:** [`WaClientOptions.recoverFromClientTooOld`](/pt-br/concepts/configuration). Quando habilitada, o client busca a versão atual do WhatsApp Web, aplica como override de uso único para a próxima conexão e reconecta. Um warning é registrado pedindo o upgrade do `zapo-js` para que a recuperação não vire algo permanente.
+  - **Desligada por padrão** — habilite por sessão.
+  - Útil para deployments de longa duração que não devem ficar offline assim que o WhatsApp publica uma nova revisão.
+
+  ## `fetchLatestWaWebVersion()` agora é público
+
+  O helper que extrai o `client_revision` atual do WhatsApp Web a partir de `web.whatsapp.com/sw.js` agora faz parte da API pública e é exportado pela raiz do pacote.
+
+  - Suporta proxy, timeout, abort e headers customizados.
+  - Use para inicializar [`WaClientOptions.version`](/pt-br/concepts/configuration) na subida do processo, ou para atualizá-la na cadência que você preferir.
+
+  ## `WaClientOptions.version` aceita um resolver
+
+  `version` agora aceita uma `string` fixa ou uma função retornando `string | Promise<string>`. O resolver é chamado uma vez por conexão, então você pode plugar `fetchLatestWaWebVersion()` (ou sua própria fonte) sem reiniciar o processo.
+
+  ## Atualizações
+
+  - A versão padrão do WhatsApp Web não está mais hardcoded no código. Agora ela vive junto com o restante dos dados regenerados da spec, então atualizações diárias podem incrementá-la sem mudança de código. Nenhuma ação necessária — sessões existentes seguem funcionando.
+</Update>

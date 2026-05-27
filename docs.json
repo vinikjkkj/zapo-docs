@@ -97,6 +97,13 @@
               "en/concepts/internals",
               "en/concepts/mobile"
             ]
+          },
+          {
+            "group": "Changelog",
+            "icon": "rss",
+            "pages": [
+              "en/changelog"
+            ]
           }
         ],
         "banner": {
@@ -166,6 +173,13 @@
               "pt-br/concepts/protocol",
               "pt-br/concepts/internals",
               "pt-br/concepts/mobile"
+            ]
+          },
+          {
+            "group": "Changelog",
+            "icon": "rss",
+            "pages": [
+              "pt-br/changelog"
             ]
           }
         ],
