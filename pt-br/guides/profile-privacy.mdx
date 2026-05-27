@@ -102,15 +102,8 @@ await client.business.deleteCoverPhoto(coverId)
 
 ## Configurações de chat {#chat-settings}
 
-As configurações por chat — silenciar, fixar, arquivar, marcar como lido, excluir — ficam em `client.chat` ([`WaAppStateMutationCoordinator`](/pt-br/reference/client#chat)), porque sincronizam entre seus dispositivos via app-state:
+As configurações por chat — silenciar, fixar, arquivar, lido, lock, favoritar, limpar, excluir — ficam em `client.chat` e sincronizam entre seus dispositivos. Elas têm um guia próprio:
 
-```ts
-await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
-await client.chat.setChatPin(chatJid, true)
-await client.chat.setChatArchive(chatJid, true)
-await client.chat.setChatRead(chatJid, true)
-await client.chat.clearChat(chatJid)
-await client.chat.deleteChat(chatJid)
-```
-
-Essas mudanças também são expostas como eventos [`mutation`](/pt-br/concepts/events#state-history--mex) quando feitas a partir de outro dispositivo.
+<Card title="Gerenciando chats" icon="comments" href="/pt-br/guides/chats" arrow>
+  Silencie, fixe, arquive, marque como lido, trave, favorite mensagens, limpe e exclua chats.
+</Card>

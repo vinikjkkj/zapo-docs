@@ -10,7 +10,7 @@ Todo o conteúdo de saída passa por um único método:
 client.message.send(to, content, options?): Promise<WaMessagePublishResult>
 ```
 
-- **`to`** — o JID do destinatário (`5511999999999@s.whatsapp.net`, um grupo `...@g.us`, etc.). Veja [Helpers de JID](/pt-br/reference/jid-helpers) para construí-los.
+- **`to`** — o <Tooltip tip="Endereço do WhatsApp para um usuário, grupo ou canal — ex.: 5511999999999@s.whatsapp.net" cta="PN vs LID" href="/pt-br/concepts/identities">JID</Tooltip> do destinatário (`5511999999999@s.whatsapp.net`, um grupo `...@g.us`, etc.). Veja [Helpers de JID](/pt-br/reference/jid-helpers) para construí-los.
 - **`content`** — uma string, um objeto de conteúdo tipado ou um `Proto.IMessage` bruto.
 - **`options`** — citação, menções, encaminhamento, visualização única, edições e mais.
 
@@ -118,10 +118,10 @@ await client.message.send(jid, content, { forward: { score: 4 } })
 `content` aceita qualquer `WaSendMessageContent`. As variantes tipadas estão documentadas ao longo destes guias:
 
 <CardGroup cols={2}>
-  <Card title="Mídia" icon="image" href="/pt-br/guides/media">
+  <Card title="Mídia" icon="image" href="/pt-br/guides/media" arrow>
     Imagens, vídeo, áudio, documentos, figurinhas.
   </Card>
-  <Card title="Enquetes e reações" icon="square-poll-vertical" href="/pt-br/guides/interactive-messages">
+  <Card title="Enquetes e reações" icon="square-poll-vertical" href="/pt-br/guides/interactive-messages" arrow>
     Enquetes, votos, reações, fixações, edições, revogações, eventos.
   </Card>
 </CardGroup>

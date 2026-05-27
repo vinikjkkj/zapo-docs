@@ -98,7 +98,7 @@ All in milliseconds; defaults are tuned for production.
 ## Addons (reactions, poll votes)
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean }">
-  Set `autoDecrypt: true` to automatically decrypt encrypted addons (poll votes, reactions, …) and emit them as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Otherwise call `client.message.tryDecryptAddon(event)` yourself.
+  Set `autoDecrypt: true` to automatically decrypt encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, …) and emit them as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Otherwise call `client.message.tryDecryptAddon(event)` yourself.
 </ParamField>
 
 ## Write-behind persistence

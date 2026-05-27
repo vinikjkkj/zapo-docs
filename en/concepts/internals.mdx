@@ -8,6 +8,32 @@ This page goes deeper than the [architecture overview](/en/concepts/architecture
 
 ## Module map
 
+<Tree>
+  <Tree.Folder name="src" defaultOpen>
+    <Tree.Folder name="client">
+      <Tree.File name="WaClient.ts" />
+      <Tree.File name="WaClientFactory.ts" />
+      <Tree.Folder name="coordinators" />
+    </Tree.Folder>
+    <Tree.Folder name="transport">
+      <Tree.Folder name="noise" />
+      <Tree.Folder name="binary" />
+      <Tree.Folder name="node" />
+    </Tree.Folder>
+    <Tree.Folder name="signal" />
+    <Tree.Folder name="crypto" />
+    <Tree.Folder name="message" />
+    <Tree.Folder name="appstate" />
+    <Tree.Folder name="store" />
+    <Tree.Folder name="auth" />
+    <Tree.Folder name="media" />
+    <Tree.Folder name="retry" />
+    <Tree.Folder name="protocol" />
+    <Tree.Folder name="infra" />
+    <Tree.Folder name="util" />
+  </Tree.Folder>
+</Tree>
+
 | Directory | Responsibility |
 | --- | --- |
 | `src/client/` | Client orchestration, coordinators, connection lifecycle, event routing. |

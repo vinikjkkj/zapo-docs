@@ -81,7 +81,7 @@ Some state is **connection-scoped** and must be re-established after a successfu
 - **Presence subscriptions** — re-`subscribe()` to any contacts you were watching ([Presence](/en/guides/presence-status#subscribing-to-a-contact)).
 - **Newsletter live updates** — re-`subscribeLiveUpdates()` if you rely on them.
 
-Persisted state (credentials, Signal sessions, app-state) is restored from the [store](/en/concepts/stores) automatically — you do **not** re-pair on a normal reconnect.
+Persisted state (credentials, Signal sessions, [app-state](/en/reference/glossary#app-state)) is restored from the [store](/en/concepts/stores) automatically — you do **not** re-pair on a normal reconnect.
 
 ## Graceful shutdown
 

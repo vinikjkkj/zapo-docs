@@ -98,7 +98,7 @@ Todos em milissegundos; os padrões são ajustados para produção.
 ## Addons (reações, votos em enquetes) {#addons-reactions-poll-votes}
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean }">
-  Defina `autoDecrypt: true` para descriptografar automaticamente addons criptografados (votos em enquetes, reações, …) e emiti-los como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Caso contrário, chame `client.message.tryDecryptAddon(event)` você mesmo.
+  Defina `autoDecrypt: true` para descriptografar automaticamente [addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, …) e emiti-los como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Caso contrário, chame `client.message.tryDecryptAddon(event)` você mesmo.
 </ParamField>
 
 ## Persistência write-behind {#write-behind-persistence}

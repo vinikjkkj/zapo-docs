@@ -10,7 +10,7 @@ All outgoing content goes through a single method:
 client.message.send(to, content, options?): Promise<WaMessagePublishResult>
 ```
 
-- **`to`** — the recipient JID (`5511999999999@s.whatsapp.net`, a group `...@g.us`, etc.). See [JID helpers](/en/reference/jid-helpers) for building these.
+- **`to`** — the recipient <Tooltip tip="A WhatsApp address for a user, group, or channel — e.g. 5511999999999@s.whatsapp.net" cta="PN vs LID" href="/en/concepts/identities">JID</Tooltip> (`5511999999999@s.whatsapp.net`, a group `...@g.us`, etc.). See [JID helpers](/en/reference/jid-helpers) for building these.
 - **`content`** — a string, a typed content object, or a raw `Proto.IMessage`.
 - **`options`** — quoting, mentions, forwarding, view-once, edits, and more.
 
@@ -118,10 +118,10 @@ await client.message.send(jid, content, { forward: { score: 4 } })
 `content` accepts any `WaSendMessageContent`. The typed variants are documented across these guides:
 
 <CardGroup cols={2}>
-  <Card title="Media" icon="image" href="/en/guides/media">
+  <Card title="Media" icon="image" href="/en/guides/media" arrow>
     Images, video, audio, documents, stickers.
   </Card>
-  <Card title="Polls & reactions" icon="square-poll-vertical" href="/en/guides/interactive-messages">
+  <Card title="Polls & reactions" icon="square-poll-vertical" href="/en/guides/interactive-messages" arrow>
     Polls, votes, reactions, pins, edits, revokes, events.
   </Card>
 </CardGroup>

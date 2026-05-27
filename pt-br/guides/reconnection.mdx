@@ -81,7 +81,7 @@ Parte do estado é **escopado à conexão** e precisa ser reestabelecido após u
 - **Assinaturas de presença** — faça `subscribe()` novamente em qualquer contato que você estava observando ([Presença](/pt-br/guides/presence-status#subscribing-to-a-contact)).
 - **Atualizações ao vivo de newsletter** — faça `subscribeLiveUpdates()` novamente se você depende delas.
 
-O estado persistido (credenciais, sessões do Signal, app-state) é restaurado da [store](/pt-br/concepts/stores) automaticamente — você **não** pareia novamente em uma reconexão normal.
+O estado persistido (credenciais, sessões do Signal, [app-state](/pt-br/reference/glossary#app-state)) é restaurado da [store](/pt-br/concepts/stores) automaticamente — você **não** pareia novamente em uma reconexão normal.
 
 ## Encerramento gracioso {#graceful-shutdown}
 

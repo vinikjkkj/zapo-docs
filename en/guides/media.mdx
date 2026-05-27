@@ -25,7 +25,7 @@ type MediaInput = Uint8Array | ArrayBuffer | Readable | string
 ## Images
 
 ```ts
-// ✅ Preferred — pass a file path; zapo streams it
+// Preferred — pass a file path; zapo streams it
 await client.message.send(jid, {
   type: 'image',
   media: './photo.jpg',
@@ -33,7 +33,7 @@ await client.message.send(jid, {
   caption: 'A photo'
 })
 
-// ✅ Or a Readable stream (e.g. from an HTTP response)
+// Or a Readable stream (e.g. from an HTTP response)
 import { createReadStream } from 'node:fs'
 
 await client.message.send(jid, {
@@ -126,13 +126,13 @@ The message coordinator decrypts and downloads media from an incoming event. Thr
 client.on('message', async (event) => {
   if (!event.message?.imageMessage) return
 
-  // ✅ Preferred — stream to a file (constant memory)
+  // Preferred — stream to a file (constant memory)
   await client.message.downloadToFile(event, './incoming.jpg')
 
-  // ✅ Or consume the Readable stream yourself
+  // Or consume the Readable stream yourself
   const stream = await client.message.download(event)
 
-  // ⚠️ Buffers the entire file in memory — only for small payloads
+  // Avoid for large media — buffers the entire file in memory
   const bytes = await client.message.downloadBytes(event)
 })
 ```

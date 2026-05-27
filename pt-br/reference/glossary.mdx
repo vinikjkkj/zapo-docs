@@ -1,0 +1,88 @@
+---
+title: "Glossário"
+description: "Definições dos termos do protocolo do WhatsApp e do zapo usados ao longo da documentação."
+icon: "book"
+keywords: ["jid", "lid", "stanza", "sender key", "prekey", "app-state", "coordinator", "fanout", "noise", "mex"]
+---
+
+Definições curtas dos termos usados nesta documentação. A maioria leva à página que os cobre em detalhe.
+
+## addon {#addon}
+
+Um follow-up criptografado anexado a uma mensagem — uma reação, voto de enquete ou comentário. Surge no evento `message_addon`. Veja [Recebendo mensagens](/pt-br/guides/receiving-messages#addons).
+
+## app-state {#app-state}
+
+O canal que sincroniza configurações por conta (mute, pin, arquivar, lido, labels, contatos) entre todos os seus dispositivos — separado das mensagens. Operado via [`client.chat`](/pt-br/reference/chat-mutations).
+
+## BinaryNode {#binarynode}
+
+A representação no zapo de uma [stanza](#stanza) do protocolo: `{ tag, attrs, content }`. A unidade com que você trabalha na [API low-level](/pt-br/reference/low-level#binary-nodes).
+
+## companion device {#companion-device}
+
+Uma conexão de dispositivo vinculado (como o WhatsApp Web/Desktop) — o modo padrão. Contraste com [conexões mobile](/pt-br/concepts/mobile). Veja [Autenticação](/pt-br/concepts/authentication).
+
+## coordinator {#coordinator}
+
+Um módulo de funcionalidade focado, acessado por um getter no client (`client.message`, `client.group`, …). Veja [Arquitetura](/pt-br/concepts/architecture#coordinators).
+
+## fanout {#fanout}
+
+Criptografar uma única mensagem uma vez **por dispositivo de cada destinatário** e empacotar os resultados em uma stanza. Veja [Arquitetura em detalhes](/pt-br/concepts/internals#outgoing-message-pipeline).
+
+## IQ {#iq}
+
+Uma stanza de requisição/resposta (`<iq type="get|set">` → `result`/`error`), correlacionada por id. Emita uma via [`client.lowlevel.query`](/pt-br/reference/low-level#issuing-an-iq).
+
+## JID {#jid}
+
+Um endereço do WhatsApp para um usuário, grupo ou canal — ex.: `5511999999999@s.whatsapp.net` (usuário), `...@g.us` (grupo), `...@newsletter` (canal). Veja [Helpers de JID](/pt-br/reference/jid-helpers).
+
+## LID {#lid}
+
+Um identificador preservador de privacidade (`...@lid`) que representa um usuário **sem** expor o número de telefone. Prefira-o ao enviar. Veja [Identidades](/pt-br/concepts/identities).
+
+## MEX {#mex}
+
+A camada GraphQL-sobre-IQ do WhatsApp, usada por newsletters e partes do business. O peer opcional [`argo-codec`](/pt-br/installation#optional-peer-dependencies) decodifica algumas respostas MEX.
+
+## Noise {#noise}
+
+O handshake do protocolo Noise, que autentica o servidor e criptografa todo frame após a conexão. Veja [O protocolo do WhatsApp](/pt-br/concepts/protocol#transport--the-noise-handshake).
+
+## PN {#pn}
+
+"Phone number" — um JID de número de telefone (`...@s.whatsapp.net`), em oposição a um [LID](#lid). Veja [Identidades](/pt-br/concepts/identities).
+
+## prekey {#prekey}
+
+Uma chave de uso único do Signal usada para iniciar uma sessão criptografada com um peer novo. Buscada na configuração da sessão; um envelope que inicia a sessão é um `pkmsg`.
+
+## ratchet {#ratchet}
+
+O Double Ratchet do Signal que criptografa mensagens 1:1 com forward secrecy. Na rede, o envelope é `msg` (estabelecido) ou `pkmsg` (iniciando a sessão).
+
+## sender key {#sender-key}
+
+O esquema de criptografia de grupo (`skmsg`): cada membro distribui uma sender key uma vez e então criptografa as mensagens do grupo simetricamente com ela. Veja [O protocolo do WhatsApp](/pt-br/concepts/protocol#end-to-end-encryption-signal).
+
+## session {#session}
+
+O estado do protocolo Signal de uma conversa criptografada com um dispositivo peer, persistido na [store](#store). Atualize uma com `client.message.syncSignalSession`.
+
+## stanza {#stanza}
+
+Uma unidade do protocolo do WhatsApp — uma forma binária compacta de um elemento estilo XMPP. No zapo é um [`BinaryNode`](#binarynode).
+
+## store {#store}
+
+A camada de persistência plugável que guarda auth, estado do Signal, app-state e, opcionalmente, mensagens/threads/contatos. Construída com `createStore`. Veja [Stores](/pt-br/concepts/stores).
+
+## view-once {#view-once}
+
+Mídia que o destinatário só pode abrir uma vez. Envie com a opção `viewOnce`. Veja [Mídia](/pt-br/guides/media#view-once).
+
+## write-behind {#write-behind}
+
+Persistência assíncrona em lote de mensagens/threads/contatos de entrada, para o hot path não ficar bloqueado no banco. Ajustada pela opção [`writeBehind`](/pt-br/concepts/configuration#write-behind-persistence).

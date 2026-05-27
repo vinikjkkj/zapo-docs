@@ -8,6 +8,21 @@
     "dark": "#12802F"
   },
   "favicon": "/favicon.png",
+  "icons": {
+    "library": "fontawesome"
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs"
+  },
+  "background": {
+    "decoration": "gradient"
+  },
+  "metadata": {
+    "timestamp": true
+  },
+  "search": {
+    "prompt": "Search the Zapo docs..."
+  },
   "seo": {
     "metatags": {
       "og:site_name": "Zapo",
@@ -24,6 +39,7 @@
         "groups": [
           {
             "group": "Getting started",
+            "icon": "rocket",
             "pages": [
               "en/introduction",
               "en/installation",
@@ -32,6 +48,7 @@
           },
           {
             "group": "Core concepts",
+            "icon": "book-open",
             "pages": [
               "en/concepts/architecture",
               "en/concepts/authentication",
@@ -43,11 +60,13 @@
           },
           {
             "group": "Guides",
+            "icon": "map",
             "pages": [
               "en/guides/sending-messages",
               "en/guides/media",
               "en/guides/interactive-messages",
               "en/guides/receiving-messages",
+              "en/guides/chats",
               "en/guides/groups",
               "en/guides/newsletters",
               "en/guides/bots",
@@ -59,30 +78,38 @@
           },
           {
             "group": "Reference",
+            "icon": "code",
             "pages": [
               "en/reference/client",
               "en/reference/message-types",
               "en/reference/chat-mutations",
               "en/reference/low-level",
               "en/reference/stores",
-              "en/reference/jid-helpers"
+              "en/reference/jid-helpers",
+              "en/reference/glossary"
             ]
           },
           {
             "group": "Advanced",
+            "icon": "layer-group",
             "pages": [
               "en/concepts/protocol",
               "en/concepts/internals",
               "en/concepts/mobile"
             ]
           }
-        ]
+        ],
+        "banner": {
+          "content": "Zapo is pre-1.0 — breaking changes are expected until the first major release. Pin exact versions. [Learn more](/en/introduction)",
+          "dismissible": true
+        }
       },
       {
         "language": "pt-BR",
         "groups": [
           {
             "group": "Primeiros passos",
+            "icon": "rocket",
             "pages": [
               "pt-br/introduction",
               "pt-br/installation",
@@ -91,6 +118,7 @@
           },
           {
             "group": "Conceitos",
+            "icon": "book-open",
             "pages": [
               "pt-br/concepts/architecture",
               "pt-br/concepts/authentication",
@@ -102,11 +130,13 @@
           },
           {
             "group": "Guias",
+            "icon": "map",
             "pages": [
               "pt-br/guides/sending-messages",
               "pt-br/guides/media",
               "pt-br/guides/interactive-messages",
               "pt-br/guides/receiving-messages",
+              "pt-br/guides/chats",
               "pt-br/guides/groups",
               "pt-br/guides/newsletters",
               "pt-br/guides/bots",
@@ -118,24 +148,31 @@
           },
           {
             "group": "Referência",
+            "icon": "code",
             "pages": [
               "pt-br/reference/client",
               "pt-br/reference/message-types",
               "pt-br/reference/chat-mutations",
               "pt-br/reference/low-level",
               "pt-br/reference/stores",
-              "pt-br/reference/jid-helpers"
+              "pt-br/reference/jid-helpers",
+              "pt-br/reference/glossary"
             ]
           },
           {
             "group": "Avançado",
+            "icon": "layer-group",
             "pages": [
               "pt-br/concepts/protocol",
               "pt-br/concepts/internals",
               "pt-br/concepts/mobile"
             ]
           }
-        ]
+        ],
+        "banner": {
+          "content": "O Zapo é pré-1.0 — breaking changes são esperadas até o primeiro release maior. Fixe versões exatas. [Saiba mais](/pt-br/introduction)",
+          "dismissible": true
+        }
       }
     ],
     "global": {
@@ -186,7 +223,8 @@
       "view",
       "chatgpt",
       "claude",
-      "cursor"
+      "cursor",
+      "mcp"
     ]
   },
   "footer": {

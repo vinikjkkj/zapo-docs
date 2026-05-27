@@ -90,7 +90,7 @@ client.on('message', async (event) => {
 })
 ```
 
-You can also pass an array of events, or address it manually by JID and ids:
+You can also pass an array of events, or address it manually by <Tooltip tip="A WhatsApp address for a user, group, or channel — e.g. 5511999999999@s.whatsapp.net" cta="PN vs LID" href="/en/concepts/identities">JID</Tooltip> and ids:
 
 ```ts
 await client.message.sendReceipt(chatJid, [id1, id2], { type: 'read' })

@@ -1,0 +1,107 @@
+---
+title: "Gerenciando chats"
+description: "Mute, pin, arquivar, lido, lock, favoritar, limpar e deletar chats com client.chat."
+icon: "comments"
+keywords: ["mute", "pin", "arquivar", "lido", "deletar chat", "favoritar", "app-state"]
+---
+
+As configurações por chat ficam em `client.chat` (`WaAppStateMutationCoordinator`). São mutações de [app-state](/pt-br/reference/glossary#app-state) — sincronizam entre **todos os seus dispositivos vinculados**, e mudanças feitas em outro lugar voltam no evento [`mutation`](/pt-br/concepts/events#state-history--mex).
+
+<Info>
+  Essas operações afetam a visão da **sua** conta (e dos seus outros dispositivos). Elas **não** mudam nada para os outros participantes — ex.: deletar um chat não o deleta para eles. Para deletar para todos, use um [revoke](/pt-br/guides/interactive-messages#revoking-delete-for-everyone).
+</Info>
+
+## Mute
+
+```ts
+// Silencia por 8 horas
+await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
+
+// Remove o silêncio
+await client.chat.setChatMute(chatJid, false)
+```
+
+`muteEndTimestampMs` é obrigatório ao silenciar (epoch ms). Para "silenciar para sempre", passe um timestamp bem no futuro. O client **não** remove o silêncio sozinho quando o timer expira — esse é o momento em que o WhatsApp reativa as notificações.
+
+## Pin & arquivar
+
+```ts
+await client.chat.setChatPin(chatJid, true)      // pin
+await client.chat.setChatArchive(chatJid, true)  // arquivar
+```
+
+<Note>
+  Pin e arquivar são **mutuamente exclusivos** — fixar um chat limpa o flag de arquivado e vice-versa. O WhatsApp limita a quantidade de chats fixados no servidor.
+</Note>
+
+## Lido / não lido
+
+```ts
+await client.chat.setChatRead(chatJid, true)   // marca como lido
+await client.chat.setChatRead(chatJid, false)  // marca como não lido
+```
+
+## Lock
+
+```ts
+await client.chat.setChatLock(chatJid, true)
+```
+
+Travar também limpa o arquivado e o pin.
+
+## Favoritar uma mensagem
+
+Uma mensagem é identificada por uma `WaAppStateMessageKey`:
+
+```ts
+interface WaAppStateMessageKey {
+  chatJid: string
+  id: string            // o id (stanza) da mensagem
+  fromMe: boolean
+  participantJid?: string // remetente no grupo
+}
+
+await client.chat.setMessageStar(
+  { chatJid, id: stanzaId, fromMe: false, participantJid: senderJid },
+  true
+)
+```
+
+## Limpar & deletar
+
+```ts
+// Limpa as mensagens mas mantém o chat (local apenas)
+await client.chat.clearChat(chatJid, { deleteStarred: false, deleteMedia: true })
+
+// Deleta o chat inteiro (remove da lista + mensagens armazenadas)
+await client.chat.deleteChat(chatJid, { deleteMedia: true })
+```
+
+`clearChat` mantém mensagens favoritadas e mídia por padrão; defina `deleteStarred` / `deleteMedia` para apagá-las também. Nenhum dos dois sai de um grupo — use [`client.group.leaveGroup`](/pt-br/guides/groups#leaving) para isso.
+
+## Deletar uma mensagem para mim
+
+Remove uma única mensagem apenas do(s) seu(s) dispositivo(s) — os destinatários continuam vendo:
+
+```ts
+await client.chat.deleteMessageForMe(
+  { chatJid, id: stanzaId, fromMe: false },
+  { deleteMedia: true }
+)
+```
+
+Para deletar para todos, envie um [revoke](/pt-br/guides/interactive-messages#revoking-delete-for-everyone).
+
+## Além dos helpers
+
+Os métodos acima são atalhos tipados. Para qualquer coisa sem um helper dedicado — contatos, labels, quick replies, privacidade de status e a lista completa de schemas de app-state — use o `client.chat.set()` / `client.chat.remove()` genérico. Veja a [referência de chat mutations](/pt-br/reference/chat-mutations).
+
+## Reagindo a mudanças
+
+Quando uma configuração de chat muda em outro dispositivo, você recebe um evento `mutation`:
+
+```ts
+client.on('mutation', (event) => {
+  console.log(event.collection, event.operation, event.index)
+})
+```

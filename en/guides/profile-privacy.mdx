@@ -102,15 +102,8 @@ await client.business.deleteCoverPhoto(coverId)
 
 ## Chat settings
 
-Per-chat settings — mute, pin, archive, mark read, delete — live on `client.chat` ([`WaAppStateMutationCoordinator`](/en/reference/client#chat)), because they sync across your devices via app-state:
+Per-chat settings — mute, pin, archive, read, lock, star, clear, delete — live on `client.chat` and sync across your devices. They have their own guide:
 
-```ts
-await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
-await client.chat.setChatPin(chatJid, true)
-await client.chat.setChatArchive(chatJid, true)
-await client.chat.setChatRead(chatJid, true)
-await client.chat.clearChat(chatJid)
-await client.chat.deleteChat(chatJid)
-```
-
-These changes are also surfaced as [`mutation`](/en/concepts/events#state-history--mex) events when made from another device.
+<Card title="Managing chats" icon="comments" href="/en/guides/chats" arrow>
+  Mute, pin, archive, mark read, lock, star messages, clear, and delete chats.
+</Card>
