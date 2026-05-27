@@ -1,55 +1,61 @@
-# Mintlify Starter Kit
+# Zapo documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+Official documentation for [**zapo**](https://github.com/vinikjkkj/zapo) (`zapo-js`) — the high-performance TypeScript implementation of the WhatsApp Web protocol.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+🌐 **Live site:** [zapo.to](https://zapo.to) · 📦 **npm:** [`zapo-js`](https://www.npmjs.com/package/zapo-js)
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+Built with [Mintlify](https://mintlify.com). Pages are MDX files with YAML frontmatter; site configuration lives in [`docs.json`](docs.json).
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+## Languages
 
-## AI-assisted writing
+The docs are bilingual via Mintlify localization — **English** (default) and **Brazilian Portuguese** — selectable from the site's language switcher.
 
-Set up your AI coding tool to work with Mintlify:
+| Language | Folder | Code |
+| --- | --- | --- |
+| English | [`en/`](en/) | `en` |
+| Português (BR) | [`pt-br/`](pt-br/) | `pt-BR` |
+
+Every page exists in both folders. The two trees mirror each other 1:1.
+
+## Structure
+
+```
+docs.json          # site config: navigation (per language), theme, navbar, SEO
+en/                # English pages
+pt-br/             # Brazilian Portuguese pages
+  ├── introduction, installation, quickstart
+  ├── concepts/    # architecture, authentication, identities, configuration, events, stores
+  ├── guides/      # messaging, media, groups, newsletters, bots, presence, …
+  ├── reference/   # client & coordinators, message types, chat mutations, low-level, stores, JIDs
+  ├── concepts/    # advanced: protocol, internals, mobile
+  └── troubleshooting
+logo/ · images/    # logo, favicon, hero, and social-card assets
+```
+
+## Develop locally
+
+Install the [Mintlify CLI](https://www.npmjs.com/package/mint) and run the preview server from the repo root (where `docs.json` lives):
 
 ```bash
-npx skills add https://mintlify.com/docs
-```
-
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
 npm i -g mint
+mint dev          # preview at http://localhost:3000
+mint broken-links # validate internal links
 ```
 
-Run the following command at the root of your documentation, where your `docs.json` is located:
+## Contributing
 
-```
-mint dev
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md). The key rule: **keep `en/` and `pt-br/` in sync** — any change to an English page must be mirrored in its Portuguese counterpart (and vice-versa).
 
-View your local preview at `http://localhost:3000`.
+## Publishing
 
-## Publishing changes
+Changes are deployed automatically to [zapo.to](https://zapo.to) when merged to the default branch (via the Mintlify GitHub app).
 
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
+## Support the project
 
-## Need help?
+If `zapo` is useful to you, consider [sponsoring on GitHub](https://github.com/sponsors/vinikjkkj).
 
-### Troubleshooting
+## License
 
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
+[MIT](LICENSE) © vinikjkkj
 
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+> Independent implementation for engineering and interoperability research. Not affiliated with or endorsed by WhatsApp.

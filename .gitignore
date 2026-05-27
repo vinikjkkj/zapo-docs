@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Mintlify CLI cache
+.mint/
+.mintlify/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
