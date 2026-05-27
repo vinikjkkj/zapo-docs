@@ -10,6 +10,20 @@ icon: "qrcode"
 
 Pairing is driven entirely through events emitted during `connect()`:
 
+```mermaid
+sequenceDiagram
+  participant App as Your app
+  participant C as WaClient
+  participant WA as WhatsApp
+  App->>C: connect()
+  C->>WA: open + Noise handshake
+  WA-->>C: pairing required
+  C-->>App: auth_qr (or auth_pairing_code)
+  Note over App,WA: user scans the QR / enters the code on their phone
+  WA-->>C: paired
+  C-->>App: auth_paired · credentials persisted
+```
+
 | Event | Payload | When |
 | --- | --- | --- |
 | `auth_qr` | `{ qr: string, ttlMs: number }` | A new QR is available to render. Re-emitted as it rotates. |

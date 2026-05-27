@@ -7,7 +7,7 @@ icon: "image"
 A mídia é enviada pelo mesmo método `client.message.send`, usando um objeto de conteúdo de mídia tipado. O builder preenche para você os campos gerenciados pelo protocolo (chaves de criptografia, digests SHA-256, direct path, upload) — você fornece a fonte e o `mimetype`.
 
 <Warning>
-  **Enviar mídia requer [`@zapo-js/media-utils`](/pt-br/installation#sending-media).** O pipeline de saída o usa para sondar e processar a mídia antes do upload. Instale-o e conecte o processador através da opção de client [`media`](#media-processing) sempre que seu app enviar mídia.
+  Para mídia **utilizável**, instale [`@zapo-js/media-utils`](/pt-br/installation#sending-media) e conecte um processor via opção de client [`media`](#media-processing). A mídia ainda faz upload sem ele, mas sem um processor ela fica **sem thumbnail/preview, dimensões ou waveform** — então pode chegar como anexo simples.
 </Warning>
 
 ## Entrada de mídia {#media-input}
@@ -145,7 +145,7 @@ As três aceitam tanto um `WaIncomingMessageEvent` quanto um `Proto.IMessage` br
 
 ## Processamento de mídia {#media-processing}
 
-Enviar mídia requer um **processador de mídia**. Instale `@zapo-js/media-utils` e passe um através da opção de client `media` — ele sonda e processa a mídia (dimensões, duração, miniaturas, waveforms, normalização de notas de voz) antes do upload:
+Para mídia adequada, use um **processador de mídia**. Instale `@zapo-js/media-utils` e passe um através da opção de client `media` — ele sonda e processa a mídia (dimensões, duração, miniaturas, waveforms, normalização de notas de voz) antes do upload. Sem ele, a mídia ainda faz upload mas sem esse processamento:
 
 ```ts
 import { createMediaProcessor } from '@zapo-js/media-utils'

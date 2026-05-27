@@ -1,13 +1,22 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "zapo",
+  "name": "Zapo",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#22C55E",
-    "dark": "#15803D"
+    "primary": "#16A338",
+    "light": "#2BC54E",
+    "dark": "#12802F"
   },
   "favicon": "/favicon.png",
+  "seo": {
+    "metatags": {
+      "og:site_name": "Zapo",
+      "og:type": "website",
+      "og:image": "https://zapo.to/images/og.png",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://zapo.to/images/og.png"
+    }
+  },
   "navigation": {
     "languages": [
       {
@@ -44,7 +53,8 @@
               "en/guides/bots",
               "en/guides/presence-status",
               "en/guides/profile-privacy",
-              "en/guides/reconnection"
+              "en/guides/reconnection",
+              "en/troubleshooting"
             ]
           },
           {
@@ -102,7 +112,8 @@
               "pt-br/guides/bots",
               "pt-br/guides/presence-status",
               "pt-br/guides/profile-privacy",
-              "pt-br/guides/reconnection"
+              "pt-br/guides/reconnection",
+              "pt-br/troubleshooting"
             ]
           },
           {
@@ -126,28 +137,61 @@
           }
         ]
       }
-    ]
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "icon": "github",
+          "iconType": "brands",
+          "href": "https://github.com/vinikjkkj/zapo"
+        },
+        {
+          "anchor": "npm",
+          "icon": "npm",
+          "iconType": "brands",
+          "href": "https://www.npmjs.com/package/zapo-js"
+        },
+        {
+          "anchor": "Sponsor",
+          "icon": "heart",
+          "href": "https://github.com/sponsors/vinikjkkj"
+        }
+      ]
+    }
   },
-  "logo": {
-    "light": "/logo/zapo-light.png",
-    "dark": "/logo/zapo.png"
-  },
+  "logo": "/logo/zapo-header.png",
   "navbar": {
     "links": [
       {
+        "label": "npm",
+        "href": "https://www.npmjs.com/package/zapo-js",
+        "icon": "npm",
+        "iconType": "brands"
+      },
+      {
         "label": "Sponsor",
-        "href": "https://github.com/sponsors/vinikjkkj"
+        "href": "https://github.com/sponsors/vinikjkkj",
+        "icon": "heart"
       }
     ],
     "primary": {
-      "type": "button",
-      "label": "npm",
-      "href": "https://www.npmjs.com/package/zapo-js"
+      "type": "github",
+      "href": "https://github.com/vinikjkkj/zapo"
     }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "cursor"
+    ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/vinikjkkj"
+      "github": "https://github.com/vinikjkkj/zapo"
     }
   }
 }

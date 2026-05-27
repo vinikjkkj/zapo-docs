@@ -1,0 +1,75 @@
+---
+title: "Solução de problemas & FAQ"
+description: "Respostas para as dúvidas e armadilhas mais comuns ao rodar o zapo."
+icon: "circle-question"
+---
+
+<AccordionGroup>
+
+<Accordion title="Pede pareamento (mostra um QR) a cada reinício" icon="qrcode">
+  Quase certamente você está usando o **store em memória**, que perde as credenciais quando o processo encerra. Use um [backend](/pt-br/reference/stores) durável (SQLite, Postgres, …) para o domínio `auth` e mantenha um **`sessionId` estável** entre execuções — trocá-lo órfã as credenciais anteriores. Veja [Stores](/pt-br/concepts/stores).
+</Accordion>
+
+<Accordion title="O cliente não reconecta após uma queda" icon="arrows-rotate">
+  É proposital — o `zapo` **não** reconecta sozinho. Escute o evento `connection` com `status: 'close'` e chame `connect()` de novo (pule quando `isLogout` for true). Veja o [padrão de reconexão](/pt-br/guides/reconnection).
+</Accordion>
+
+<Accordion title="Minha mídia envia mas sem preview / dimensões / waveform" icon="image">
+  A mídia faz upload **mesmo sem** o `@zapo-js/media-utils` — mas sem ele não há processor para gerar **thumbnails/previews, dimensões de imagem-vídeo ou waveforms de áudio**, então ela pode aparecer como anexo simples ou sem preview. Para mídia adequada, instale (`npm i @zapo-js/media-utils`, mais `ffmpeg`/`ffprobe`) e configure um processor via opção `media`. Veja [Mídia](/pt-br/guides/media#media-processing).
+</Accordion>
+
+<Accordion title="Prefira stream em vez de Buffer para mídia" icon="forward">
+  Passe um **caminho de arquivo** (`string`) ou um `Readable` para `media`, não um `Buffer` — o `zapo` faz streaming dos bytes pelo pipeline, então a memória fica constante mesmo com arquivos grandes. No download, prefira `downloadToFile`/`download` em vez de `downloadBytes`.
+</Accordion>
+
+<Accordion title="O proxy não está sendo usado" icon="network-wired">
+  A perna `proxy.ws` precisa do pacote **`ws`** (o `WebSocket` nativo do runtime não aceita um `Agent` HTTP). As pernas de mídia/link-preview usam um dispatcher do undici. Veja os [exemplos de proxy](/pt-br/concepts/configuration#proxy) para SOCKS/HTTP/HTTPS e IPv4/IPv6.
+</Accordion>
+
+<Accordion title="Para qual JID eu respondo num grupo?" icon="at">
+  Sempre responda para o **`event.chatJid`** (o JID do grupo), nunca para o JID de um participante. Quando você tiver o LID de um contato, **prefira o LID** — é a identidade preservadora de privacidade e compatível com o futuro. Veja [Identidades (PN vs LID)](/pt-br/concepts/identities).
+</Accordion>
+
+<Accordion title="Recebo minhas próprias mensagens enviadas" icon="inbox">
+  Isso é a sincronização multi-dispositivo — seus próprios envios voltam no evento `message` com `isSender: true`. Filtre-os se você só quer tráfego de entrada. Veja [Recebendo mensagens](/pt-br/guides/receiving-messages).
+</Accordion>
+
+<Accordion title="Como tipar o handler de mensagem no TypeScript?" icon="code">
+  Importe o tipo do evento da raiz do pacote — todos os tipos de coordinator e de evento são exportados:
+
+  ```ts
+  import type { WaIncomingMessageEvent, WaGroupCoordinator } from 'zapo-js'
+
+  client.on('message', (event: WaIncomingMessageEvent) => { /* ... */ })
+  const groups: WaGroupCoordinator = client.group
+  ```
+</Accordion>
+
+<Accordion title="Dá para registrar um número novo (mobile)?" icon="mobile">
+  Não. As conexões mobile são estáveis, mas o `zapo` intencionalmente **não** fornece API de registro — registrar um número é complexo e exige um celular físico. Você conecta com credenciais já registradas. Veja [Conexões mobile](/pt-br/concepts/mobile).
+</Accordion>
+
+<Accordion title="QR ou código de 8 dígitos — qual usar?" icon="key">
+  Os dois funcionam. O QR é o padrão (evento `auth_qr`). Para um código de 8 dígitos, chame `client.auth.requestPairingCode(phone)` após o evento `auth_pairing_required`. Veja [Autenticação](/pt-br/concepts/authentication).
+</Accordion>
+
+<Accordion title="logout() vs disconnect()" icon="power-off">
+  `disconnect()` fecha o socket mas **mantém** as credenciais para você retomar depois. `logout()` **desvincula** o dispositivo no servidor e limpa o estado armazenado (conforme `logoutStoreClear`). Veja [Autenticação](/pt-br/concepts/authentication#disconnect-vs-logout).
+</Accordion>
+
+<Accordion title="Uma operação de business/newsletter dá erro" icon="briefcase">
+  Algumas operações são restritas: `editBusinessProfile`, operações de foto de capa e broadcast lists são **somente business**; vincular email é **somente mobile**; várias operações de comunidade/newsletter exigem um transporte **MEX** ativo. A [referência de coordinators](/pt-br/reference/client) sinaliza cada uma.
+</Accordion>
+
+</AccordionGroup>
+
+## Ainda travado?
+
+<CardGroup cols={2}>
+  <Card title="Arquitetura em detalhes" icon="layer-group" href="/pt-br/concepts/internals">
+    Entenda as camadas para depurar no nível do protocolo.
+  </Card>
+  <Card title="API low-level" icon="terminal" href="/pt-br/reference/low-level">
+    Inspecione stanzas cruas com os eventos de debug e o `lowlevel`.
+  </Card>
+</CardGroup>

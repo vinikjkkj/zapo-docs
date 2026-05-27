@@ -1,8 +1,10 @@
 ---
 title: "WaClient & coordinators"
-description: "The client surface and a method index for every coordinator."
+description: "Complete method reference for WaClient and every coordinator, grounded in the source."
 icon: "code"
 ---
+
+This page lists **every** public method on `WaClient` and its coordinators, with code-grounded descriptions. Dedicated pages go deeper for [message types](/en/reference/message-types), [chat mutations](/en/reference/chat-mutations), and the [low-level API](/en/reference/low-level).
 
 ## WaClient
 
@@ -12,173 +14,85 @@ new WaClient(options: WaClientOptions, logger?: Logger)
 
 See [Configuration](/en/concepts/configuration) for every option.
 
-### Lifecycle & state
-
 | Member | Signature | Description |
 | --- | --- | --- |
-| `connect` | `() => Promise<void>` | Open the socket; drives pairing on first run. |
-| `disconnect` | `() => Promise<void>` | Close gracefully, keep credentials. |
-| `logout` | `(reason?) => Promise<void>` | Unlink the device server-side. |
+| `connect` | `() => Promise<void>` | Opens the socket and runs the Noise handshake; drives pairing on first run. Resolves once connected. |
+| `disconnect` | `() => Promise<void>` | Flushes pending write-behind and closes the socket, keeping credentials. |
+| `logout` | `(reason?: WaLogoutReason) => Promise<void>` | Unlinks this companion device server-side; then clears stored state per [`logoutStoreClear`](/en/concepts/configuration#logout-store-clearing). Throws if not authenticated. |
 | `getState` | `() => WaAuthState` | Current auth/connection state. |
 | `getCredentials` | `() => WaAuthCredentials \| null` | Current credentials, if paired. |
-| `getClockSkewMs` | `() => number \| null` | Server clock skew estimate. |
-
-### Event emitter
-
-| Member | Signature |
-| --- | --- |
-| `on` | `(event, listener) => this` |
-| `once` | `(event, listener) => this` |
-| `off` | `(event, listener) => this` |
-
-All three are typed against [`WaClientEventMap`](/en/concepts/events).
+| `getClockSkewMs` | `() => number \| null` | Estimated server clock skew (from keep-alive), or `null`. |
+| `on` / `once` / `off` | `(event, listener) => this` | Typed event emitter over [`WaClientEventMap`](/en/concepts/events). |
 
 ### Coordinator getters
 
-| Getter | Type |
-| --- | --- |
-| `auth` | `WaAuthClient` |
-| `message` | `WaMessageCoordinator` |
-| `presence` | `WaPresenceCoordinator` |
-| `chat` | `WaAppStateMutationCoordinator` |
-| `group` | `WaGroupCoordinator` |
-| `status` | `WaStatusCoordinator` |
-| `broadcastList` | `WaBroadcastListCoordinator` |
-| `newsletter` | `WaNewsletterCoordinator` |
-| `privacy` | `WaPrivacyCoordinator` |
-| `profile` | `WaProfileCoordinator` |
-| `business` | `WaBusinessCoordinator` |
-| `bot` | `WaBotCoordinator` |
-| `email` | `WaEmailCoordinator` |
-| `lowlevel` | `WaLowLevelCoordinator` |
+| Getter | Type | Section |
+| --- | --- | --- |
+| `auth` | `WaAuthClient` | [auth](#auth) |
+| `message` | `WaMessageCoordinator` | [message](#message) |
+| `presence` | `WaPresenceCoordinator` | [presence](#presence) |
+| `chat` | `WaAppStateMutationCoordinator` | [chat](#chat) |
+| `group` | `WaGroupCoordinator` | [group](#group) |
+| `status` | `WaStatusCoordinator` | [status](#status) |
+| `broadcastList` | `WaBroadcastListCoordinator` | [broadcastList](#broadcastlist) |
+| `newsletter` | `WaNewsletterCoordinator` | [newsletter](#newsletter) |
+| `privacy` | `WaPrivacyCoordinator` | [privacy](#privacy) |
+| `profile` | `WaProfileCoordinator` | [profile](#profile) |
+| `business` | `WaBusinessCoordinator` | [business](#business) |
+| `bot` | `WaBotCoordinator` | [bot](#bot) |
+| `email` | `WaEmailCoordinator` | [email](#email) |
+| `lowlevel` | `WaLowLevelCoordinator` | [low-level API](/en/reference/low-level) |
+
+---
+
+## auth
+
+`client.auth` (`WaAuthClient`). Pairing is mostly event-driven ([Authentication](/en/concepts/authentication)); these are the user-facing entry points.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `requestPairingCode` | `(phoneNumber, shouldShowPushNotification?, customCode?) => Promise<string>` | Requests an 8-char pairing code (link-code flow). The client must already be connected — call after the `auth_pairing_required` event. `customCode` suggests a code; the server may return a different one. |
+| `fetchPairingCountryCodeIso` | `() => Promise<string>` | The ISO country code the server resolved for the account. |
+| `getState` | `(connected?) => { connected, registered, hasQr, hasPairingCode }` | Auth readiness flags. |
+| `getCurrentCredentials` | `() => WaAuthCredentials \| null` | Loaded credentials, or `null`. |
 
 ---
 
 ## message
 
-`WaMessageCoordinator` — [guide](/en/guides/sending-messages).
+`WaMessageCoordinator` — see [Sending](/en/guides/sending-messages) & [Receiving](/en/guides/receiving-messages).
 
-| Method | Signature |
-| --- | --- |
-| `send` | `(to, content: WaSendMessageContent, options?) => Promise<WaMessagePublishResult>` |
-| `sendReceipt` | `(event \| events, options?)` / `(jid, ids, options?) => Promise<void>` |
-| `download` | `(source, options?) => Promise<Readable>` |
-| `downloadToFile` | `(source, filePath, options?) => Promise<void>` |
-| `downloadBytes` | `(source, options?) => Promise<Uint8Array>` |
-| `tryDecryptAddon` | `(event) => Promise<void>` |
-| `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` |
+| Method | Signature | Description |
+| --- | --- | --- |
+| `send` | `(to, content: WaSendMessageContent, options?: WaSendMessageOptions) => Promise<WaMessagePublishResult>` | Sends any [content type](/en/reference/message-types); handles device fanout and per-send retries. Returns the stanza id + ack metadata. |
+| `sendReceipt` | `(event\|events, options?)` / `(jid, ids, options?) => Promise<void>` | Sends a delivery/read/played/inactive receipt. Delivery is auto-acked on decrypt; use this for manual read/played. |
+| `download` | `(source, options?) => Promise<Readable>` | Streams decrypted media (MAC + SHA-256 verified as consumed). Cancel via `options.signal`. |
+| `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Streams decrypted media to a file. |
+| `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Buffers decrypted media into memory — small media only; cap with `options.maxBytes`. |
+| `tryDecryptAddon` | `(event) => Promise<void>` | Decrypts an addon (poll vote, reaction, …) and emits `message_addon`. Auto-called when `addons.autoDecrypt` is on. |
+| `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` | Force-refreshes the Signal session(s) for a JID; `reasonIdentity` also reissues the trusted-contact token. |
+| `getReachoutTimelock` | `() => Promise<WaReachoutTimelock>` | Server-side timelock that throttles cold outreach to non-contacts. |
+| `getNewChatMessageCapping` | `(type?) => Promise<WaMessageCappingInfo>` | Per-cycle message quota applied to new-chat threads (quota, used, cycle, status). |
 
----
-
-## group
-
-`WaGroupCoordinator` — [guide](/en/guides/groups).
-
-| Method | Signature |
-| --- | --- |
-| `queryGroupMetadata` | `(groupJid) => Promise<WaGroupMetadata>` |
-| `queryAllGroups` | `() => Promise<readonly WaGroupMetadata[]>` |
-| `queryGroupInviteInfo` | `(code) => Promise<BinaryNode>` |
-| `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` |
-| `setSubject` | `(groupJid, subject) => Promise<void>` |
-| `setDescription` | `(groupJid, description \| null, prevDescId?) => Promise<void>` |
-| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` |
-| `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` |
-| `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` |
-| `leaveGroup` | `(groupJids) => Promise<BinaryNode>` |
-| `revokeInvite` | `(groupJid) => Promise<BinaryNode>` |
-| `joinGroupViaInvite` | `(code) => Promise<BinaryNode>` |
-| `createCommunity` | `(subject, options?) => Promise<WaGroupMetadata>` |
-| `linkSubGroups` / `unlinkSubGroups` | `(communityJid, jids, options?) => Promise<…>` |
-| `fetchSubGroups` | `(communityJid) => Promise<WaCommunitySubGroupsResult>` |
-| `queryMembershipApprovalRequests` | `(groupJid) => Promise<readonly WaMembershipRequest[]>` |
-| `approveMembershipRequests` / `rejectMembershipRequests` / `cancelMembershipRequests` | `(groupJid, jids) => Promise<void>` |
+`source` is a `WaIncomingMessageEvent` or a raw `Proto.IMessage`.
 
 ---
 
-## newsletter
+## presence
 
-`WaNewsletterCoordinator` — [guide](/en/guides/newsletters). Combines discovery, admin, and messaging ops.
+`WaPresenceCoordinator` — see [Presence & status](/en/guides/presence-status).
 
-| Method | Signature |
-| --- | --- |
-| `fetch` / `fetchByInvite` | `(jid \| code, options?) => Promise<WaNewsletterMetadata>` |
-| `listSubscribed` | `(options?) => Promise<readonly WaNewsletterMetadata[]>` |
-| `searchDirectory` / `fetchRecommended` / `fetchSimilar` | `(options?) => Promise<…>` |
-| `follow` / `unfollow` | `(jid) => Promise<void>` |
-| `mute` | `(input) => Promise<void>` |
-| `send` | `(jid, content, options?) => Promise<WaNewsletterSendResult>` |
-| `editMessage` | `(jid, parentMessageId, content) => Promise<WaNewsletterSendResult>` |
-| `react` / `revoke` / `votePoll` / `sendViewReceipt` | `(input) => Promise<{ stanzaId }>` |
-| `fetchMessages` / `fetchMessageUpdates` | `(input) => Promise<BinaryNode>` |
-| `create` | `(input) => Promise<WaNewsletterMetadata>` |
-| `update` | `(jid, input) => Promise<WaNewsletterMetadata>` |
-| `delete` | `(jid) => Promise<void>` |
-| `fetchAdminInfo` / `fetchFollowers` / `fetchInsights` | `(jid, …) => Promise<…>` |
-| `createAdminInvite` / `changeOwner` / `demoteAdmin` | `(input) => Promise<…>` |
-
----
-
-## privacy
-
-`WaPrivacyCoordinator` — [guide](/en/guides/profile-privacy#privacy).
-
-| Method | Signature |
-| --- | --- |
-| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` |
-| `setPrivacySetting` | `(setting, value) => Promise<void>` |
-| `getBlocklist` | `() => Promise<WaBlocklistResult>` |
-| `blockUser` / `unblockUser` | `(jid) => Promise<void>` |
-| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` |
-
----
-
-## profile
-
-`WaProfileCoordinator` — [guide](/en/guides/profile-privacy#profile).
-
-| Method | Signature |
-| --- | --- |
-| `getProfilePicture` | `(jid, type?, existingId?) => Promise<WaProfilePictureResult>` |
-| `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` |
-| `deleteProfilePicture` | `(targetJid?) => Promise<void>` |
-| `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` |
-| `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` |
-| `getOwnUsername` | `() => Promise<WaOwnUsernameResult>` |
-| `setUsername` / `deleteUsername` | `(input) / () => Promise<boolean>` |
-| `checkUsernameAvailability` | `(username) => Promise<…>` |
-
----
-
-## status
-
-`WaStatusCoordinator` — [guide](/en/guides/presence-status#status-broadcasts).
-
-| Method | Signature |
-| --- | --- |
-| `send` | `(input: WaSendStatusInput) => Promise<WaMessagePublishResult>` |
-| `setPrivacy` | `(input) => Promise<void>` |
-| `setUserMuted` | `(jid, muted) => Promise<void>` |
-| `revokeStatus` | `(input) => Promise<WaMessagePublishResult>` |
-
----
-
-## business
-
-`WaBusinessCoordinator` — [guide](/en/guides/profile-privacy#business).
-
-| Method | Signature |
-| --- | --- |
-| `getBusinessProfile` | `(jids) => Promise<readonly WaBusinessProfileResult[]>` |
-| `editBusinessProfile` | `(input) => Promise<void>` |
-| `getVerifiedName` / `getVerifiedNames` | `(jid \| jids) => Promise<…>` |
-| `updateCoverPhoto` / `deleteCoverPhoto` | `(media) / (id) => Promise<void>` |
+| Method | Signature | Description |
+| --- | --- | --- |
+| `send` | `(type?: 'available' \| 'unavailable') => Promise<void>` | Broadcasts your online/offline presence. |
+| `sendChatstate` | `(jid, options) => Promise<void>` | Sends a typing/recording/paused hint into a chat. |
+| `subscribe` | `(jid, options?) => Promise<void>` | Subscribes to a contact's presence/chat-state. Per-jid and per-connection — **re-subscribe after reconnect**. |
 
 ---
 
 ## chat
 
-`WaAppStateMutationCoordinator` — [guide](/en/guides/profile-privacy#chat-settings).
+`WaAppStateMutationCoordinator` — full reference (incl. the generic `set`/`remove` and all schemas) in [Chat mutations](/en/reference/chat-mutations).
 
 | Method | Signature |
 | --- | --- |
@@ -187,26 +101,219 @@ All three are typed against [`WaClientEventMap`](/en/concepts/events).
 | `setMessageStar` | `(message, starred) => Promise<void>` |
 | `clearChat` / `deleteChat` | `(chatJid, options?) => Promise<void>` |
 | `deleteMessageForMe` | `(message, options?) => Promise<void>` |
-| `sync` | `(options?) => Promise<WaAppStateSyncResult>` |
+| `setStatusPrivacy` / `setUserStatusMute` | `(input) / (jid, muted) => Promise<void>` |
+| `setBroadcastList` / `removeBroadcastList` | `(input) / (id) => Promise<void>` |
+| `set` / `remove` | `(input) => Promise<void>` |
+| `sync` / `flushMutations` | `(options?) / () => Promise<…>` |
+| `getBlockedCollections` / `emitEventsFromSyncResult` | `(syncResult) => …` |
+
+<Note>
+  Pin and archive are mutually exclusive (pinning clears archive and vice-versa); locking clears both. `clearChat`/`deleteChat`/`deleteMessageForMe` are **local-only** (your devices) — use a [revoke](/en/guides/interactive-messages#revoking-delete-for-everyone) to delete for everyone. A mute timer doesn't auto-unmute client-side.
+</Note>
 
 ---
 
-## presence
+## group
 
-`WaPresenceCoordinator` — [guide](/en/guides/presence-status).
+`WaGroupCoordinator` — see [Groups & communities](/en/guides/groups). Methods returning `BinaryNode` give the raw IQ result; participant ops encode **per-participant** outcomes as `<participant jid error>` children (the IQ succeeds even if some fail).
 
-| Method | Signature |
-| --- | --- |
-| `send` | `(type?: 'available' \| 'unavailable') => Promise<void>` |
-| `sendChatstate` | `(jid, options) => Promise<void>` |
-| `subscribe` | `(jid, options?) => Promise<void>` |
+| Method | Signature | Description |
+| --- | --- | --- |
+| `queryGroupMetadata` | `(groupJid) => Promise<WaGroupMetadata>` | Full group metadata. |
+| `queryAllGroups` | `() => Promise<readonly WaGroupMetadata[]>` | Every group the account is in. |
+| `queryGroupInviteInfo` | `(code) => Promise<BinaryNode>` | Resolve an invite code. |
+| `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Create a group (you're auto-added as admin; don't include your own JID). |
+| `setSubject` | `(groupJid, subject) => Promise<void>` | Rename. |
+| `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Set/clear description. |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Toggle announce / restrict / ephemeral / … |
+| `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Add / remove members. |
+| `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Grant / revoke admin. |
+| `leaveGroup` | `(groupJids) => Promise<BinaryNode>` | Leave one or more groups (batched). |
+| `revokeInvite` | `(groupJid) => Promise<BinaryNode>` | Rotate the invite code — every old `chat.whatsapp.com/<code>` link stops working. |
+| `joinGroupViaInvite` | `(code) => Promise<BinaryNode>` | Join via code. Throws if expired/revoked/full/already a member. |
+| `createCommunity` | `(subject, options?) => Promise<WaGroupMetadata>` | Create a community (request-required unless `membershipApprovalMode: 'open'`). |
+| `deactivateCommunity` | `(communityJid) => Promise<void>` | Delete a community. |
+| `linkSubGroups` / `unlinkSubGroups` | `(communityJid, jids, options?) => Promise<…>` | Link / unlink sub-groups (`removeOrphanedMembers` evicts orphaned members). |
+| `queryLinkedGroupsParticipants` | `(communityJid) => Promise<readonly WaGroupParticipant[]>` | Merged participants across a community. |
+| `fetchSubGroups` | `(communityJid) => Promise<WaCommunitySubGroupsResult>` | List sub-groups (MEX). |
+| `joinLinkedGroup` | `(communityJid, subGroupJid, options?) => Promise<BinaryNode>` | Join a linked sub-group. |
+| `queryMembershipApprovalRequests` | `(groupJid) => Promise<readonly WaMembershipRequest[]>` | Pending join requests. |
+| `approveMembershipRequests` / `rejectMembershipRequests` | `(groupJid, jids) => Promise<void>` | Approve / reject requests. |
+| `cancelMembershipRequests` | `(groupJid, jids) => Promise<void>` | Cancel your own pending requests. |
+| `isInternalGroup` | `(groupJid) => Promise<boolean>` | `true` for internal WhatsApp groups (MEX). |
+| `transferCommunityOwnership` | `(communityJid, newOwnerJid) => Promise<void>` | Hand off community ownership (MEX). |
+| `fetchSubgroupSuggestions` | `(communityJid, hintSubgroupJid) => Promise<readonly WaCommunitySubGroupSuggestion[]>` | Suggested sub-groups (MEX). |
+| `submitGroupSuspensionAppeal` | `(groupJid, options?) => Promise<WaGroupSuspensionAppealResult>` | Appeal a suspension (MEX). |
+
+<Note>Methods marked (MEX) require an active MEX transport and throw when it's unavailable.</Note>
 
 ---
 
-## bot, email, broadcastList
+## newsletter
 
-| Coordinator | Key methods |
-| --- | --- |
-| `WaBotCoordinator` | `listBots()`, `getBotProfile(jid, options?)`, `sendPrompt(to, content, options?)` |
-| `WaEmailCoordinator` | `getStatus()`, `setEmail(email, context?)`, `requestVerificationCode(input)`, `verifyCode(code)`, `confirm(context?)` |
-| `WaBroadcastListCoordinator` | `setList(input)`, `removeList(id)`, `send(input)` |
+`WaNewsletterCoordinator` — see [Newsletters](/en/guides/newsletters). Composed of discovery, admin, and messaging ops.
+
+### Discovery
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `fetch` / `fetchByInvite` | `(jid\|code, options?) => Promise<WaNewsletterMetadata>` | Metadata by JID or invite code. |
+| `fetchDehydrated` | `(keyOrInvite, options?) => Promise<WaNewsletterDehydratedMetadata>` | Lightweight metadata (no image/followers). |
+| `listSubscribed` | `(options?) => Promise<readonly WaNewsletterMetadata[]>` | Channels you follow. |
+| `searchDirectory` | `(options?) => Promise<WaNewsletterDirectoryResults>` | Search the public directory. |
+| `fetchRecommended` | `(options?) => Promise<readonly WaNewsletterMetadata[]>` | Recommended channels. |
+| `fetchSimilar` | `(jid, options?) => Promise<readonly WaNewsletterMetadata[]>` | Channels similar to one. |
+| `fetchDirectoryList` | `(options) => Promise<WaNewsletterDirectoryResults>` | Paged directory by country/category. |
+| `fetchDirectoryCategoriesPreview` | `(options) => Promise<readonly WaNewsletterDirectoryCategoryPreview[]>` | Category carousel previews. |
+| `fetchIsDomainPreviewable` | `(domains) => Promise<ReadonlyMap<string, boolean>>` | Which domains support link previews. |
+
+### Admin
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `create` | `(input) => Promise<WaNewsletterMetadata>` | Create a channel (auto-accepts creation TOS; `picture` uploaded inline — keep small). |
+| `update` | `(jid, input) => Promise<WaNewsletterMetadata>` | Edit name/description/picture. |
+| `delete` | `(jid) => Promise<void>` | **Irreversible** delete — followers detached, history dropped, JID burned. |
+| `fetchAdminInfo` | `(jid) => Promise<WaNewsletterAdminInfo>` | Admin-only metadata view. |
+| `fetchAdminCapabilities` | `(jid) => Promise<ReadonlySet<WaNewsletterCapability>>` | Capabilities granted to the account. |
+| `fetchFollowers` | `(jid, options?) => Promise<WaNewsletterFollowersPage>` | Paged follower list. |
+| `fetchInsights` | `(jid, metrics) => Promise<… \| null>` | Admin analytics. |
+| `fetchReports` | `() => Promise<… \| null>` | Moderation reports against owned channels. |
+| `fetchPendingInvites` | `(jid) => Promise<readonly string[]>` | Pending admin invite JIDs. |
+| `fetchEnforcements` | `(jid) => Promise<… \| null>` | Moderation enforcement state. |
+| `fetchPollVoters` | `(input) => Promise<ReadonlyMap<string, readonly WaNewsletterPollVoter[]>>` | Poll voters grouped by option. |
+| `fetchMessageReactionSenders` | `(input) => Promise<readonly WaNewsletterReactionSenders[]>` | Reaction senders grouped by emoji. |
+| `createAdminInvite` | `(input) => Promise<WaNewsletterAdminInviteResult>` | Invite a user as admin. |
+| `acceptAdminInvite` | `(jid) => Promise<void>` | Accept a pending admin invite (auto-accepts TOS). |
+| `revokeAdminInvite` | `(input) => Promise<void>` | Revoke a sent admin invite. |
+| `changeOwner` | `(input) => Promise<void>` | Transfer ownership to an invited admin. |
+| `demoteAdmin` | `(input) => Promise<void>` | Demote an admin to follower. |
+| `queryTosState` / `acceptTos` | `(noticeIds) => Promise<…>` | Query / accept TOS notices. |
+| `logExposures` | `(exposures) => Promise<void>` | Report capability exposures (telemetry). |
+
+### Messaging
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `send` | `(jid, content, options?) => Promise<WaNewsletterSendResult>` | Publish a message (any content type). |
+| `editMessage` | `(jid, parentMessageId, content) => Promise<WaNewsletterSendResult>` | Edit a published message. |
+| `react` / `revoke` / `votePoll` / `sendViewReceipt` | `(input) => Promise<{ stanzaId }>` | React / revoke / vote / view-receipt. |
+| `fetchMessages` / `fetchMessageUpdates` | `(input) => Promise<BinaryNode>` | Page messages / fetch edits-reactions-votes in a range. |
+| `subscribeLiveUpdates` | `(jid) => Promise<{ durationSeconds }>` | Subscribe to live updates (**re-subscribe after reconnect**). |
+| `follow` / `unfollow` | `(jid) => Promise<void>` | Follow / unfollow. |
+| `mute` | `(input) => Promise<void>` | Mute / unmute. |
+
+---
+
+## privacy
+
+`WaPrivacyCoordinator` — see [Privacy](/en/guides/profile-privacy#privacy).
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` | Current value of every privacy category. |
+| `setPrivacySetting` | `(setting, value) => Promise<void>` | Update one category. A `contact_blacklist`-style value flips the mode only — populate the list separately via the disallowed-list + app-state. |
+| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` | Per-category excluded JIDs. |
+| `getBlocklist` | `() => Promise<WaBlocklistResult>` | Account-wide blocklist. |
+| `blockUser` / `unblockUser` | `(jid) => Promise<void>` | Block / unblock. A block stops the peer messaging/calling you and hides your last-seen/online/photo/status from them. |
+
+---
+
+## profile
+
+`WaProfileCoordinator` — see [Profile](/en/guides/profile-privacy#profile).
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `getProfilePicture` | `(jid, type?, existingId?) => Promise<WaProfilePictureResult>` | Picture envelope (URL + direct path + id). |
+| `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` | Set your/a target's picture. `imageBytes` is uploaded **as-is** — pre-encode square JPEG. Returns the picture id. |
+| `deleteProfilePicture` | `(targetJid?) => Promise<void>` | Remove the picture (admin op for groups). |
+| `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` | Get/set the legacy "About". |
+| `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` | Batched picture id + status. |
+| `getDisappearingMode` | `(jids) => Promise<readonly WaDisappearingModeResult[]>` | Batched disappearing-mode setting. |
+| `getTextStatuses` | `(jids) => Promise<readonly WaTextStatusResult[]>` | Batched modern text status (emoji + text). |
+| `setTextStatus` | `(input) => Promise<void>` | Set your modern text status; `text: null`/`''` clears it. |
+| `getUsernames` | `(jids) => Promise<readonly WaUsernameResult[]>` | Batched username lookup. |
+| `getOwnUsername` | `() => Promise<WaOwnUsernameResult>` | Your username record (value, state, recovery pin). |
+| `setUsername` | `(input) => Promise<boolean>` | Reserve a username. Returns `true` only on `SUCCESS`; otherwise `false` (taken/invalid/rate-limited) without throwing. |
+| `deleteUsername` | `() => Promise<boolean>` | Delete your username. |
+| `checkUsernameAvailability` | `(username) => Promise<WaUsernameAvailabilityResult>` | Availability + suggestions. |
+| `setUsernameKey` | `(pin) => Promise<boolean>` | Set the username recovery PIN. |
+| `getAboutStatus` | `(jid) => Promise<string \| null>` | "About" text via MEX. |
+| `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/en/concepts/identities#mapping-a-phone-number-to-its-lid) for phone numbers. |
+
+---
+
+## status
+
+`WaStatusCoordinator` — see [Status broadcasts](/en/guides/presence-status#status-broadcasts).
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `send` | `(input: WaSendStatusInput) => Promise<WaMessagePublishResult>` | Publish a status to recipients. |
+| `revokeStatus` | `(input) => Promise<WaMessagePublishResult>` | Revoke a published status. |
+| `setPrivacy` | `(input) => Promise<void>` | Account-wide status privacy. |
+| `setUserMuted` | `(jid, muted) => Promise<void>` | Mute/unmute a contact's status. |
+
+---
+
+## broadcastList
+
+`WaBroadcastListCoordinator`.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `setList` | `(input: WaSetBroadcastListInput) => Promise<void>` | Create/update a list (name + recipients). |
+| `removeList` | `(id) => Promise<void>` | Delete a list. |
+| `send` | `(input: WaSendBroadcastListMessageInput) => Promise<WaMessagePublishResult>` | Send to every member. |
+
+<Warning>Broadcast lists are **business-only** (backed by the `BusinessBroadcastList` app-state schema); regular accounts have the mutations rejected.</Warning>
+
+---
+
+## business
+
+`WaBusinessCoordinator` — see [Business](/en/guides/profile-privacy#business).
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `getBusinessProfile` | `(jids) => Promise<readonly WaBusinessProfileResult[]>` | Batched business profiles (about, address, hours). Works from any account. |
+| `getVerifiedName` / `getVerifiedNames` | `(jid) / (jids) => Promise<…>` | Verified-name lookup (single / batched). |
+| `editBusinessProfile` | `(input) => Promise<void>` | Edit your business profile. **Business-only.** |
+| `updateCoverPhoto` | `(media) => Promise<{ id }>` | Upload/bind a cover photo. **Business-only.** |
+| `deleteCoverPhoto` | `(id) => Promise<void>` | Delete the cover photo. **Business-only.** |
+
+---
+
+## bot
+
+`WaBotCoordinator` — see [Bots](/en/guides/bots).
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `listBots` | `() => Promise<readonly WaBotInfo[]>` | Bots available to the account, grouped by section. |
+| `getBotProfile` | `(jid, options?) => Promise<WaBotProfileResult \| null>` | A bot's profile (commands, prompts, creator). |
+| `sendPrompt` | `(to, content, options?) => Promise<WaMessagePublishResult>` | Prompt a bot — direct path (`to` is `@bot`) or mention path (group + `options.botJid`). |
+| `tryDecryptChunk` | `(event) => Promise<void>` | Decrypt a streamed reply chunk → `message_bot_chunk`. Auto-called per incoming message. |
+
+---
+
+## email
+
+`WaEmailCoordinator`.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `getStatus` | `() => Promise<WaEmailStatus>` | Current binding (address + verified/confirmed). |
+| `setEmail` | `(email, context?) => Promise<WaEmailStatus>` | Bind/rebind an address. |
+| `requestVerificationCode` | `(input) => Promise<void>` | Send a verification code to the address. |
+| `verifyCode` | `(code) => Promise<WaEmailVerifyCodeResult>` | Submit the emailed code. |
+| `confirm` | `(context?) => Promise<void>` | Post-verification ownership confirmation. |
+
+<Warning>Email binding is **mobile-only** — every method throws on a Web/companion connection. See [Mobile connections](/en/concepts/mobile).</Warning>
+
+---
+
+## lowlevel
+
+`WaLowLevelCoordinator` — full reference in [Low-level API](/en/reference/low-level): `sendNode`, `query`, `registerIncomingHandler`, `unregisterIncomingHandler`, `registerIncomingStanzaFilter`.

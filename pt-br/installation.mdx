@@ -97,7 +97,7 @@ npm install argo-codec
 ## Enviando mídia {#sending-media}
 
 <Warning>
-  **Enviar mídia requer `@zapo-js/media-utils`.** O pipeline de mídia de saída o usa para sondar e processar a mídia (dimensões, duração, miniaturas, waveforms, normalização de notas de voz) antes do upload, então instale-o sempre que seu app enviar imagens, vídeo, áudio, documentos ou figurinhas.
+  **O `@zapo-js/media-utils` é efetivamente necessário para enviar mídia utilizável.** A mídia ainda faz upload sem ele, mas não há processor para gerar **thumbnails/previews, dimensões de imagem-vídeo ou waveforms de notas de voz** — então ela pode aparecer como anexo simples ou sem preview. Instale-o sempre que seu app enviar imagens, vídeo, áudio, documentos ou figurinhas.
 </Warning>
 
 ```bash

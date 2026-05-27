@@ -26,23 +26,17 @@ Esta página vai mais fundo que a [visão geral da arquitetura](/pt-br/concepts/
 
 ## A stack {#the-stack}
 
-```
-WaClient  (EventEmitter, thin)
-  │  getters → coordinators (message, group, newsletter, chat, …)
-  ▼
-WaMessageDispatchCoordinator   build · encrypt · fanout · ack/retry
-  ▼
-Signal (SignalProtocol / SenderKeyManager)   msg · pkmsg · skmsg
-  ▼
-WaNodeOrchestrator   IQ id matching, pending-query map
-  ▼
-WaNodeTransport   BinaryNode ⇄ wire frame (debug node/frame events)
-  ▼
-binary codec (encoder / decoder / tokens)
-  ▼
-WaComms + Noise   encrypted frames
-  ▼
-WaWebSocket / WaMobileTcpSocket
+```mermaid
+flowchart TD
+  A["WaClient · thin EventEmitter · coordinator getters"]
+  B["WaMessageDispatchCoordinator<br/>build · encrypt · fanout · ack/retry"]
+  C["Signal · SignalProtocol / SenderKeyManager<br/>msg · pkmsg · skmsg"]
+  D["WaNodeOrchestrator · IQ id matching"]
+  E["WaNodeTransport · BinaryNode to wire frame"]
+  F["Binary codec · encoder / decoder / tokens"]
+  G["WaComms + Noise · encrypted frames"]
+  H["WaWebSocket / WaMobileTcpSocket"]
+  A --> B --> C --> D --> E --> F --> G --> H
 ```
 
 As stores atravessam todas as camadas; o connection manager e o keep-alive ficam ao lado do transporte.
@@ -59,6 +53,23 @@ O `WaConnectionManager` (em `src/client/connection/`) conduz o connect/disconnec
 O `zapo` deliberadamente **não** reconecta automaticamente — essa política pertence ao seu app (veja [Reconexão](/pt-br/guides/reconnection)).
 
 ## Pipeline de mensagem de saída {#outgoing-message-pipeline}
+
+```mermaid
+sequenceDiagram
+  participant App as Your code
+  participant Disp as MessageDispatch
+  participant Sig as Signal
+  participant Net as NodeOrchestrator
+  participant WA as WhatsApp
+  App->>Disp: message.send(to, content)
+  Disp->>Disp: build Proto.IMessage · upload media
+  Disp->>Sig: encrypt per recipient device
+  Sig-->>Disp: msg / pkmsg / skmsg
+  Disp->>Net: send message stanza
+  Net->>WA: encrypted frame
+  WA-->>Net: ack
+  Net-->>App: WaMessagePublishResult
+```
 
 `client.message.send` → `WaMessageDispatchCoordinator`:
 

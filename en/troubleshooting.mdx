@@ -1,0 +1,75 @@
+---
+title: "Troubleshooting & FAQ"
+description: "Answers to the most common questions and pitfalls when running zapo."
+icon: "circle-question"
+---
+
+<AccordionGroup>
+
+<Accordion title="It re-pairs (shows a QR) on every restart" icon="qrcode">
+  You're almost certainly running on the **in-memory store**, which loses credentials when the process exits. Use a durable [backend](/en/reference/stores) (SQLite, Postgres, …) for the `auth` domain, and keep a **stable `sessionId`** across runs — changing it orphans the previous credentials. See [Stores](/en/concepts/stores).
+</Accordion>
+
+<Accordion title="The client doesn't reconnect after a drop" icon="arrows-rotate">
+  By design — `zapo` does **not** auto-reconnect. Listen for the `connection` event with `status: 'close'` and call `connect()` again (skip it when `isLogout` is true). See the [reconnection pattern](/en/guides/reconnection).
+</Accordion>
+
+<Accordion title="My media sends but has no preview / dimensions / waveform" icon="image">
+  Media still uploads **without** `@zapo-js/media-utils` — but without it there's no processor to generate **thumbnails/previews, image-video dimensions, or voice-note waveforms**, so it can render as a plain attachment or with no preview. For proper media, install it (`npm i @zapo-js/media-utils`, plus `ffmpeg`/`ffprobe`) and wire a processor through the `media` option. See [Media](/en/guides/media#media-processing).
+</Accordion>
+
+<Accordion title="Prefer a stream over a Buffer for media" icon="forward">
+  Pass a **file path** (`string`) or a `Readable` stream to `media`, not a `Buffer` — `zapo` streams the bytes through the pipeline so memory stays flat for large files. On download, prefer `downloadToFile`/`download` over `downloadBytes`.
+</Accordion>
+
+<Accordion title="Proxy isn't being used" icon="network-wired">
+  The `proxy.ws` leg needs the **`ws`** package (the runtime's native `WebSocket` can't take an HTTP `Agent`). Media/link-preview legs use an undici dispatcher. See the [proxy examples](/en/concepts/configuration#proxy) for SOCKS/HTTP/HTTPS and IPv4/IPv6.
+</Accordion>
+
+<Accordion title="Which JID do I reply to in a group?" icon="at">
+  Always reply to **`event.chatJid`** (the group JID), never a participant's JID. When you have a peer's LID, **prefer the LID** — it's the privacy-preserving, forward-compatible identity. See [Identities (PN vs LID)](/en/concepts/identities).
+</Accordion>
+
+<Accordion title="I receive my own outgoing messages" icon="inbox">
+  That's multi-device sync — your own sends come back on the `message` event flagged `isSender: true`. Filter them out if you only want inbound traffic. See [Receiving messages](/en/guides/receiving-messages).
+</Accordion>
+
+<Accordion title="How do I type the message handler in TypeScript?" icon="code">
+  Import the event type from the package root — all coordinator and event types are exported:
+
+  ```ts
+  import type { WaIncomingMessageEvent, WaGroupCoordinator } from 'zapo-js'
+
+  client.on('message', (event: WaIncomingMessageEvent) => { /* ... */ })
+  const groups: WaGroupCoordinator = client.group
+  ```
+</Accordion>
+
+<Accordion title="Can I register a brand-new number (mobile)?" icon="mobile">
+  No. Mobile connections are stable, but `zapo` intentionally does **not** provide a registration API — registering a number is complex and requires a physical phone. You connect with already-registered credentials. See [Mobile connections](/en/concepts/mobile).
+</Accordion>
+
+<Accordion title="QR or 8-digit code — which should I use?" icon="key">
+  Both work. QR is the default (`auth_qr` event). For an 8-digit code, call `client.auth.requestPairingCode(phone)` after the `auth_pairing_required` event. See [Authentication](/en/concepts/authentication).
+</Accordion>
+
+<Accordion title="logout() vs disconnect()" icon="power-off">
+  `disconnect()` closes the socket but **keeps** credentials so you can resume later. `logout()` **unlinks** the device server-side and clears stored state (per `logoutStoreClear`). See [Authentication](/en/concepts/authentication#disconnect-vs-logout).
+</Accordion>
+
+<Accordion title="A business/newsletter operation throws" icon="briefcase">
+  Some operations are gated: `editBusinessProfile`, cover-photo ops, and broadcast lists are **business-only**; email binding is **mobile-only**; several community/newsletter ops require an active **MEX** transport. The [coordinator reference](/en/reference/client) flags each.
+</Accordion>
+
+</AccordionGroup>
+
+## Still stuck?
+
+<CardGroup cols={2}>
+  <Card title="Architecture in depth" icon="layer-group" href="/en/concepts/internals">
+    Understand the layers to debug at the protocol level.
+  </Card>
+  <Card title="Low-level API" icon="terminal" href="/en/reference/low-level">
+    Inspect raw stanzas with the debug events and `lowlevel`.
+  </Card>
+</CardGroup>

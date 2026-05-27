@@ -48,20 +48,16 @@ const groups: WaGroupCoordinator = client.group
 
 ## Fluxo de dados {#data-flow}
 
-```
-WhatsApp Web servers
-        │  (Noise-encrypted WebSocket frames)
-        ▼
-   Transport  ──► binary node decode
-        │
-        ▼
-   Parsers / normalizers  (src/client/events)
-        │
-        ▼
-   Coordinators  ──► emit typed events ──► your listeners
-        │
-        ▼
-      Store      (auth, signal, app-state, messages, …)
+```mermaid
+flowchart TD
+  S["WhatsApp Web servers"]
+  T["Transport · binary node decode"]
+  P["Parsers / normalizers · src/client/events"]
+  C["Coordinators · emit typed events"]
+  L["Your listeners"]
+  D[("Store · auth, signal, app-state, messages …")]
+  S -->|Noise-encrypted frames| T --> P --> C --> L
+  C --> D
 ```
 
 - **Entrada**: os frames são decodificados em binary nodes, parseados e normalizados em payloads de eventos tipados, e então emitidos (`message`, `receipt`, `group`, …).

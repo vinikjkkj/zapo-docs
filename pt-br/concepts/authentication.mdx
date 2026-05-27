@@ -10,6 +10,20 @@ O `zapo` conecta-se como um **dispositivo complementar (companion device)** — 
 
 O pareamento é conduzido inteiramente por eventos emitidos durante o `connect()`:
 
+```mermaid
+sequenceDiagram
+  participant App as Seu app
+  participant C as WaClient
+  participant WA as WhatsApp
+  App->>C: connect()
+  C->>WA: abre + handshake Noise
+  WA-->>C: pareamento necessário
+  C-->>App: auth_qr (ou auth_pairing_code)
+  Note over App,WA: usuário escaneia o QR / digita o código no celular
+  WA-->>C: pareado
+  C-->>App: auth_paired · credenciais persistidas
+```
+
 | Evento | Payload | Quando |
 | --- | --- | --- |
 | `auth_qr` | `{ qr: string, ttlMs: number }` | Um novo QR está disponível para renderizar. Reemitido conforme ele rotaciona. |

@@ -6,22 +6,22 @@ icon: "diagram-project"
 
 `zapo` is an independent, from-scratch implementation of the WhatsApp multi-device protocol. This page explains what the protocol looks like on the wire and points at the modules where `zapo` handles each layer. You don't need any of it to use the library — it's here for the curious and for contributors.
 
+<Note>
+  The protocol-definition artifacts under `spec/` (protobuf, app-state, and MEX schemas) are generated from the open [`vinikjkkj/wa-spec`](https://github.com/vinikjkkj/wa-spec) repository, which tracks the WhatsApp protocol definitions.
+</Note>
+
 ## The layers
 
 From the socket up:
 
-```
-   Your code  ─►  coordinators  ─►  message pipeline
-                                          │
-                              Signal / sender-key encryption
-                                          │
-                                  binary node codec
-                                          │
-                                   Noise (encrypted)
-                                          │
-                              WebSocket (web) / TCP (mobile)
-                                          ▼
-                              WhatsApp servers
+```mermaid
+flowchart TD
+  A["Your code"] --> B["Coordinators"] --> C["Message pipeline"]
+  C --> D["Signal / sender-key encryption"]
+  D --> E["Binary node codec"]
+  E --> F["Noise · encrypted"]
+  F --> G["WebSocket web / TCP mobile"]
+  G --> H["WhatsApp servers"]
 ```
 
 ## Transport & the Noise handshake

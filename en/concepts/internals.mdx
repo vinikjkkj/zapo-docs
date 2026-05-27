@@ -26,23 +26,17 @@ This page goes deeper than the [architecture overview](/en/concepts/architecture
 
 ## The stack
 
-```
-WaClient  (EventEmitter, thin)
-  │  getters → coordinators (message, group, newsletter, chat, …)
-  ▼
-WaMessageDispatchCoordinator   build · encrypt · fanout · ack/retry
-  ▼
-Signal (SignalProtocol / SenderKeyManager)   msg · pkmsg · skmsg
-  ▼
-WaNodeOrchestrator   IQ id matching, pending-query map
-  ▼
-WaNodeTransport   BinaryNode ⇄ wire frame (debug node/frame events)
-  ▼
-binary codec (encoder / decoder / tokens)
-  ▼
-WaComms + Noise   encrypted frames
-  ▼
-WaWebSocket / WaMobileTcpSocket
+```mermaid
+flowchart TD
+  A["WaClient · thin EventEmitter · coordinator getters"]
+  B["WaMessageDispatchCoordinator<br/>build · encrypt · fanout · ack/retry"]
+  C["Signal · SignalProtocol / SenderKeyManager<br/>msg · pkmsg · skmsg"]
+  D["WaNodeOrchestrator · IQ id matching"]
+  E["WaNodeTransport · BinaryNode to wire frame"]
+  F["Binary codec · encoder / decoder / tokens"]
+  G["WaComms + Noise · encrypted frames"]
+  H["WaWebSocket / WaMobileTcpSocket"]
+  A --> B --> C --> D --> E --> F --> G --> H
 ```
 
 Stores cut across every layer; the connection manager and keep-alive sit beside the transport.
@@ -59,6 +53,23 @@ Stores cut across every layer; the connection manager and keep-alive sit beside 
 `zapo` deliberately does **not** auto-reconnect — that policy belongs to your app (see [Reconnection](/en/guides/reconnection)).
 
 ## Outgoing message pipeline
+
+```mermaid
+sequenceDiagram
+  participant App as Your code
+  participant Disp as MessageDispatch
+  participant Sig as Signal
+  participant Net as NodeOrchestrator
+  participant WA as WhatsApp
+  App->>Disp: message.send(to, content)
+  Disp->>Disp: build Proto.IMessage · upload media
+  Disp->>Sig: encrypt per recipient device
+  Sig-->>Disp: msg / pkmsg / skmsg
+  Disp->>Net: send message stanza
+  Net->>WA: encrypted frame
+  WA-->>Net: ack
+  Net-->>App: WaMessagePublishResult
+```
 
 `client.message.send` → `WaMessageDispatchCoordinator`:
 
