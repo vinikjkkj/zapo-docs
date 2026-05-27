@@ -1,0 +1,98 @@
+---
+title: "JIDs, helpers e constantes"
+description: "Construa e inspecione JIDs, além das constantes de protocolo WA_* exportadas a partir da raiz do pacote."
+icon: "at"
+---
+
+Um **JID** (Jabber ID) é como o WhatsApp endereça cada entidade. O `zapo` exporta um conjunto de helpers para construí-los e classificá-los, todos a partir da raiz do pacote:
+
+```ts
+import { parsePhoneJid, isGroupJid, splitJid } from 'zapo-js'
+```
+
+## Formatos de JID {#jid-shapes}
+
+| Entidade | Exemplo |
+| --- | --- |
+| Usuário (telefone) | `5511999999999@s.whatsapp.net` |
+| Grupo | `123456789-987654@g.us` |
+| Newsletter / canal | `120363000000000000@newsletter` |
+| Status broadcast | `status@broadcast` |
+| LID (id de privacidade) | `123456789@lid` |
+
+## Construindo JIDs {#building-jids}
+
+```ts
+// Número de telefone → JID de usuário
+parsePhoneJid('5511999999999')        // '5511999999999@s.whatsapp.net'
+
+// Normaliza qualquer coisa em um JID de destinatário (aceita um número ou string)
+normalizeRecipientJid('5511999999999')
+
+// Remove um sufixo de dispositivo, reduzindo ao JID base do usuário
+toUserJid('5511999999999:12@s.whatsapp.net') // '5511999999999@s.whatsapp.net'
+
+// Constrói um JID com escopo de dispositivo
+buildDeviceJid('5511999999999@s.whatsapp.net', 12)
+```
+
+## Parsing e splitting {#parsing--splitting}
+
+```ts
+splitJid('5511999999999@s.whatsapp.net')  // { user, server }
+parseJidFull(jid)                         // ParsedJid com a decomposição completa
+parseSignalAddressFromJid(jid)            // { user, device }
+```
+
+## Classificando JIDs {#classifying-jids}
+
+Predicados booleanos para a lógica de roteamento:
+
+| Helper | Verdadeiro para |
+| --- | --- |
+| `isGroupJid(jid)` | Grupo (`@g.us`) |
+| `isGroupOrBroadcastJid(jid)` | Grupo ou broadcast |
+| `isBroadcastJid(jid)` | Lista de transmissão |
+| `isStatusBroadcastJid(jid)` | `status@broadcast` |
+| `isNewsletterJid(jid)` | Newsletter (`@newsletter`) |
+| `isLidJid(jid)` | LID (`@lid`) |
+| `isBotJid(jid)` | Um bot (`@bot`) |
+| `isHostedDeviceJid(jid)` | Dispositivo hospedado |
+
+```ts
+client.on('message', (event) => {
+  if (isGroupJid(event.chatJid!)) {
+    console.log('a group message')
+  }
+})
+```
+
+## Constantes {#constants}
+
+O conjunto completo de constantes de protocolo é exportado como objetos `WA_*` congelados (a biblioteca usa estes em vez de enums do TypeScript). As mais usadas:
+
+| Constante | Contém |
+| --- | --- |
+| `WA_DEFAULTS` | Timeouts padrão, o JID de status-broadcast, o navegador de dispositivo padrão, … |
+| `WA_BROWSERS` | Identificadores de navegador para o fingerprint do dispositivo. |
+| `WA_PRIVACY_CATEGORIES` / `WA_PRIVACY_VALUES` | Nomes de configurações de privacidade e valores permitidos. |
+| `WA_DISCONNECT_REASONS` / `WA_LOGOUT_REASONS` | Strings de motivo nos eventos de conexão. |
+| `WA_MESSAGE_TYPES` / `WA_MESSAGE_TAGS` | Classificação de mensagens. |
+| `WA_NODE_TAGS` / `WA_XMLNS` | Node tags de protocolo e namespaces XML. |
+| `WA_APP_STATE_COLLECTIONS` | Nomes de coleções de app-state. |
+
+```ts
+import { WA_DEFAULTS, WA_LOGOUT_REASONS } from 'zapo-js'
+
+await client.logout(WA_LOGOUT_REASONS.USER_INITIATED)
+```
+
+**Tipos** literais de string associados também são exportados para anotação: `WaPrivacyCategory`, `WaPrivacySettingName`, `WaPrivacyValue`, `WaDisconnectReason`, `WaLogoutReason`, `WaConnectionCode`, `WaStreamErrorCode`, `WaFailureReasonCode` e `ParsedJid`.
+
+## Outros utilitários {#other-utilities}
+
+| Export | Propósito |
+| --- | --- |
+| `proto` | O namespace protobuf completo — construa payloads `Proto.IMessage` brutos. |
+| `delay(ms)` | Sleep baseado em Promise. |
+| `parseUsyncResultEnvelope` | Parseia um envelope de resultado de IQ USync. |

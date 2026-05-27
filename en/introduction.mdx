@@ -1,0 +1,63 @@
+---
+title: "Introduction"
+description: "zapo is a high-performance TypeScript implementation of the WhatsApp Web protocol, built for high-scale, multi-session workloads."
+icon: "book-open"
+---
+
+`zapo` (published on npm as [`zapo-js`](https://www.npmjs.com/package/zapo-js)) is an independent, runtime implementation of the WhatsApp Web protocol written in TypeScript. It is **not** a wrapper or fork of an existing WhatsApp client library — the protocol source of truth is the deobfuscated WhatsApp Web client, and the goal is behavior parity with WhatsApp Web while improving CPU, memory, and allocation efficiency.
+
+<Warning>
+  **Stability notice.** `zapo` is pre-`1.0`. Breaking changes are expected until the first major release. Pin exact versions in long-lived deployments and validate upgrades carefully.
+</Warning>
+
+## Why zapo
+
+<CardGroup cols={2}>
+  <Card title="Coordinator-first API" icon="diagram-project">
+    Every feature area is a focused coordinator: `client.message`, `client.group`, `client.newsletter`, `client.privacy`, and more.
+  </Card>
+  <Card title="Pluggable storage" icon="database">
+    One `createStore` factory, per-domain provider selection, and official backends for SQLite, PostgreSQL, MySQL, Redis, and MongoDB.
+  </Card>
+  <Card title="Multi-session ready" icon="layer-group">
+    Every query is scoped by `sessionId`, so a single process can drive many accounts — built for multi-tenant workloads.
+  </Card>
+  <Card title="Performance-disciplined" icon="gauge-high">
+    `Uint8Array` everywhere, zero-copy in hot paths, bounded in-memory structures, async I/O, and synchronous crypto (bar elliptic-curve ops) for raw throughput.
+  </Card>
+</CardGroup>
+
+## Design principles
+
+These principles drive every implementation decision in the codebase:
+
+- **index-first** — protocol behavior is validated against WhatsApp Web before anything is implemented.
+- **performance-first** — optimize for low CPU, low RAM, low allocations, and zero-copy in hot paths.
+- **async-first I/O** — I/O and network operations are asynchronous. Crypto, by contrast, runs **synchronously** — only elliptic-curve operations are async. Keeping the rest of crypto sync delivered a large, measurable throughput gain.
+
+## Requirements
+
+- **Node.js** `>= 20.9.0`
+- A package manager (`npm`, `pnpm`, or similar)
+- No mandatory runtime dependencies — backends and logging are opt-in peer dependencies.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/en/installation">
+    Install `zapo-js`, pick a storage backend, and wire up optional peers.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/en/quickstart">
+    Connect, scan a QR code, and reply to your first message in minutes.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/en/concepts/architecture">
+    Understand the client, coordinators, stores, and event flow.
+  </Card>
+  <Card title="Sending messages" icon="paper-plane" href="/en/guides/sending-messages">
+    Text, replies, mentions, media, polls, reactions, and more.
+  </Card>
+</CardGroup>
+
+## Disclaimer
+
+This project is an independent implementation for engineering and interoperability research. It is **not** affiliated with or endorsed by WhatsApp.

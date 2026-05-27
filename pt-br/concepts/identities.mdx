@@ -1,0 +1,128 @@
+---
+title: "Identidades: números de telefone e LID"
+description: "Como os JIDs de número de telefone (PN) e os LIDs de privacidade do WhatsApp diferem, e como o zapo mapeia entre eles."
+icon: "fingerprint"
+---
+
+O WhatsApp endereça usuários de duas formas, e o `zapo` expõe ambas. Entender a distinção importa assim que você mexe com grupos, porque o WhatsApp está migrando as identidades de grupo para **LID** por privacidade.
+
+## PN vs LID {#pn-vs-lid}
+
+| | JID de número de telefone (PN) | LID |
+| --- | --- | --- |
+| Forma | `5511999999999@s.whatsapp.net` | `<opaque-id>@lid` |
+| Sufixo do servidor | `@s.whatsapp.net` | `@lid` |
+| Revela o número de telefone | Sim | **Não** |
+| Detecte com | `!isLidJid(jid)` | `isLidJid(jid)` |
+
+Um **LID** ("linked identity") é um identificador estável e opaco que representa um usuário **sem expor seu número de telefone**. O WhatsApp usa LIDs cada vez mais em grupos e comunidades para que os membros possam interagir sem compartilhar seu número.
+
+```ts
+import { isLidJid } from 'zapo-js'
+
+isLidJid('5511999999999@s.whatsapp.net') // false  (PN)
+isLidJid('199998888777@lid')             // true   (LID)
+```
+
+## Addressing mode {#addressing-mode}
+
+Ao enviar para um **grupo**, a mensagem é endereçada aos participantes por PN ou por LID — o `addressingMode: 'pn' | 'lid'`. O `zapo` resolve isso automaticamente: ele varre os participantes do grupo e usa **`lid`** se *qualquer* participante for um LID, caso contrário **`pn`**. O servidor pode confirmar ou sobrepor a escolha, o que é refletido de volta no resultado do publish:
+
+```ts
+const result = await client.message.send(groupJid, 'hi')
+console.log(result.ack.addressingMode) // 'pn' | 'lid'
+```
+
+Normalmente você não define isso por conta própria — é derivado da composição do grupo.
+
+## O que você recebe em uma mensagem de entrada {#what-you-get-on-an-incoming-message}
+
+Um `WaIncomingMessageEvent` carrega ambos os identificadores quando o servidor os fornece:
+
+| Campo | Significado |
+| --- | --- |
+| `senderJid` | O JID **primário** do remetente para esta mensagem (PN ou LID, conforme o addressing mode). |
+| `senderAlt` | A forma **alternativa** — se `senderJid` for um PN, este é o LID, e vice-versa (quando disponível). |
+| `recipientJid` | Seu JID de recebimento. |
+| `recipientAlt` | A forma alternativa do destinatário (quando disponível). |
+
+```ts
+client.on('message', (event) => {
+  console.log('primary:', event.senderJid)   // ex.: 1999...@lid em um grupo LID
+  console.log('alt:    ', event.senderAlt)    // ex.: 5511...@s.whatsapp.net
+})
+```
+
+Então, em um grupo endereçado por LID, você normalmente verá `senderJid` como um `@lid` e `senderAlt` como o JID de telefone (se o servidor o compartilhar).
+
+## Respondendo — qual JID usar {#replying--which-jid-to-use}
+
+O `client.message.send` aceita **tanto** um JID PN quanto um LID e normaliza o destino para você, então você raramente precisa converter:
+
+```ts
+// Todos válidos:
+await client.message.send('5511999999999', 'hi')                  // dígitos → JID PN
+await client.message.send('5511999999999@s.whatsapp.net', 'hi')   // JID PN
+await client.message.send('199998888777@lid', 'hi')               // JID LID
+```
+
+<Warning>
+  **Sempre prefira enviar por LID quando você tiver um.** O LID é a identidade que preserva privacidade e é compatível com o futuro, para a qual o WhatsApp está migrando — endereçar um peer por LID é a escolha à prova de futuro e evita vazar/depender de números de telefone. Recorra ao PN apenas quando nenhum LID estiver disponível.
+
+  Obtenha o LID a partir do `senderAlt` do evento de entrada (quando `senderJid` for um PN) ou resolva-o com [`getLidsByPhoneNumbers`](#mapping-a-phone-number-to-its-lid).
+</Warning>
+
+<Tip>
+  **Em um grupo, sempre responda para `event.chatJid`** (o JID do grupo), não para o JID de um participante. Para chats 1:1, prefira o LID do peer; `event.chatJid` / `event.senderJid` também funcionam, sejam eles um PN ou um LID.
+</Tip>
+
+## Mapeando um número de telefone para o seu LID {#mapping-a-phone-number-to-its-lid}
+
+Para resolver LIDs de um conjunto de números de telefone, use o profile coordinator:
+
+```ts
+const results = await client.profile.getLidsByPhoneNumbers([
+  '5511999999999',
+  '5511888888888'
+])
+
+for (const r of results) {
+  // SignalLidSyncResult: { phoneJid, lidJid, exists }
+  console.log(r.phoneJid, '→', r.lidJid, '(exists:', r.exists, ')')
+}
+```
+
+`lidJid` é `null` quando o servidor não tem mapeamento de LID para aquele número.
+
+## Mudanças de LID {#lid-changes}
+
+O LID de um usuário pode mudar (no lado do servidor, por privacidade). Quando isso acontece, você recebe um `mex_notification` do tipo `lid_change`:
+
+```ts
+client.on('mex_notification', (event) => {
+  if (event.kind === 'lid_change') {
+    console.log('LID changed:', event.oldLidJid, '→', event.newLidJid)
+    // WaMexLidChangeEvent
+  }
+})
+```
+
+O `zapo` cuida da contabilidade subjacente da sessão Signal; este evento é para seus próprios caches/contabilidade.
+
+## Onde a ligação PN ↔ LID é armazenada {#where-pn--lid-linkage-is-stored}
+
+Vários schemas de app-state rastreiam o relacionamento e o sincronizam entre seus dispositivos (veja [mutações de chat](/pt-br/reference/chat-mutations#contacts)):
+
+| Schema | Papel |
+| --- | --- |
+| `LidContact` | Perfil de contato (nome/nome de usuário) indexado por um LID. |
+| `PnForLidChat` | Lembra o JID de telefone de um chat que é primariamente endereçado por LID. |
+| `ShareOwnPn` | Se o seu próprio número de telefone é compartilhado em um determinado contexto. |
+
+## Sessões Signal {#signal-sessions}
+
+As sessões Signal são indexadas pelo JID canônico (PN ou LID) mais o id do dispositivo. O `zapo` canonicaliza as variantes de servidor hospedado (`hosted.lid` → `lid`, hosted → `s.whatsapp.net`) antes das buscas, e mantém sessões para ambas as formas de endereçamento. Se você algum dia precisar forçar uma nova sincronização de sessão para um peer, use:
+
+```ts
+await client.message.syncSignalSession(jid)
+```

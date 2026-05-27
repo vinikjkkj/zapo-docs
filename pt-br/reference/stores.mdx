@@ -1,0 +1,134 @@
+---
+title: "Referência de stores"
+description: "Opções de config para cada pacote de backend de armazenamento."
+icon: "database"
+---
+
+Cada pacote de backend exporta uma factory `create*Store` que você passa para uma entrada de `backends` do [`createStore`](/pt-br/concepts/stores). Todos os backends implementam os mesmos contratos de store por domínio, então trocar de backend é uma mudança de config, não de código.
+
+## SQLite {#sqlite}
+
+`@zapo-js/store-sqlite` — `createSqliteStore(config)`.
+
+```ts
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const sqlite = createSqliteStore({
+  path: '.auth/state.sqlite',
+  driver: 'auto'
+})
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `path` | `string` | Caminho do arquivo de banco de dados. **Obrigatório.** |
+| `driver` | `WaSqliteDriver` | Seleção do driver nativo (`'auto'`, …). |
+| `pragmas` | `Record<string, string \| number>` | Pragmas do SQLite. |
+| `tableNames` | `WaSqliteTableNameOverrides` | Sobrescreve os nomes das tabelas. |
+| `batchSizes` | `WaSqliteBatchSizeSelection` | Ajusta os tamanhos de lote. |
+| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | TTLs de cache. |
+
+Requer a peer dependency `better-sqlite3`.
+
+## PostgreSQL {#postgresql}
+
+`@zapo-js/store-postgres` — `createPostgresStore(config)`.
+
+```ts
+import { createPostgresStore } from '@zapo-js/store-postgres'
+
+const postgres = createPostgresStore({
+  pool: { connectionString: process.env.DATABASE_URL },
+  tablePrefix: 'wa_'
+})
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `pool` | `Pool \| PoolConfig` | Um pool `pg` existente ou uma config de pool. **Obrigatório.** |
+| `tablePrefix` | `string` | Prefixo para as tabelas criadas. |
+| `cacheTtlMs` | object | TTLs de cache (mesmo formato do SQLite). |
+| `cleanup` | `{ intervalMs?, onError? }` | Poller de limpeza em segundo plano. |
+
+Também exporta `createPgPool` e `ensurePgMigrations`. Requer a peer dependency `pg`.
+
+## MySQL {#mysql}
+
+`@zapo-js/store-mysql` — `createMysqlStore(config)`.
+
+```ts
+import { createMysqlStore } from '@zapo-js/store-mysql'
+
+const mysql = createMysqlStore({
+  pool: { uri: process.env.MYSQL_URL },
+  tablePrefix: 'wa_'
+})
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `pool` | `Pool \| PoolOptions` | Um pool `mysql2` ou opções. **Obrigatório.** |
+| `tablePrefix` | `string` | Prefixo para as tabelas criadas. |
+| `cacheTtlMs` | object | TTLs de cache. |
+| `cleanup` | `{ enabled?, intervalMs?, onError? }` | Poller de limpeza em segundo plano. |
+
+Também exporta `createMysqlPool` e `ensureMysqlMigrations`. Requer a peer dependency `mysql2`.
+
+## Redis {#redis}
+
+`@zapo-js/store-redis` — `createRedisStore(config)`.
+
+```ts
+import { createRedisStore } from '@zapo-js/store-redis'
+
+const redis = createRedisStore({
+  redis: { host: '127.0.0.1', port: 6379 },
+  keyPrefix: 'wa:'
+})
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `redis` | `Redis \| RedisOptions` | Uma instância `ioredis` ou opções. **Obrigatório.** |
+| `keyPrefix` | `string` | Prefixo para todas as chaves. |
+| `cacheTtlMs` | object | TTLs de cache. |
+
+Requer a peer dependency `ioredis`.
+
+## MongoDB {#mongodb}
+
+`@zapo-js/store-mongo` — `createMongoStore(config)`.
+
+```ts
+import { createMongoStore } from '@zapo-js/store-mongo'
+
+const mongo = createMongoStore({
+  db: { uri: process.env.MONGO_URL, database: 'zapo' },
+  collectionPrefix: 'wa_'
+})
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `db` | `Db \| { uri, database, options? }` | Um `Db` do `mongodb` ou informações de conexão. **Obrigatório.** |
+| `collectionPrefix` | `string` | Prefixo para as collections criadas. |
+| `cacheTtlMs` | object | TTLs de cache. |
+
+Requer a peer dependency `mongodb`.
+
+## Misturando backends {#mixing-backends}
+
+O `createStore` permite que cada domínio escolha um backend por nome, então você pode combiná-los:
+
+```ts
+createStore({
+  backends: { redis, postgres },
+  providers: {
+    auth: 'redis', signal: 'redis', senderKey: 'redis',
+    appState: 'redis', privacyToken: 'redis',
+    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+  }
+})
+```
+
+Veja [Stores](/pt-br/concepts/stores) para a lista completa de domínios.

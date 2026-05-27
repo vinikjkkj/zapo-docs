@@ -1,0 +1,116 @@
+---
+title: "Perfil, privacidade e business"
+description: "Gerencie seu perfil, controle as configurações de privacidade e a lista de bloqueios, e leia perfis business."
+icon: "id-card"
+---
+
+## Perfil {#profile}
+
+O `client.profile` ([`WaProfileCoordinator`](/pt-br/reference/client#profile)) lê e grava campos de perfil da sua conta e os consulta para terceiros.
+
+### Foto de perfil {#profile-picture}
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+// Ler a foto de alguém (ou a sua)
+const pic = await client.profile.getProfilePicture(jid)
+
+// Definir a sua
+await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
+
+// Removê-la
+await client.profile.deleteProfilePicture()
+```
+
+### Recado / texto de status {#about--status-text}
+
+```ts
+const about = await client.profile.getStatus(jid)
+await client.profile.setStatus('Available')
+```
+
+### Consultas em lote {#batched-lookups}
+
+```ts
+const profiles = await client.profile.getProfiles([jidA, jidB])
+const usernames = await client.profile.getUsernames([jidA, jidB])
+const modes = await client.profile.getDisappearingMode([jidA, jidB])
+```
+
+### Nomes de usuário {#usernames}
+
+```ts
+const mine = await client.profile.getOwnUsername()
+const available = await client.profile.checkUsernameAvailability('myhandle')
+
+await client.profile.setUsername({ username: 'myhandle' })
+await client.profile.deleteUsername()
+```
+
+## Privacidade {#privacy}
+
+O `client.privacy` ([`WaPrivacyCoordinator`](/pt-br/reference/client#privacy)) controla as categorias de privacidade e a lista de bloqueios.
+
+### Configurações de privacidade {#privacy-settings}
+
+```ts
+const settings = await client.privacy.getPrivacySettings()
+
+// Atualizar uma única configuração
+await client.privacy.setPrivacySetting('last', 'contacts')
+```
+
+Os nomes e valores das configurações vêm das constantes `WA_PRIVACY_*` (`last`, `online`, `profile`, `status`, `readreceipts`, `groupadd`, …). Veja a [referência de JID e constantes](/pt-br/reference/jid-helpers#constants).
+
+### Lista de bloqueios {#blocklist}
+
+```ts
+const { jids } = await client.privacy.getBlocklist()
+
+await client.privacy.blockUser(jid)
+await client.privacy.unblockUser(jid)
+```
+
+### Listas de exceção {#disallowed-lists}
+
+Para configurações escopadas a uma lista específica de contatos (por exemplo, "compartilhar com todos, exceto…"):
+
+```ts
+const result = await client.privacy.getDisallowedList(category)
+```
+
+## Business {#business}
+
+O `client.business` ([`WaBusinessCoordinator`](/pt-br/reference/client#business)) lê perfis business e nomes verificados, e gerencia o seu próprio perfil business.
+
+```ts
+// Ler perfis business (em lote)
+const profiles = await client.business.getBusinessProfile([jidA, jidB])
+
+// Consultas de nome verificado
+const name = await client.business.getVerifiedName(jid)
+const names = await client.business.getVerifiedNames([jidA, jidB])
+
+// Editar seu próprio perfil business
+await client.business.editBusinessProfile({ /* WaEditBusinessProfileInput */ })
+
+// Foto de capa
+await client.business.updateCoverPhoto(mediaSource)
+await client.business.deleteCoverPhoto(coverId)
+```
+
+## Configurações de chat {#chat-settings}
+
+As configurações por chat — silenciar, fixar, arquivar, marcar como lido, excluir — ficam em `client.chat` ([`WaAppStateMutationCoordinator`](/pt-br/reference/client#chat)), porque sincronizam entre seus dispositivos via app-state:
+
+```ts
+await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
+await client.chat.setChatPin(chatJid, true)
+await client.chat.setChatArchive(chatJid, true)
+await client.chat.setChatRead(chatJid, true)
+await client.chat.clearChat(chatJid)
+await client.chat.deleteChat(chatJid)
+```
+
+Essas mudanças também são expostas como eventos [`mutation`](/pt-br/concepts/events#state-history--mex) quando feitas a partir de outro dispositivo.

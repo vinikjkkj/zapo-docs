@@ -1,0 +1,167 @@
+---
+title: "Media"
+description: "Send images, video, audio, documents, and stickers — and download incoming media."
+icon: "image"
+---
+
+Media is sent through the same `client.message.send` method, using a typed media content object. The builder fills in the protocol-managed fields (encryption keys, SHA-256 digests, direct path, upload) for you — you provide the source and the `mimetype`.
+
+<Warning>
+  **Sending media requires [`@zapo-js/media-utils`](/en/installation#sending-media).** The outbound pipeline uses it to probe and process media before upload. Install it and wire the processor through the [`media`](#media-processing) client option whenever your app sends media.
+</Warning>
+
+## Media input
+
+The `media` field accepts several input types:
+
+```ts
+type MediaInput = Uint8Array | ArrayBuffer | Readable | string
+```
+
+<Tip>
+  **Prefer a file path (`string`) or a `Readable` stream over a `Buffer`/`Uint8Array`.** `zapo` streams media through the pipeline without buffering the whole file in memory — passing a path or stream keeps memory flat regardless of file size. Reading a large file into a `Buffer` first defeats that and is discouraged. (`Buffer` is also avoided internally in favor of `Uint8Array`.)
+</Tip>
+
+## Images
+
+```ts
+// ✅ Preferred — pass a file path; zapo streams it
+await client.message.send(jid, {
+  type: 'image',
+  media: './photo.jpg',
+  mimetype: 'image/jpeg',
+  caption: 'A photo'
+})
+
+// ✅ Or a Readable stream (e.g. from an HTTP response)
+import { createReadStream } from 'node:fs'
+
+await client.message.send(jid, {
+  type: 'image',
+  media: createReadStream('./photo.jpg'),
+  mimetype: 'image/jpeg'
+})
+```
+
+## Video
+
+```ts
+await client.message.send(jid, {
+  type: 'video',
+  media: './clip.mp4',
+  mimetype: 'video/mp4',
+  caption: 'A clip',
+  gifPlayback: false
+})
+```
+
+For a round **push-to-video** (PTV) message, use `type: 'ptv'` with the same shape.
+
+## Audio & voice notes
+
+```ts
+// Regular audio
+await client.message.send(jid, {
+  type: 'audio',
+  media: './song.mp3',
+  mimetype: 'audio/mpeg'
+})
+
+// Voice note (push-to-talk)
+await client.message.send(jid, {
+  type: 'audio',
+  media: './voice.ogg',
+  mimetype: 'audio/ogg; codecs=opus',
+  ptt: true
+})
+```
+
+<Tip>
+  Voice notes render best as Opus in an OGG container. Enable [media processing](#media-processing) to auto-generate waveforms and normalize voice notes.
+</Tip>
+
+## Documents
+
+```ts
+await client.message.send(jid, {
+  type: 'document',
+  media: './report.pdf',
+  mimetype: 'application/pdf',
+  fileName: 'Q3 Report.pdf',
+  caption: 'The quarterly report'
+})
+```
+
+## Stickers
+
+```ts
+await client.message.send(jid, {
+  type: 'sticker',
+  media: await readFile('./sticker.webp'),
+  mimetype: 'image/webp'
+})
+```
+
+For a full **sticker pack**, use `type: 'sticker-pack'` with `stickers`, a `trayIcon`, and pack metadata (`stickerPackId`, `name`, `publisher`).
+
+## View-once
+
+Wrap image/video/audio as view-once with the send option:
+
+```ts
+await client.message.send(jid, {
+  type: 'image',
+  media: './secret.jpg',
+  mimetype: 'image/jpeg'
+}, {
+  viewOnce: true
+})
+```
+
+## Downloading incoming media
+
+The message coordinator decrypts and downloads media from an incoming event. Three flavors are available — **prefer the streaming ones**:
+
+```ts
+client.on('message', async (event) => {
+  if (!event.message?.imageMessage) return
+
+  // ✅ Preferred — stream to a file (constant memory)
+  await client.message.downloadToFile(event, './incoming.jpg')
+
+  // ✅ Or consume the Readable stream yourself
+  const stream = await client.message.download(event)
+
+  // ⚠️ Buffers the entire file in memory — only for small payloads
+  const bytes = await client.message.downloadBytes(event)
+})
+```
+
+<Tip>
+  `download()` / `downloadToFile()` stream the media and keep memory flat regardless of size. `downloadBytes()` materializes the whole file in memory — reach for it only on small media, and cap it with `maxBytes`.
+</Tip>
+
+All three accept either a `WaIncomingMessageEvent` or a raw `Proto.IMessage`, plus optional `WaDownloadMediaOptions` (for example `maxBytes` to cap `downloadBytes`).
+
+## Media processing
+
+Sending media requires a **media processor**. Install `@zapo-js/media-utils` and pass one through the `media` client option — it probes and processes media (dimensions, duration, thumbnails, waveforms, voice-note normalization) before upload:
+
+```ts
+import { createMediaProcessor } from '@zapo-js/media-utils'
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  media: {
+    processor: createMediaProcessor(),
+    generateThumbnail: true,
+    generateWaveform: true,
+    normalizeVoiceNote: true
+  }
+}, logger)
+```
+
+<Note>
+  `@zapo-js/media-utils` shells out to `ffmpeg`/`ffprobe` and uses `sharp`. Make sure those binaries are available in your environment.
+</Note>

@@ -1,0 +1,95 @@
+---
+title: "Presence & status"
+description: "Broadcast presence, send typing indicators, subscribe to contacts, and post status updates."
+icon: "circle-dot"
+---
+
+## Own presence
+
+Broadcast whether the account is online with `client.presence.send`:
+
+```ts
+await client.presence.send('available')   // appears online
+await client.presence.send('unavailable') // appears offline
+```
+
+<Note>
+  The presence announced right after connecting is controlled by the [`markOnlineOnConnect`](/en/concepts/configuration#presence-on-connect) option.
+</Note>
+
+## Typing indicators (chat-state)
+
+`sendChatstate` sends a per-chat hint such as typing or recording:
+
+```ts
+// "typing…"
+await client.presence.sendChatstate(jid, { state: 'composing' })
+
+// "recording audio…"
+await client.presence.sendChatstate(jid, { state: 'recording' })
+
+// clear the indicator
+await client.presence.sendChatstate(jid, { state: 'paused' })
+```
+
+A common pattern is to show typing briefly before replying:
+
+```ts
+await client.presence.sendChatstate(jid, { state: 'composing' })
+await new Promise((r) => setTimeout(r, 1200))
+await client.message.send(jid, 'Done thinking!')
+await client.presence.sendChatstate(jid, { state: 'paused' })
+```
+
+## Subscribing to a contact
+
+To receive a contact's presence and chat-state, subscribe to them:
+
+```ts
+await client.presence.subscribe(jid)
+
+client.on('presence', (event) => {
+  console.log(event.type, event.lastSeen)
+})
+
+client.on('chatstate', (event) => {
+  console.log(event.state, 'from', event.participantJid)
+})
+```
+
+<Warning>
+  Subscriptions are **per-JID** and live only for the current connection. After a [reconnect](/en/guides/reconnection) you must re-subscribe to keep receiving updates.
+</Warning>
+
+## Status broadcasts
+
+Post a status (the "stories" feature) with `client.status` ([`WaStatusCoordinator`](/en/reference/client#status)). The content is the same [content union](/en/guides/sending-messages#the-content-union) as a normal message; you provide the recipient list:
+
+```ts
+const result = await client.status.send({
+  content: 'Hello from my status!',
+  recipients: ['5511999999999@s.whatsapp.net', '5511888888888@s.whatsapp.net']
+})
+```
+
+Media works too:
+
+```ts
+await client.status.send({
+  content: { type: 'image', media: './story.jpg', mimetype: 'image/jpeg' },
+  recipients
+})
+```
+
+### Status privacy & mute
+
+```ts
+// Who can see your status
+await client.status.setPrivacy({ /* WaSetStatusPrivacyInput */ })
+
+// Mute a contact's status
+await client.status.setUserMuted(jid, true)
+
+// Revoke a status you posted
+await client.status.revokeStatus({ messageId, recipients })
+```

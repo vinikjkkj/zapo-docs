@@ -1,0 +1,100 @@
+---
+title: "Conexões mobile"
+description: "Conecte como um client mobile (Android) primário pelo transporte TCP, em vez de um dispositivo companion."
+icon: "mobile"
+---
+
+Além do modo **companion** padrão (vinculação via QR / código de pareamento, como o WhatsApp Web), o `zapo` pode conectar como um **client mobile primário** — falando o protocolo do app Android por um socket TCP bruto.
+
+<Note>
+  O suporte mobile é **estável e funcional.** A única coisa que o `zapo` **não** fornece é uma **API de registro** — solicitar um código por SMS/voz, enviar um OTP ou aprovar um takeover. Registrar um número é complexo e requer um telefone físico, então está intencionalmente fora de escopo. Você conecta com um conjunto de credenciais **já registrado**, e esse caminho é sólido.
+</Note>
+
+## Como difere do modo companion {#how-it-differs-from-companion-mode}
+
+| | Companion (padrão) | Mobile |
+| --- | --- | --- |
+| Transporte | WebSocket (`wss://…`) | Socket TCP (`tcp://g.whatsapp.net:443`) |
+| Auth | QR / código de pareamento | Credenciais pré-registradas + fingerprint do dispositivo |
+| Identidade | Dispositivo vinculado | Conta primária |
+| Plataforma | Navegador (`chrome`, …) | `android` |
+| Info do dispositivo | Não obrigatória | **Obrigatória** (fingerprint de hardware) |
+
+## Habilitando o modo mobile {#enabling-mobile-mode}
+
+O modo mobile é acionado pela opção `mobileTransport` (um `WaMobileTransportOptions`). Sua presença — ou um `deviceInfo` persistido nas credenciais carregadas — muda o client do transporte WebSocket para o transporte TCP.
+
+```ts
+const client = new WaClient(
+  {
+    store,
+    sessionId: 'mobile',
+    mobileTransport: {
+      deviceInfo: {
+        manufacturer: 'OnePlus',
+        device: 'OnePlus8Pro',
+        osVersion: '12',
+        osBuildNumber: 'SKQ1.210216.001',
+        appVersion: '2.23.1.1',
+        mcc: '55',  // mobile country code (opcional)
+        mnc: '11'   // mobile network code (opcional)
+      },
+      passive: false // envia keep-alives
+    }
+  },
+  logger
+)
+
+await client.connect()
+```
+
+### `WaMobileTransportOptions` {#wamobiletransportoptions}
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `deviceInfo` | `WaMobileTransportDeviceInfo` | Fingerprint de hardware **obrigatório** (veja abaixo). |
+| `tcpUrl` | `string` | Padrão `tcp://g.whatsapp.net:443`. |
+| `passive` | `boolean` | `false` envia keep-alives; `true` fica ocioso. |
+| `pushName` | `string` | Nome de exibição. |
+| `yearClass` / `memClass` | `number` | Classe de performance/memória do dispositivo. |
+
+### `WaMobileTransportDeviceInfo` {#wamobiletransportdeviceinfo}
+
+`manufacturer`, `device`, `osVersion`, `osBuildNumber`, `appVersion` são obrigatórios; `mcc`, `mnc`, `localeLanguageIso6391`, `localeCountryIso31661Alpha2`, `phoneId`, `deviceBoard`, `deviceModelType` são opcionais. Um fingerprint **estável** entre execuções importa — persista-o e reutilize os mesmos valores.
+
+## Credenciais {#credentials}
+
+O modo mobile precisa de um conjunto de credenciais **já registrado**: um `WaAuthCredentials` com `meJid` preenchido, `platform: 'android'` e `deviceInfo` anexado. Você semeia isso na auth store antes de conectar (por exemplo, importado de um device bundle).
+
+<Note>
+  Uma vez que as credenciais com `deviceInfo` são persistidas, reconexões posteriores usam **automaticamente** o transporte TCP mobile — você não precisa passar `mobileTransport` de novo.
+</Note>
+
+## Eventos de registro {#registration-events}
+
+Enquanto sua sessão mobile está conectada, você é notificado quando **alguém tenta registrar seu número em outro dispositivo** — um sinal relevante para segurança, exposto como estes eventos:
+
+```ts
+client.on('mobile_registration_code', (event) => {
+  // WaRegistrationCodeEvent — alguém solicitou um código para registrar o SEU número em outro lugar
+  console.log('registration code issued:', event.code, 'expires:', event.expiryTimestampMs)
+})
+
+client.on('mobile_account_takeover_notice', (event) => {
+  // WaAccountTakeoverNoticeEvent — outro dispositivo está assumindo o seu número
+  console.log('takeover attempt from', event.newDevicePlatform, event.newDeviceName)
+})
+```
+
+| Evento | Payload | Significado |
+| --- | --- | --- |
+| `mobile_registration_code` | `{ code, expiryTimestampMs, fromDeviceId }` | Alguém solicitou um código de registro para registrar o **seu** número em outro telefone; o código emitido é exposto aqui. |
+| `mobile_account_takeover_notice` | `{ serverToken, attemptTimestampMs, newDeviceName?, newDevicePlatform?, newDeviceAppVersion? }` | Outro dispositivo está reivindicando (assumindo) o seu número. |
+
+<Note>
+  Esses eventos são **informativos** — o `zapo` os expõe, mas intencionalmente não disponibiliza métodos para enviar um código ou responder a um takeover. O provisionamento de um número é feito em um telefone real; traga as credenciais resultantes para o zapo e conecte.
+</Note>
+
+## Funcionalidades padrão continuam valendo {#standard-features-still-apply}
+
+Uma vez conectado no modo mobile, o resto da API permanece inalterado — `client.message`, `client.group`, eventos, stores, etc. funcionam todos da mesma forma. A única diferença é o transporte e o modelo de auth/identidade.

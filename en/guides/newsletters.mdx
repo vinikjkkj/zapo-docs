@@ -1,0 +1,126 @@
+---
+title: "Newsletters (channels)"
+description: "Create, discover, follow, post to, and administer WhatsApp channels."
+icon: "newspaper"
+---
+
+Newsletters — WhatsApp **channels** — live on `client.newsletter` ([`WaNewsletterCoordinator`](/en/reference/client#newsletter)). The coordinator combines three operation sets: **discovery**, **admin**, and **messaging**. Newsletter JIDs end in `@newsletter`.
+
+## Discovery
+
+```ts
+// Fetch metadata by JID or invite code
+const meta = await client.newsletter.fetch('1234567890@newsletter')
+const byInvite = await client.newsletter.fetchByInvite('AbCdEf')
+
+// Channels the account follows
+const subscribed = await client.newsletter.listSubscribed()
+
+// Search the public directory
+const results = await client.newsletter.searchDirectory({ /* text, categories */ })
+
+// Recommendations & similar channels
+const recommended = await client.newsletter.fetchRecommended()
+const similar = await client.newsletter.fetchSimilar(newsletterJid)
+```
+
+## Following
+
+```ts
+await client.newsletter.follow(newsletterJid)
+await client.newsletter.unfollow(newsletterJid)
+await client.newsletter.mute({ newsletterJid, muted: true })
+```
+
+## Posting
+
+`send` takes the same [content union](/en/guides/sending-messages#the-content-union) as a normal message — text, media, polls, and so on:
+
+```ts
+const result = await client.newsletter.send(newsletterJid, 'Hello, subscribers!')
+
+// Edit a published message
+await client.newsletter.editMessage(newsletterJid, result.stanzaId, 'Edited')
+
+// Revoke it
+await client.newsletter.revoke({ newsletterJid, messageId: result.stanzaId })
+```
+
+### Reactions & poll votes
+
+```ts
+await client.newsletter.react({ newsletterJid, messageServerId, reaction: '🔥' })
+await client.newsletter.votePoll({ /* WaNewsletterVotePollInput */ })
+await client.newsletter.sendViewReceipt({ /* WaNewsletterViewReceiptInput */ })
+```
+
+### Reading messages
+
+```ts
+const page = await client.newsletter.fetchMessages({
+  newsletterJid,
+  count: 50
+})
+
+// Edits / reactions / poll updates since a point
+const updates = await client.newsletter.fetchMessageUpdates({
+  newsletterJid,
+  count: 50,
+  since: someTimestamp
+})
+
+// Live updates subscription
+const { durationSeconds } = await client.newsletter.subscribeLiveUpdates(newsletterJid)
+```
+
+## Administration
+
+For channels the account owns:
+
+```ts
+// Create a channel
+const created = await client.newsletter.create({ name: 'My channel', description: '...' })
+
+// Update editable fields (name / description / picture)
+await client.newsletter.update(newsletterJid, { name: 'Renamed' })
+
+// Delete
+await client.newsletter.delete(newsletterJid)
+
+// Admin views
+const adminInfo = await client.newsletter.fetchAdminInfo(newsletterJid)
+const followers = await client.newsletter.fetchFollowers(newsletterJid)
+const insights = await client.newsletter.fetchInsights(newsletterJid, metrics)
+```
+
+### Admins & ownership
+
+```ts
+await client.newsletter.createAdminInvite({ /* WaNewsletterAdminInviteInput */ })
+await client.newsletter.changeOwner({ /* ... */ })
+await client.newsletter.demoteAdmin({ /* ... */ })
+```
+
+### Poll voters & reaction senders
+
+```ts
+const voters = await client.newsletter.fetchPollVoters({
+  newsletterJid,
+  messageServerId,
+  voteHash
+})
+
+const reactors = await client.newsletter.fetchMessageReactionSenders({
+  newsletterJid,
+  messageServerId
+})
+```
+
+## Events
+
+Newsletter activity arrives on `newsletter`, and edits/reactions/poll updates on `newsletter_message_update`:
+
+```ts
+client.on('newsletter', (event) => console.log(event))
+client.on('newsletter_message_update', (event) => console.log(event))
+```

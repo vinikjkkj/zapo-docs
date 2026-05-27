@@ -1,0 +1,117 @@
+---
+title: "Installation"
+description: "Install zapo-js, choose a storage backend, and add the optional peer dependencies you need."
+icon: "download"
+---
+
+## Requirements
+
+<Info>
+  `zapo` requires **Node.js `>= 20.9.0`**. The package ships dual ESM/CJS builds and full TypeScript types.
+</Info>
+
+## Install the core package
+
+<CodeGroup>
+
+```bash npm
+npm install zapo-js
+```
+
+```bash pnpm
+pnpm add zapo-js
+```
+
+```bash yarn
+yarn add zapo-js
+```
+
+</CodeGroup>
+
+The core package has **no mandatory runtime dependencies**. Everything else — storage, logging, and the WebSocket transport — is an opt-in peer dependency, so you only install what you use.
+
+## Add a storage backend
+
+`zapo` persists authentication and Signal state through a pluggable [store](/en/concepts/stores). Pick the backend that matches your deployment and install its package:
+
+| Package | Backend | Best for |
+| --- | --- | --- |
+| `@zapo-js/store-sqlite` | SQLite (via `better-sqlite3`) | Local / single-process |
+| `@zapo-js/store-postgres` | PostgreSQL | Distributed, relational |
+| `@zapo-js/store-mysql` | MySQL | Distributed, relational |
+| `@zapo-js/store-redis` | Redis | Cache + persistence |
+| `@zapo-js/store-mongo` | MongoDB | Document store |
+
+<CodeGroup>
+
+```bash SQLite
+npm install @zapo-js/store-sqlite better-sqlite3
+```
+
+```bash PostgreSQL
+npm install @zapo-js/store-postgres pg
+```
+
+```bash MySQL
+npm install @zapo-js/store-mysql mysql2
+```
+
+```bash Redis
+npm install @zapo-js/store-redis ioredis
+```
+
+```bash MongoDB
+npm install @zapo-js/store-mongo mongodb
+```
+
+</CodeGroup>
+
+<Note>
+  You can also run with no backend at all — the built-in **memory** store works out of the box and is great for tests. It just does not survive a process restart, so you would re-pair on every boot.
+</Note>
+
+## Optional peer dependencies
+
+Install these only if you use the corresponding feature:
+
+<CodeGroup>
+
+```bash Structured logging
+npm install pino pino-pretty
+```
+
+```bash WebSocket proxy
+npm install ws
+```
+
+```bash Mobile connections
+npm install argo-codec
+```
+
+</CodeGroup>
+
+- **`pino` + `pino-pretty`** — required only if you use [`createPinoLogger`](/en/concepts/configuration#logging). Without them, the built-in `ConsoleLogger` is used.
+- **`ws`** — only needed to route the WebSocket through a **proxy**. The runtime's native `WebSocket` can't take an HTTP `Agent`/dispatcher, so `zapo` falls back to `ws` for the `proxy.ws` leg. Without a proxy, the built-in `WebSocket` is used and you don't need this package.
+- **`argo-codec`** — only needed for **mobile** connections (for now). The standard companion (QR / pairing-code) flow does not use it.
+
+## Sending media
+
+<Warning>
+  **Sending media requires `@zapo-js/media-utils`.** The outbound media pipeline uses it to probe and process media (dimensions, duration, thumbnails, waveforms, voice-note normalization) before upload, so install it whenever your app sends images, video, audio, documents, or stickers.
+</Warning>
+
+```bash
+npm install @zapo-js/media-utils
+```
+
+It shells out to `ffmpeg`/`ffprobe` and uses `sharp`, so make sure those binaries are available. See the [media guide](/en/guides/media#media-processing) for how to wire the processor into the client.
+
+## Verify your setup
+
+```ts
+import { WaClient } from 'zapo-js'
+
+console.log(typeof WaClient) // "function"
+```
+
+Next, head to the [quickstart](/en/quickstart) to connect and send your first message.

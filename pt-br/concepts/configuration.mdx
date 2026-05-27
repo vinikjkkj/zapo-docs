@@ -1,0 +1,229 @@
+---
+title: "Configuração"
+description: "Cada campo de WaClientOptions — sessões, timeouts, sincronização de histórico, proxy, logging e muito mais."
+icon: "sliders"
+---
+
+O `WaClient` recebe um objeto `WaClientOptions` e um logger opcional:
+
+```ts
+const client = new WaClient(options, logger)
+```
+
+Apenas `store` e `sessionId` são obrigatórios; todo o resto tem um valor padrão sensato.
+
+## Opções obrigatórias {#required-options}
+
+<ParamField path="store" type="WaStore" required>
+  A instância da store construída por [`createStore`](/pt-br/concepts/stores). Mantém cada domínio por sessão (auth, signal, app-state, …).
+</ParamField>
+
+<ParamField path="sessionId" type="string" required>
+  Identificador lógico da sessão — ele indexa cada domínio dentro da `store`. Use uma string **estável** por dispositivo/conta. Trocá-lo entre execuções deixa as credenciais anteriores órfãs e força um novo pareamento.
+</ParamField>
+
+## Sessões e multi-tenancy {#sessions-and-multi-tenancy}
+
+Como cada domínio da store é indexado por `sessionId`, uma única store pode conter muitas contas independentes. Para rodar várias contas em um processo, crie um `WaClient` por `sessionId` sobre a mesma store:
+
+```ts
+const store = createStore({ /* ... */ })
+
+const accountA = new WaClient({ store, sessionId: 'account-a' }, logger)
+const accountB = new WaClient({ store, sessionId: 'account-b' }, logger)
+
+await Promise.all([accountA.connect(), accountB.connect()])
+```
+
+Cada client pareia e reconecta de forma independente. Esta é a base para deployments multi-tenant.
+
+## Fingerprint do dispositivo {#device-fingerprint}
+
+Estes controlam como o dispositivo aparece em **Dispositivos conectados** no celular:
+
+<ParamField path="deviceBrowser" type="string" default="'chrome'">
+  Id do navegador anunciado durante o pareamento (`'chrome'`, `'firefox'`, `'safari'`, …; veja `WA_BROWSERS`). Define o rótulo em *Dispositivos conectados*.
+</ParamField>
+
+<ParamField path="devicePlatform" type="string">
+  Sobrescrita do id numérico de plataforma companion (`WA_COMPANION_PLATFORM_IDS`). Inferido de `deviceBrowser` quando omitido; defina explicitamente para plataformas não-navegador.
+</ParamField>
+
+```ts
+new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
+```
+
+## Sincronização de histórico {#history-sync}
+
+<ParamField path="history" type="WaHistorySyncOptions">
+  Controla o download inicial do histórico de mensagens.
+
+  - `enabled?: boolean` — baixa o histórico na primeira sincronização.
+  - `requireFullSync?: boolean` — solicita o arquivo completo em vez de apenas os chats recentes.
+</ParamField>
+
+```ts
+new WaClient({
+  store,
+  sessionId: 'default',
+  history: { enabled: true, requireFullSync: true }
+}, logger)
+```
+
+O histórico chega como eventos [`history_sync_chunk`](/pt-br/concepts/events).
+
+## Timeouts {#timeouts}
+
+Todos em milissegundos; os padrões são ajustados para produção.
+
+| Opção | Propósito |
+| --- | --- |
+| `iqTimeoutMs` | Timeout padrão para queries IQ (padrão 60s). |
+| `nodeQueryTimeoutMs` | Timeout padrão para chamadas brutas de `query()` de node. |
+| `keepAliveIntervalMs` | Intervalo entre os IQs de ping de keep-alive. |
+| `deadSocketTimeoutMs` | Quanto tempo sem resposta antes do socket ser considerado morto. |
+| `mediaTimeoutMs` | Timeout de upload/download de mídia. |
+| `appStateSyncTimeoutMs` | Timeout de uma rodada de sincronização de app-state. |
+| `messageAckTimeoutMs` | Quanto tempo `message.send` espera pelo `<ack>` do servidor por tentativa. |
+| `messageMaxAttempts` | Máximo de tentativas para um único `message.send`. |
+| `messageRetryDelayMs` | Atraso entre as retentativas de envio de mensagem. |
+
+## Presença ao conectar {#presence-on-connect}
+
+<ParamField path="markOnlineOnConnect" type="boolean" default="true">
+  - `true` — anuncia o client como **online** (igual ao WhatsApp Web com a aba em foco).
+  - `false` — anuncia como **indisponível**. Útil para bots que não devem aparecer como online. Com isso desligado, você também continua recebendo notificações de mensagens enquanto está "offline".
+</ParamField>
+
+## Addons (reações, votos em enquetes) {#addons-reactions-poll-votes}
+
+<ParamField path="addons" type="{ autoDecrypt?: boolean }">
+  Defina `autoDecrypt: true` para descriptografar automaticamente addons criptografados (votos em enquetes, reações, …) e emiti-los como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Caso contrário, chame `client.message.tryDecryptAddon(event)` você mesmo.
+</ParamField>
+
+## Persistência write-behind {#write-behind-persistence}
+
+<ParamField path="writeBehind" type="WaWriteBehindOptions">
+  Agrupa as mensagens recebidas em lotes antes de descarregá-las nas stores `messages` / `threads` / `contacts`.
+
+  - `maxPendingKeys?: number`
+  - `maxWriteConcurrency?: number`
+  - `flushTimeoutMs?: number`
+</ParamField>
+
+## Proxy {#proxy}
+
+<ParamField path="proxy" type="WaClientProxyOptions">
+  Roteie cada perna através de um proxy de forma independente:
+
+  - `ws` — a conexão WebSocket.
+  - `mediaUpload` / `mediaDownload` — transferências de mídia.
+  - `linkPreview` — o fetcher padrão de preview de link.
+</ParamField>
+
+Cada perna aceita um `WaProxyTransport`, que é:
+
+- um **dispatcher do undici** (`WaProxyDispatcher`, por exemplo um `ProxyAgent` do undici) — usado para as pernas baseadas em `fetch` (mídia, preview de link), ou
+- um **`Agent` `http`/`https` do Node** (`WaProxyAgent`) — usado para a perna WebSocket (`ws`).
+
+O zapo escolhe a forma certa por perna automaticamente.
+
+<Note>
+  A perna `ws` requer o pacote [`ws`](/pt-br/installation#optional-peer-dependencies), porque o `WebSocket` nativo do runtime não consegue aceitar um `Agent` HTTP. Sem um proxy, nenhum pacote extra é necessário.
+</Note>
+
+### Proxy HTTP / HTTPS {#http--https-proxy}
+
+Use um `ProxyAgent` do undici (um dispatcher) para as pernas de mídia/preview de link, e um `https-proxy-agent` (um `http.Agent`) para a perna `ws`:
+
+```ts
+import { ProxyAgent } from 'undici'
+import { HttpsProxyAgent } from 'https-proxy-agent'
+
+const url = 'http://user:pass@proxy.example.com:8080' // ou https://…
+const dispatcher = new ProxyAgent(url)
+const wsAgent = new HttpsProxyAgent(url)
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  proxy: {
+    ws: wsAgent,
+    mediaUpload: dispatcher,
+    mediaDownload: dispatcher,
+    linkPreview: dispatcher
+  }
+}, logger)
+```
+
+### Proxy SOCKS {#socks-proxy}
+
+Use `socks-proxy-agent` (funciona como um `http.Agent` para todas as pernas, incluindo `ws`):
+
+```ts
+import { SocksProxyAgent } from 'socks-proxy-agent'
+
+// socks5 (ou socks4) — host pode ser um domínio ou um IP
+const agent = new SocksProxyAgent('socks5://user:pass@127.0.0.1:1080')
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  proxy: { ws: agent, mediaUpload: agent, mediaDownload: agent, linkPreview: agent }
+}, logger)
+```
+
+### Hosts IPv4 e IPv6 {#ipv4-and-ipv6-hosts}
+
+O host do proxy pode ser um domínio ou um literal de IP. **Endereços IPv6 devem ser envolvidos em colchetes**:
+
+```ts
+// IPv4
+new ProxyAgent('http://203.0.113.10:8080')
+new SocksProxyAgent('socks5://203.0.113.10:1080')
+
+// IPv6 — coloque o endereço entre colchetes
+new ProxyAgent('http://[2001:db8::1]:8080')
+new SocksProxyAgent('socks5://[2001:db8::1]:1080')
+
+// Com credenciais
+new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
+```
+
+<Tip>
+  Aponte para o proxy apenas as pernas que você precisar — por exemplo, defina só `ws` para tunelar a conexão deixando a mídia transferir diretamente, ou vice-versa.
+</Tip>
+
+## Limpeza da store no logout {#logout-store-clearing}
+
+<ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
+  Controle por domínio do que o [`logout()`](/pt-br/concepts/authentication#logging-out) apaga. O padrão é limpar tudo; defina um domínio como `false` para preservá-lo.
+
+  ```ts
+  // Mantém mensagens arquivadas e contatos após o logout
+  logoutStoreClear: { messages: false, contacts: false }
+  ```
+</ParamField>
+
+## Logging {#logging}
+
+Passe um logger como o segundo argumento do construtor. Duas implementações vêm com o pacote:
+
+```ts
+import { ConsoleLogger, createPinoLogger } from 'zapo-js'
+
+// Leve, sem dependências
+const client = new WaClient(options, new ConsoleLogger('info'))
+
+// Estruturado (requer `pino` + `pino-pretty`)
+const logger = await createPinoLogger({ level: 'debug', pretty: true })
+const client2 = new WaClient(options, logger)
+```
+
+Se você omitir o logger, um `ConsoleLogger` padrão é usado. Níveis de log: `trace`, `debug`, `info`, `warn`, `error`.
+
+## Opções perigosas {#dangerous-options}
+
+<Warning>
+  As flags `dangerous` desabilitam, cada uma, uma verificação de segurança que o caminho de produção aplica (verificação de assinatura, checagens de MAC do app-state, …). Elas existem para testes contra um servidor falso. **Nunca as habilite em produção.**
+</Warning>

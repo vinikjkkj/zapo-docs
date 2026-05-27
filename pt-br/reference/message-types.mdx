@@ -1,0 +1,410 @@
+---
+title: "Tipos de mensagem"
+description: "Cada variante de conteúdo de envio — os builders tipados discriminados por `type` e os campos brutos de Proto.IMessage que a biblioteca reconhece."
+icon: "layer-group"
+---
+
+Tudo o que você envia passa por `client.message.send(to, content, options?)`. O argumento `content` é um `WaSendMessageContent`:
+
+```ts
+type WaSendMessageContent =
+  | string                        // atalho para uma mensagem de texto
+  | WaSendTextMessage             // type: 'text'
+  | WaSendReactionMessage         // type: 'reaction'
+  | WaSendRevokeMessage           // type: 'revoke'
+  | WaSendPinMessage              // type: 'pin' | 'unpin'
+  | WaSendKeepMessage             // type: 'keep' | 'unkeep'
+  | WaSendPollMessage             // type: 'poll'
+  | WaSendPollVoteMessage         // type: 'poll-vote'
+  | WaSendEventMessage            // type: 'event'
+  | WaSendEventResponseMessage    // type: 'event-response'
+  | WaSendMediaMessage            // type: 'image' | 'video' | 'ptv' | 'audio' | 'document' | 'sticker' | 'sticker-pack'
+  | Proto.IMessage                // protobuf bruto — qualquer coisa não coberta acima
+```
+
+Existem duas maneiras de enviar: um **builder tipado** (um objeto com um discriminador `type` — a biblioteca valida e preenche os campos de protocolo para você) ou um **`Proto.IMessage` bruto** (você mesmo monta o protobuf). O mesmo `send()` aceita ambos.
+
+## Atalho {#shorthand}
+
+Uma string simples é enviada como uma mensagem de texto:
+
+```ts
+await client.message.send(jid, 'Hello!')
+```
+
+## Builders tipados {#typed-builders}
+
+Cada builder é discriminado pelo seu campo `type`. Campos em negrito são obrigatórios.
+
+### Texto e mídia {#text--media}
+
+| `type` | Tipo | Campos obrigatórios | Guia |
+| --- | --- | --- | --- |
+| `text` | `WaSendTextMessage` | **`text`** | [Enviando mensagens](/pt-br/guides/sending-messages#plain-text) |
+| `image` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#images) |
+| `video` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#video) |
+| `ptv` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#video) |
+| `audio` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#audio--voice-notes) |
+| `document` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#documents) |
+| `sticker` | `WaSendMediaMessage` | **`media`** (mimetype opcional) | [Mídia](/pt-br/guides/media#stickers) |
+| `sticker-pack` | `WaSendStickerPackMessage` | **`stickerPackId`**, **`name`**, **`publisher`**, **`stickers`**, **`trayIcon`** | [Mídia](/pt-br/guides/media#stickers) |
+
+Os builders de mídia também aceitam qualquer campo não-gerenciado da mensagem protobuf subjacente (por exemplo `caption`, `gifPlayback`, `ptt`, `fileName`) via o mapeamento `UserMediaFields`. Campos gerenciados pelo protocolo (`url`, `mediaKey`, `fileSha256`, `directPath`, …) são preenchidos pelo builder.
+
+### Interativos {#interactive}
+
+| `type` | Tipo | Campos obrigatórios | Guia |
+| --- | --- | --- | --- |
+| `reaction` | `WaSendReactionMessage` | **`emoji`**, **`target`** | [Reações](/pt-br/guides/interactive-messages#reactions) |
+| `poll` | `WaSendPollMessage` | **`name`**, **`options`** | [Enquetes](/pt-br/guides/interactive-messages#polls) |
+| `poll-vote` | `WaSendPollVoteMessage` | **`poll`**, **`selectedOptionNames`** | [Votação](/pt-br/guides/interactive-messages#voting-on-a-poll) |
+| `event` | `WaSendEventMessage` | **`name`**, **`startTime`** | [Eventos](/pt-br/guides/interactive-messages#events) |
+| `event-response` | `WaSendEventResponseMessage` | **`event`**, **`response`** | [Resposta a evento](/pt-br/guides/interactive-messages#responding-to-an-event) |
+| `pin` / `unpin` | `WaSendPinMessage` | **`target`** | [Fixar](/pt-br/guides/interactive-messages#pinning) |
+| `keep` / `unkeep` | `WaSendKeepMessage` | **`target`** | [Manter no chat](/pt-br/guides/interactive-messages#keep-in-chat) |
+| `revoke` | `WaSendRevokeMessage` | **`stanzaId`** | [Revogar](/pt-br/guides/interactive-messages#revoking-delete-for-everyone) |
+
+`target` é um [`WaSendMessageTarget`](/pt-br/guides/interactive-messages#targeting-a-message) (`{ stanzaId, fromMe, participant? }`). Os pais de `poll`/`event` exigem adicionalmente `authorJid` e o `messageSecret` de 32 bytes.
+
+## `Proto.IMessage` bruto {#raw-protoimessage}
+
+Para qualquer coisa sem um builder tipado, passe uma mensagem protobuf bruta. A biblioteca inspeciona o campo preenchido e **resolve automaticamente** os atributos da stanza — `type` da mensagem ([`resolveMessageTypeAttr`]), `type` de mídia, `polltype`, `event_type`, `view_once` e `edit` — então você só define o campo de conteúdo.
+
+```ts
+import { proto } from 'zapo-js'
+
+await client.message.send(jid, {
+  conversation: 'A raw text message'
+})
+```
+
+### Texto {#text}
+
+| Campo | Notas |
+| --- | --- |
+| `conversation` | Texto simples. |
+| `extendedTextMessage` | Texto com contexto (links, menções, respostas). Um `matchedText` não-vazio o torna uma mensagem de link/mídia. |
+
+### Mídia {#media}
+
+| Campo | Tipo de mídia resolvido |
+| --- | --- |
+| `imageMessage` | `image` |
+| `videoMessage` | `video` (ou `gif` quando `gifPlayback`) |
+| `ptvMessage` | `ptv` |
+| `audioMessage` | `audio` (ou `ptt` quando `ptt`) |
+| `documentMessage` / `documentWithCaptionMessage` | `document` |
+| `stickerMessage` | `sticker` |
+| `stickerPackMessage` | `sticker-pack` |
+
+<Note>
+  Campos de mídia brutos exigem mídia previamente enviada (as chaves de criptografia, o `directPath` e os digests já devem estar definidos). Para enviar a partir de bytes/um arquivo, use os builders de mídia tipados em vez disso — eles realizam o upload para você.
+</Note>
+
+### Localização e contatos {#location--contacts}
+
+```ts
+// Localização estática
+await client.message.send(jid, {
+  locationMessage: { degreesLatitude: -23.55, degreesLongitude: -46.63, name: 'HQ' }
+})
+
+// Localização ao vivo (resolvida como `live-location`)
+await client.message.send(jid, {
+  liveLocationMessage: { degreesLatitude: -23.55, degreesLongitude: -46.63 }
+})
+
+// Contato único (vCard)
+await client.message.send(jid, {
+  contactMessage: { displayName: 'Maria', vcard: 'BEGIN:VCARD\n...\nEND:VCARD' }
+})
+
+// Múltiplos contatos
+await client.message.send(jid, {
+  contactsArrayMessage: { displayName: 'Team', contacts: [/* IContactMessage[] */] }
+})
+```
+
+| Campo | Tipo de mídia resolvido |
+| --- | --- |
+| `locationMessage` | `location` (ou `live-location` quando `isLive`) |
+| `liveLocationMessage` | `live-location` |
+| `contactMessage` | `vcard` |
+| `contactsArrayMessage` | `contact_array` |
+
+### Interativos e business {#interactive--business}
+
+| Campo | Tipo resolvido |
+| --- | --- |
+| `buttonsMessage` | `button` |
+| `buttonsResponseMessage` | `button_response` |
+| `listMessage` | `list` |
+| `listResponseMessage` | `list_response` |
+| `interactiveMessage` (native flow) | interactive |
+| `interactiveResponseMessage` | `native_flow_response` |
+| `templateButtonReplyMessage` | text |
+| `orderMessage` | `order` |
+| `productMessage` | `product` |
+| `groupInviteMessage` | `url` |
+
+```ts
+await client.message.send(jid, {
+  groupInviteMessage: {
+    groupJid, inviteCode, inviteExpiration, groupName
+  }
+})
+```
+
+### Enquetes e eventos (bruto) {#polls--events-raw}
+
+| Campo | Resolvido |
+| --- | --- |
+| `pollCreationMessage` / `…V2` / `…V3` / `…V5` | `poll` (`polltype: creation`) |
+| `pollUpdateMessage` | `poll` (`polltype: vote`) |
+| `pollResultSnapshotMessage` | text |
+| `eventMessage` | `event` (`event_type: creation`) |
+| `encEventResponseMessage` | `event` (`event_type: response`) |
+
+Mensagens de criação de enquete e de evento auto-persistem seu `messageSecret` para que votos/respostas posteriores possam ser criptografados.
+
+### Protocolo, edições e sistema {#protocol-edits--system}
+
+| Campo | Notas |
+| --- | --- |
+| `protocolMessage` | Revogações (`REVOKE`), edições (`MESSAGE_EDIT`), sincronização ephemeral, requisições de welcome. |
+| `editedMessage` | Wrapper de mensagem editada (atributo `edit`). |
+| `reactionMessage` / `encReactionMessage` | Reação (`type: reaction`); `text` vazio revoga. |
+| `pinInChatMessage` | Fixar/desafixar (`edit: pin_in_chat`). |
+| `keepInChatMessage` | Manter no chat. |
+| `encCommentMessage` | Comentário em uma mensagem. |
+| `requestPhoneNumberMessage` | Solicitar um número de telefone. |
+| `newsletterAdminInviteMessage` | Convite de admin de newsletter. |
+| `secretEncryptedMessage` | Carrega `secretEncType`: `EVENT_EDIT`, `POLL_EDIT`, `POLL_ADD_OPTION`, `MESSAGE_EDIT`, `MESSAGE_SCHEDULE`. |
+| `messageHistoryNotice` / `messageHistoryBundle` | Compartilhamento de histórico de grupo. |
+
+### Wrappers {#wrappers}
+
+Estes envolvem uma mensagem interna; a biblioteca os desembrulha ao resolver os atributos:
+
+`ephemeralMessage`, `viewOnceMessage`, `viewOnceMessageV2`, `deviceSentMessage`, `groupMentionedMessage`, `botInvokeMessage`, `documentWithCaptionMessage`.
+
+Para visualização única especificamente, prefira a [opção de envio `viewOnce`](/pt-br/guides/media#view-once) em vez de embrulhar manualmente.
+
+<Tip>
+  A superfície protobuf completa está disponível sob o namespace `proto` exportado — `proto.Message`, `proto.Message.ProtocolMessage.Type`, etc. Use-o para construir qualquer campo acima e para referenciar valores de enum.
+</Tip>
+
+## Cookbook de proto bruto {#raw-proto-cookbook}
+
+Payloads concretos de `client.message.send(jid, …)` para os tipos brutos comuns. Importe `proto` para os valores de enum:
+
+```ts
+import { proto } from 'zapo-js'
+```
+
+### Texto simples {#plain-text}
+
+```ts
+await client.message.send(jid, { conversation: 'Hello' })
+```
+
+### Texto com menções + resposta {#text-with-mentions--reply}
+
+```ts
+await client.message.send(jid, {
+  extendedTextMessage: {
+    text: 'Hey @5511999999999 👆',
+    contextInfo: {
+      mentionedJid: ['5511999999999@s.whatsapp.net'],
+      // citação/resposta:
+      stanzaId: originalStanzaId,
+      participant: originalSenderJid,
+      quotedMessage: { conversation: 'the quoted text' }
+    }
+  }
+})
+```
+
+### Texto com um preview de link manual {#text-with-a-manual-link-preview}
+
+```ts
+await client.message.send(jid, {
+  extendedTextMessage: {
+    text: 'https://example.com',
+    matchedText: 'https://example.com',
+    title: 'Example',
+    description: 'Example domain'
+  }
+})
+```
+
+### Localização estática {#static-location}
+
+```ts
+await client.message.send(jid, {
+  locationMessage: {
+    degreesLatitude: -23.5505,
+    degreesLongitude: -46.6333,
+    name: 'São Paulo',
+    address: 'SP, Brazil'
+  }
+})
+```
+
+### Localização ao vivo {#live-location}
+
+```ts
+await client.message.send(jid, {
+  liveLocationMessage: {
+    degreesLatitude: -23.5505,
+    degreesLongitude: -46.6333,
+    accuracyInMeters: 50,
+    speedInMps: 0,
+    caption: 'On my way',
+    sequenceNumber: 1
+  }
+})
+```
+
+### Cartão de contato (vCard) {#contact-card-vcard}
+
+```ts
+await client.message.send(jid, {
+  contactMessage: {
+    displayName: 'Maria Silva',
+    vcard: [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'FN:Maria Silva',
+      'TEL;type=CELL;waid=5511999999999:+55 11 99999-9999',
+      'END:VCARD'
+    ].join('\n')
+  }
+})
+```
+
+### Múltiplos contatos {#multiple-contacts}
+
+```ts
+await client.message.send(jid, {
+  contactsArrayMessage: {
+    displayName: 'My contacts',
+    contacts: [
+      { displayName: 'Maria', vcard: 'BEGIN:VCARD…END:VCARD' },
+      { displayName: 'João', vcard: 'BEGIN:VCARD…END:VCARD' }
+    ]
+  }
+})
+```
+
+### Convite de grupo {#group-invite}
+
+```ts
+await client.message.send(jid, {
+  groupInviteMessage: {
+    groupJid: '123456789-987654@g.us',
+    inviteCode: 'AbCdEf123',
+    inviteExpiration: Math.floor(Date.now() / 1000) + 86_400,
+    groupName: 'My group',
+    caption: 'Join us!'
+  }
+})
+```
+
+### Reação (bruto) {#reaction-raw}
+
+```ts
+await client.message.send(jid, {
+  reactionMessage: {
+    key: { remoteJid: jid, fromMe: false, id: targetStanzaId, participant: senderJid },
+    text: '🔥', // string vazia remove a reação
+    senderTimestampMs: Date.now()
+  }
+})
+```
+
+### Fixar / desafixar (bruto) {#pin--unpin-raw}
+
+```ts
+await client.message.send(jid, {
+  pinInChatMessage: {
+    key: { remoteJid: jid, fromMe: false, id: targetStanzaId },
+    type: proto.Message.PinInChatMessage.Type.PIN_FOR_ALL, // ou UNPIN_FOR_ALL
+    senderTimestampMs: Date.now()
+  }
+})
+```
+
+### Manter / desfazer manter no chat (bruto) {#keep--un-keep-in-chat-raw}
+
+```ts
+await client.message.send(jid, {
+  keepInChatMessage: {
+    key: { remoteJid: jid, fromMe: false, id: targetStanzaId },
+    keepType: proto.KeepType.KEEP_FOR_ALL, // ou UNDO_KEEP_FOR_ALL
+    timestampMs: Date.now()
+  }
+})
+```
+
+### Revogar / apagar para todos (protocolMessage) {#revoke--delete-for-everyone-protocolmessage}
+
+```ts
+await client.message.send(jid, {
+  protocolMessage: {
+    key: { remoteJid: jid, fromMe: true, id: targetStanzaId },
+    type: proto.Message.ProtocolMessage.Type.REVOKE
+  }
+})
+```
+
+### Alternar mensagens temporárias (configuração ephemeral) {#toggle-disappearing-messages-ephemeral-setting}
+
+```ts
+await client.message.send(jid, {
+  protocolMessage: {
+    type: proto.Message.ProtocolMessage.Type.EPHEMERAL_SETTING,
+    ephemeralExpiration: 7 * 24 * 3600 // segundos; 0 desabilita
+  }
+})
+```
+
+### Enquete (bruto) {#poll-raw}
+
+```ts
+await client.message.send(jid, {
+  pollCreationMessage: {
+    name: 'Lunch?',
+    options: [{ optionName: 'Pizza' }, { optionName: 'Sushi' }],
+    selectableOptionsCount: 1
+  }
+})
+```
+
+### Solicitar um número de telefone {#request-a-phone-number}
+
+```ts
+await client.message.send(jid, { requestPhoneNumberMessage: {} })
+```
+
+### Wrapper de mensagem temporária (ephemeralMessage) {#disappearing-wrapper-ephemeralmessage}
+
+Envolva qualquer mensagem para que ela herde o timer ephemeral do chat:
+
+```ts
+await client.message.send(jid, {
+  ephemeralMessage: { message: { conversation: 'This disappears' } }
+})
+```
+
+### Wrapper de visualização única {#view-once-wrapper}
+
+```ts
+await client.message.send(jid, {
+  viewOnceMessageV2: { message: { imageMessage: { /* pre-uploaded image fields */ } } }
+})
+```
+
+<Note>
+  Snippets que citam uma mensagem usam uma `key` de `{ remoteJid, fromMe, id, participant? }` (um `proto.IMessageKey`). Para os equivalentes tipados (reação, revogação, fixar, manter, enquete), prefira os [builders](#interactive) — eles gerenciam o message secret e o encadeamento da key para você.
+</Note>

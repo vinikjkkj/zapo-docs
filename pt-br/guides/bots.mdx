@@ -1,0 +1,110 @@
+---
+title: "Bots"
+description: "Descubra bots, envie prompts e receba respostas em stream. Funciona com qualquer bot do WhatsApp, incluindo o Meta AI."
+icon: "robot"
+---
+
+O `client.bot` ([`WaBotCoordinator`](/pt-br/reference/client#bot-email-broadcastlist)) funciona com **bots** do WhatsApp - qualquer conta no domínio `@bot`. O Meta AI é o mais comum, mas **não** é o único bot; `listBots()` retorna todos os bots disponíveis para a sua conta. O coordinator descobre bots, lê seus perfis, envia prompts e descriptografa os chunks em **stream** da resposta de um bot.
+
+## Descobrindo bots e obtendo um JID de bot {#discovering-bots--getting-a-bot-jid}
+
+Você não fixa JIDs de bot no código - você os descobre com `listBots()` e escolhe um:
+
+```ts
+const bots = await client.bot.listBots()
+// WaBotInfo[]: { jid, fbidJid, personaId, isDefault, section?, count? }
+
+// Escolha o bot padrão (tipicamente o Meta AI), ou escolha outro por section/name
+const bot = bots.find((b) => b.isDefault) ?? bots[0]
+const botJid = bot.jid // ex.: '13135550002@bot'
+
+// Inspecione o perfil de um bot (comandos, prompts, metadados do criador)
+const profile = await client.bot.getBotProfile(botJid)
+// WaBotProfileResult | null: name, description, category, prompts, commands, creator…
+```
+
+O `WaBotInfo.jid` é o valor que você passa abaixo como `to` (caminho direto) ou `options.botJid` (caminho de menção).
+
+## Enviando um prompt {#sending-a-prompt}
+
+`sendPrompt(to, content, options?)` invoca um bot. Há dois caminhos, dependendo de `to`:
+
+### Caminho direto — conversar com o bot {#direct-path--chat-with-the-bot}
+
+Quando `to` é um JID `@bot`, você está conversando com o bot diretamente. O zapo gera um novo `aiThreadId` (um id de conversa); reutilize-o em prompts posteriores para manter o contexto:
+
+```ts
+// Inicie uma conversa
+const first = await client.bot.sendPrompt(botJid, 'Explain WebSockets in one line')
+
+// Continue-a — passe o mesmo aiThreadId para manter o contexto
+await client.bot.sendPrompt(botJid, 'Now in two lines', {
+  aiThreadId: myThreadId
+})
+```
+
+### Caminho de menção — invocar um bot dentro de um grupo {#mention-path--invoke-a-bot-inside-a-group}
+
+Quando `to` é um JID de **grupo/chat**, você precisa nomear o bot via `options.botJid`. O bot é invocado indiretamente através de uma menção:
+
+```ts
+// botJid vem de listBots() — veja "Descobrindo bots" acima
+await client.bot.sendPrompt(groupJid, '@MetaAI summarize the last messages', {
+  botJid,
+  extraMentionedJids: [] // menções extras opcionais junto com o bot
+})
+```
+
+<Note>
+  No caminho de menção, `aiThreadId` / `aiThreadType` são ignorados — os bots descartam a requisição se metadados de persona/thread forem anexados a uma menção.
+</Note>
+
+O `WaBotPromptOptions` estende [`WaSendMessageOptions`](/pt-br/guides/sending-messages#send-options-reference) e adiciona `botJid`, `personaId`, `capabilities`, `extraMentionedJids`, `aiThreadId` e `aiThreadType`.
+
+## Recebendo a resposta em stream {#receiving-the-streamed-reply}
+
+A resposta de um bot **não** chega como uma única `message`. Ela chega em stream como múltiplos chunks criptografados, expostos no evento `message_bot_chunk`. O zapo os descriptografa automaticamente a cada mensagem de entrada, então você só escuta:
+
+```ts
+const buffers = new Map<string, string>()
+
+client.on('message_bot_chunk', (event) => {
+  // WaIncomingBotChunkEvent
+  const text = event.message?.conversation ?? ''
+
+  // Concatena os chunks na ordem de chegada usando editType
+  const prev = buffers.get(event.targetMessageId) ?? ''
+  buffers.set(event.targetMessageId, prev + text)
+
+  if (event.editType === 'last' || event.editType === 'full') {
+    console.log('full reply:', buffers.get(event.targetMessageId))
+    buffers.delete(event.targetMessageId)
+  }
+})
+```
+
+Os campos do evento de chunk:
+
+| Campo | Significado |
+| --- | --- |
+| `senderJid` | O bot. |
+| `targetMessageId` | O id do prompt que esta resposta responde — sua chave de stream. |
+| `editType` | Posição do chunk: `first` → `inner` → `last`, ou um único `full`. |
+| `message` | O conteúdo do chunk descriptografado (`Proto.IMessage`). |
+| `plaintext` | Bytes brutos descriptografados. |
+
+<Tip>
+  Reconstrua a resposta completa concatenando os chunks de um dado `targetMessageId` na ordem de chegada até ver `last` (ou um único `full`).
+</Tip>
+
+## Descriptografia manual de chunk {#manual-chunk-decryption}
+
+O zapo chama `tryDecryptChunk` para você a cada mensagem de entrada, então você raramente precisa dele. Se você gerencia os eventos de entrada por conta própria, pode invocá-lo explicitamente:
+
+```ts
+client.on('message', async (event) => {
+  await client.bot.tryDecryptChunk(event)
+})
+```
+
+Ele silenciosamente não faz nada (no-op) quando o chunk não é endereçado a você ou o segredo do prompt pai não está disponível.

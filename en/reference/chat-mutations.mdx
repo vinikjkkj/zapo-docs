@@ -1,0 +1,260 @@
+---
+title: "Chat mutations (app-state)"
+description: "Every client.chat operation — the typed convenience helpers and the generic set/remove over all app-state schemas."
+icon: "list-check"
+---
+
+`client.chat` is the `WaAppStateMutationCoordinator`. It writes **app-state mutations** — the per-chat and per-account settings WhatsApp syncs across all your linked devices (mute, pin, archive, read, labels, contacts, …).
+
+There are two layers:
+
+1. **Typed convenience helpers** for the common operations (`setChatMute`, `setChatPin`, …).
+2. A **generic `set` / `remove`** that works against *any* registered app-state schema — for everything without a dedicated helper.
+
+Mutations made elsewhere arrive back as [`mutation`](/en/concepts/events#state-history--mex) events.
+
+## Convenience helpers
+
+| Method | Signature | Effect |
+| --- | --- | --- |
+| `setChatMute` | `(chatJid, muted, muteEndTimestampMs?) => Promise<void>` | Mute/unmute a chat, optionally until a timestamp. |
+| `setChatPin` | `(chatJid, pinned) => Promise<void>` | Pin/unpin a chat. |
+| `setChatArchive` | `(chatJid, archived) => Promise<void>` | Archive/unarchive a chat. |
+| `setChatRead` | `(chatJid, read) => Promise<void>` | Mark a chat read/unread. |
+| `setChatLock` | `(chatJid, locked) => Promise<void>` | Lock/unlock a chat. |
+| `setMessageStar` | `(message: WaAppStateMessageKey, starred) => Promise<void>` | Star/unstar a message. |
+| `clearChat` | `(chatJid, options?: WaClearChatOptions) => Promise<void>` | Clear a chat's messages. |
+| `deleteChat` | `(chatJid, options?: WaDeleteChatOptions) => Promise<void>` | Delete a chat. |
+| `deleteMessageForMe` | `(message: WaAppStateMessageKey, options?) => Promise<void>` | Delete a message for yourself only. |
+| `setStatusPrivacy` | `(input: WaSetStatusPrivacyInput) => Promise<void>` | Set who can see your status. |
+| `setUserStatusMute` | `(jid, muted) => Promise<void>` | Mute/unmute a contact's status. |
+| `setBroadcastList` | `(input: WaSetBroadcastListInput) => Promise<void>` | Create/update a broadcast list. |
+| `removeBroadcastList` | `(id) => Promise<void>` | Delete a broadcast list. |
+
+### Examples
+
+```ts
+// Mute for 8 hours
+await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
+await client.chat.setChatMute(chatJid, false) // unmute
+
+await client.chat.setChatPin(chatJid, true)
+await client.chat.setChatArchive(chatJid, true)
+await client.chat.setChatRead(chatJid, true)
+await client.chat.setChatLock(chatJid, true)
+```
+
+```ts
+// Clear / delete a chat
+await client.chat.clearChat(chatJid, { deleteStarred: false, deleteMedia: true })
+await client.chat.deleteChat(chatJid, { deleteMedia: true })
+```
+
+A `WaAppStateMessageKey` identifies a single message:
+
+```ts
+interface WaAppStateMessageKey {
+  chatJid: string
+  id: string
+  fromMe: boolean
+  participantJid?: string // group sender
+}
+
+await client.chat.setMessageStar(
+  { chatJid, id: stanzaId, fromMe: false, participantJid: senderJid },
+  true
+)
+
+await client.chat.deleteMessageForMe(
+  { chatJid, id: stanzaId, fromMe: false },
+  { deleteMedia: true }
+)
+```
+
+### Option shapes
+
+```ts
+interface WaClearChatOptions { deleteStarred?: boolean; deleteMedia?: boolean }
+interface WaDeleteChatOptions { deleteMedia?: boolean }
+interface WaDeleteMessageForMeOptions { deleteMedia?: boolean; messageTimestampMs?: number }
+```
+
+### Status & broadcast lists
+
+```ts
+await client.chat.setStatusPrivacy({
+  mode: 'contacts',          // distribution mode
+  userJids: [],              // for allow/deny modes
+  shareToFB: false
+})
+
+await client.chat.setUserStatusMute(contactJid, true)
+
+await client.chat.setBroadcastList({
+  id: 'list-1',
+  listName: 'Customers',
+  participants: [{ lidJid, pnJid }],
+  labelIds: ['label-1']
+})
+await client.chat.removeBroadcastList('list-1')
+```
+
+## Generic `set` / `remove`
+
+For schemas without a helper, use `set` (with value fields) or `remove` (index only). The input is **flat**: pick a `schema` name, then fill the schema's index fields (`id`, `chatJid`, `labelId`, …) and value fields side by side. The coordinator routes them to the correct `SyncActionValue` subfield.
+
+```ts
+set(input: WaSetMutationInput): Promise<void>
+remove(input: WaRemoveMutationInput): Promise<void>
+```
+
+```ts
+// Add a contact to the address book
+await client.chat.set({
+  schema: 'Contact',
+  id: '5511999999999@s.whatsapp.net',
+  contactAction: { fullName: 'Maria Silva', firstName: 'Maria' }
+})
+
+// Create a chat label (color is a server-side palette index)
+await client.chat.set({
+  schema: 'LabelEdit',
+  id: 'label-1',
+  labelEditAction: { name: 'Pending', color: 0, isActive: true }
+})
+
+// Apply that label to a chat
+await client.chat.set({
+  schema: 'LabelJid',
+  labelId: 'label-1',
+  chatJid: '5511999999999@s.whatsapp.net',
+  labelAssociationAction: { labeled: true }
+})
+
+// Save a business quick reply
+await client.chat.set({
+  schema: 'QuickReply',
+  id: 'qr-greeting',
+  quickReplyAction: { shortcut: '/hi', message: 'Hi! How can I help?' }
+})
+```
+
+`remove` takes the same shape minus the value fields:
+
+```ts
+await client.chat.remove({ schema: 'Contact', id: '5511999999999@s.whatsapp.net' })
+await client.chat.remove({ schema: 'LabelJid', labelId: 'label-1', chatJid })
+await client.chat.remove({ schema: 'QuickReply', id: 'qr-greeting' })
+```
+
+<Tip>
+  The value-field name (`contactAction`, `labelEditAction`, …) matches the schema's `SyncActionValue` subfield. Import `WA_APPSTATE_SCHEMAS` to inspect a schema's index parts and value field at runtime.
+</Tip>
+
+## All schemas
+
+Every key below is a valid `schema` for `set` / `remove` (`WaAppstateActionKey = keyof typeof WA_APPSTATE_SCHEMAS`). Schemas with a ✓ also have a typed convenience helper.
+
+### Chat actions
+
+| Schema | Helper | Purpose |
+| --- | --- | --- |
+| `Mute` | ✓ `setChatMute` | Mute a chat. |
+| `Pin` | ✓ `setChatPin` | Pin a chat. |
+| `Archive` | ✓ `setChatArchive` | Archive a chat. |
+| `Star` | ✓ `setMessageStar` | Star a message. |
+| `MarkChatAsRead` | ✓ `setChatRead` | Mark read/unread. |
+| `ClearChat` | ✓ `clearChat` | Clear messages. |
+| `DeleteChat` | ✓ `deleteChat` | Delete a chat. |
+| `DeleteMessageForMe` | ✓ `deleteMessageForMe` | Delete a message for me. |
+| `ChatLockSettings` / `LockChat` | ✓ `setChatLock` | Chat lock. |
+| `UnarchiveChatsSetting` | | Global unarchive-on-message setting. |
+| `ChatAssignment` / `ChatAssignmentOpenedStatus` | | Agent chat assignment. |
+| `Favorites` | | Favorite chats. |
+
+### Contacts
+
+| Schema | Purpose |
+| --- | --- |
+| `Contact` | Address-book contact. |
+| `LidContact` / `OutContact` | LID / outgoing contact records. |
+| `PnForLidChat` / `ShareOwnPn` | Phone-number ↔ LID linkage. |
+
+### Labels
+
+| Schema | Purpose |
+| --- | --- |
+| `LabelEdit` | Create/edit/delete a label definition. |
+| `LabelJid` | Associate/disassociate a label with a chat. |
+| `LabelReordering` | Reorder labels. |
+
+### Status & calls
+
+| Schema | Helper | Purpose |
+| --- | --- | --- |
+| `StatusPrivacy` | ✓ `setStatusPrivacy` | Status distribution privacy. |
+| `UserStatusMute` | ✓ `setUserStatusMute` | Mute a contact's status. |
+| `VoipRelayAllCalls` | | Relay-all-calls privacy. |
+| `CallLog` | | Call log entries. |
+
+### Stickers
+
+| Schema | Purpose |
+| --- | --- |
+| `FavoriteSticker` | Favorite stickers. |
+| `RemoveRecentSticker` | Remove from recents. |
+
+### Business & marketing
+
+| Schema | Helper | Purpose |
+| --- | --- | --- |
+| `BusinessBroadcastList` | ✓ `setBroadcastList` / `removeBroadcastList` | Broadcast lists. |
+| `QuickReply` | | Business quick replies. |
+| `BotWelcomeRequest` | | Bot welcome message. |
+| `BusinessBroadcastCampaign` / `BusinessBroadcastInsights` | | Broadcast campaigns & insights. |
+| `MarketingMessage` / `MarketingMessageBroadcast` | | Marketing messages. |
+| `AdsCtwaPerCustomerDataSharing` / `CustomerData` / `DetectedOutcomeStatus` | | Ads / CTWA data. |
+| `BizAiSettingsNudge` / `Agent` | | Business AI / agent. |
+
+### Payments
+
+| Schema | Purpose |
+| --- | --- |
+| `PaymentInfo` / `PaymentTos` | Payment info & terms. |
+| `CustomPaymentMethods` / `MerchantPaymentPartner` | Payment methods. |
+| `SubscriptionsSyncV2` | Subscriptions. |
+
+### AI threads
+
+| Schema | Purpose |
+| --- | --- |
+| `AiThreadDelete` / `AiThreadPin` / `AiThreadRename` | AI thread management. |
+
+### Settings & system
+
+| Schema | Purpose |
+| --- | --- |
+| `SettingPushName` / `SettingsSync` | Push name & settings. |
+| `TimeFormat` / `LocaleSetting` | Time format & locale. |
+| `DisableLinkPreviews` | Link-preview toggle. |
+| `PrimaryFeature` / `PrimaryVersion` | Primary-device feature/version. |
+| `Nux` / `NoteEdit` | New-user experience / notes. |
+| `DeviceCapabilities` / `AndroidUnsupportedActions` | Device capability sync. |
+| `InteractiveMessageAction` | Interactive message action. |
+| `AvatarUpdated` | Avatar update marker. |
+| `ExternalWebBeta` / `WaffleAccountLinkState` | Web beta / account linking. |
+| `NctSaltSync` / `Sentinel` | Internal sync bookkeeping. |
+| `Favorites` / `CustomerData` | Misc. |
+
+<Warning>
+  Several schemas (`Sentinel`, `NctSaltSync`, `PrimaryVersion`, `DeviceCapabilities`, …) are managed internally by the sync engine. They are listed for completeness because the type system accepts them, but writing them by hand can desync app-state — prefer the convenience helpers and the documented business schemas.
+</Warning>
+
+## Syncing
+
+| Method | Signature | Purpose |
+| --- | --- | --- |
+| `sync` | `(options?) => Promise<WaAppStateSyncResult>` | Run an app-state sync round. |
+| `flushMutations` | `() => Promise<void>` | Flush queued mutations to the server now. |
+| `getBlockedCollections` | `(syncResult) => readonly string[]` | Collections blocked during a sync. |
+| `emitEventsFromSyncResult` | `(syncResult) => void` | Re-emit `mutation` events from a sync result. |

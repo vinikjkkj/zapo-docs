@@ -1,0 +1,115 @@
+---
+title: "API de baixo nível"
+description: "O escape hatch bruto — envie nodes, faça IQs e registre handlers e filtros customizados de nodes recebidos."
+icon: "terminal"
+---
+
+`client.lowlevel` (`WaLowLevelCoordinator`) é o escape hatch bruto por baixo dos coordinators tipados. Use-o para enviar stanzas de protocolo que a API de alto nível não cobre, fazer IQs customizados ou interceptar stanzas recebidas.
+
+<Warning>
+  Isto é inseguro por design — você está construindo nodes de protocolo manualmente. Prefira os coordinators tipados quando existir um; recorra ao `lowlevel` apenas para superfícies de protocolo que o zapo ainda não encapsula.
+</Warning>
+
+## Binary nodes {#binary-nodes}
+
+Tudo aqui fala `BinaryNode` — a representação do zapo para uma stanza de protocolo do WhatsApp:
+
+```ts
+interface BinaryNode {
+  tag: string
+  attrs: Record<string, string>
+  content?: Uint8Array | string | readonly BinaryNode[]
+}
+```
+
+## Enviando um node {#sending-a-node}
+
+`sendNode` escreve uma stanza bruta. Falhas que parecem um problema transitório de envio de recibo são bufferizadas na fila de recibos e logadas em vez de lançadas.
+
+```ts
+await client.lowlevel.sendNode({
+  tag: 'presence',
+  attrs: { type: 'available' }
+})
+```
+
+## Fazendo um IQ {#issuing-an-iq}
+
+`query` envia uma stanza IQ e aguarda a resposta correspondente (dentro de `timeoutMs`). Lança um erro se o client não estiver conectado.
+
+```ts
+const result = await client.lowlevel.query(
+  {
+    tag: 'iq',
+    attrs: { to: '@s.whatsapp.net', type: 'get', xmlns: 'w:profile:picture' },
+    content: [{ tag: 'picture', attrs: { type: 'image' } }]
+  },
+  30_000 // timeout opcional (ms); padrão WA_DEFAULTS.IQ_TIMEOUT_MS
+)
+// result é o BinaryNode de resposta
+```
+
+| Param | Tipo | Notas |
+| --- | --- | --- |
+| `node` | `BinaryNode` | O IQ a enviar. |
+| `timeoutMs` | `number` | Timeout da resposta. Padrão é o padrão do IQ (60s). |
+| `options.useSystemId` | `boolean` | Usa um id de stanza gerado pelo sistema. |
+
+## Interceptando nodes recebidos {#intercepting-incoming-nodes}
+
+Registre um handler para nodes recebidos que correspondam a um `tag` (e um `subtype` opcional). O handler retorna um `Promise<boolean>` — retorne `true` quando você tiver tratado o node. `registerIncomingHandler` retorna uma função de `unregister`.
+
+```ts
+const unregister = client.lowlevel.registerIncomingHandler({
+  tag: 'notification',
+  subtype: 'server_sync', // opcional
+  prepend: false,          // roda antes dos handlers padrão quando true
+  handler: async (node) => {
+    console.log('got notification', node.attrs)
+    return false // false = deixa outros handlers também processá-lo
+  }
+})
+
+// depois
+unregister()
+```
+
+`WaIncomingNodeHandlerRegistration`:
+
+```ts
+interface WaIncomingNodeHandlerRegistration {
+  tag: string
+  subtype?: string
+  handler: (node: BinaryNode) => Promise<boolean>
+  prepend?: boolean
+}
+```
+
+Você também pode remover um registro explicitamente:
+
+```ts
+client.lowlevel.unregisterIncomingHandler(registration) // retorna boolean
+```
+
+## Filtrando stanzas recebidas {#filtering-inbound-stanzas}
+
+Um **filtro de stanza** roda antes dos handlers tipados. Retorne `true` para **descartar** uma stanza por completo. O zapo ainda envia o ack apropriado para `message`/`receipt`/`notification`, então o servidor para de reentregá-la.
+
+```ts
+const unregister = client.lowlevel.registerIncomingStanzaFilter((node) => {
+  // Descarta tudo de um JID barulhento
+  return node.attrs.from === 'spam@s.whatsapp.net'
+})
+```
+
+| Método | Assinatura |
+| --- | --- |
+| `sendNode` | `(node: BinaryNode) => Promise<void>` |
+| `query` | `(node, timeoutMs?, options?) => Promise<BinaryNode>` |
+| `registerIncomingHandler` | `(registration) => () => void` |
+| `unregisterIncomingHandler` | `(registration) => boolean` |
+| `registerIncomingStanzaFilter` | `(filter) => () => void` |
+
+<Tip>
+  Os nodes recebidos também são observáveis em modo somente leitura via os [eventos](/pt-br/concepts/events#debug-events) `debug_transport_node_in` / `debug_transport_node_out` — útil para descobrir formatos de stanza antes de escrever um handler.
+</Tip>

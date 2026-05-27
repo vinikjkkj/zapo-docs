@@ -1,0 +1,229 @@
+---
+title: "Configuration"
+description: "Every WaClientOptions field — sessions, timeouts, history sync, proxy, logging, and more."
+icon: "sliders"
+---
+
+`WaClient` takes a `WaClientOptions` object and an optional logger:
+
+```ts
+const client = new WaClient(options, logger)
+```
+
+Only `store` and `sessionId` are required; everything else has a sensible default.
+
+## Required options
+
+<ParamField path="store" type="WaStore" required>
+  The store instance built by [`createStore`](/en/concepts/stores). Holds every per-session domain (auth, signal, app-state, …).
+</ParamField>
+
+<ParamField path="sessionId" type="string" required>
+  Logical session identifier — it keys every domain inside `store`. Use a **stable** string per device/account. Changing it between runs orphans the previous credentials and forces re-pairing.
+</ParamField>
+
+## Sessions and multi-tenancy
+
+Because every store domain is keyed by `sessionId`, a single store can hold many independent accounts. To run several accounts in one process, create one `WaClient` per `sessionId` over the same store:
+
+```ts
+const store = createStore({ /* ... */ })
+
+const accountA = new WaClient({ store, sessionId: 'account-a' }, logger)
+const accountB = new WaClient({ store, sessionId: 'account-b' }, logger)
+
+await Promise.all([accountA.connect(), accountB.connect()])
+```
+
+Each client pairs and reconnects independently. This is the foundation for multi-tenant deployments.
+
+## Device fingerprint
+
+These control how the device appears under **Linked devices** on the phone:
+
+<ParamField path="deviceBrowser" type="string" default="'chrome'">
+  Browser id advertised during pairing (`'chrome'`, `'firefox'`, `'safari'`, …; see `WA_BROWSERS`). Drives the *Linked Devices* label.
+</ParamField>
+
+<ParamField path="devicePlatform" type="string">
+  Numeric companion platform id override (`WA_COMPANION_PLATFORM_IDS`). Inferred from `deviceBrowser` when omitted; set explicitly for non-browser platforms.
+</ParamField>
+
+```ts
+new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
+```
+
+## History sync
+
+<ParamField path="history" type="WaHistorySyncOptions">
+  Controls the initial message-history download.
+
+  - `enabled?: boolean` — download history on first sync.
+  - `requireFullSync?: boolean` — request the full archive instead of just recent chats.
+</ParamField>
+
+```ts
+new WaClient({
+  store,
+  sessionId: 'default',
+  history: { enabled: true, requireFullSync: true }
+}, logger)
+```
+
+History arrives as [`history_sync_chunk`](/en/concepts/events) events.
+
+## Timeouts
+
+All in milliseconds; defaults are tuned for production.
+
+| Option | Purpose |
+| --- | --- |
+| `iqTimeoutMs` | Default timeout for IQ queries (default 60s). |
+| `nodeQueryTimeoutMs` | Default timeout for raw node `query()` calls. |
+| `keepAliveIntervalMs` | Interval between keep-alive ping IQs. |
+| `deadSocketTimeoutMs` | How long without a reply before the socket is considered dead. |
+| `mediaTimeoutMs` | Media upload/download timeout. |
+| `appStateSyncTimeoutMs` | App-state sync round timeout. |
+| `messageAckTimeoutMs` | How long `message.send` waits for the server `<ack>` per attempt. |
+| `messageMaxAttempts` | Max attempts for a single `message.send`. |
+| `messageRetryDelayMs` | Delay between message-send retries. |
+
+## Presence on connect
+
+<ParamField path="markOnlineOnConnect" type="boolean" default="true">
+  - `true` — announce the client as **online** (matches WhatsApp Web with the tab focused).
+  - `false` — announce as **unavailable**. Useful for bots that should not appear online. With this off, you also keep receiving notifications for messages while "offline".
+</ParamField>
+
+## Addons (reactions, poll votes)
+
+<ParamField path="addons" type="{ autoDecrypt?: boolean }">
+  Set `autoDecrypt: true` to automatically decrypt encrypted addons (poll votes, reactions, …) and emit them as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Otherwise call `client.message.tryDecryptAddon(event)` yourself.
+</ParamField>
+
+## Write-behind persistence
+
+<ParamField path="writeBehind" type="WaWriteBehindOptions">
+  Batches incoming messages before flushing to the `messages` / `threads` / `contacts` stores.
+
+  - `maxPendingKeys?: number`
+  - `maxWriteConcurrency?: number`
+  - `flushTimeoutMs?: number`
+</ParamField>
+
+## Proxy
+
+<ParamField path="proxy" type="WaClientProxyOptions">
+  Route each leg through a proxy independently:
+
+  - `ws` — the WebSocket connection.
+  - `mediaUpload` / `mediaDownload` — media transfers.
+  - `linkPreview` — the default link-preview fetcher.
+</ParamField>
+
+Each leg accepts a `WaProxyTransport`, which is either:
+
+- an **undici dispatcher** (`WaProxyDispatcher`, e.g. an undici `ProxyAgent`) — used for the `fetch`-based legs (media, link preview), or
+- a **Node `http`/`https` Agent** (`WaProxyAgent`) — used for the WebSocket (`ws`) leg.
+
+zapo picks the right form per leg automatically.
+
+<Note>
+  The `ws` leg requires the [`ws`](/en/installation#optional-peer-dependencies) package, because the runtime's native `WebSocket` cannot accept an HTTP `Agent`. Without a proxy, no extra package is needed.
+</Note>
+
+### HTTP / HTTPS proxy
+
+Use an undici `ProxyAgent` (a dispatcher) for the media/link-preview legs, and an `https-proxy-agent` (an `http.Agent`) for the `ws` leg:
+
+```ts
+import { ProxyAgent } from 'undici'
+import { HttpsProxyAgent } from 'https-proxy-agent'
+
+const url = 'http://user:pass@proxy.example.com:8080' // or https://…
+const dispatcher = new ProxyAgent(url)
+const wsAgent = new HttpsProxyAgent(url)
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  proxy: {
+    ws: wsAgent,
+    mediaUpload: dispatcher,
+    mediaDownload: dispatcher,
+    linkPreview: dispatcher
+  }
+}, logger)
+```
+
+### SOCKS proxy
+
+Use `socks-proxy-agent` (works as an `http.Agent` for every leg, including `ws`):
+
+```ts
+import { SocksProxyAgent } from 'socks-proxy-agent'
+
+// socks5 (or socks4) — host can be a domain or an IP
+const agent = new SocksProxyAgent('socks5://user:pass@127.0.0.1:1080')
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  proxy: { ws: agent, mediaUpload: agent, mediaDownload: agent, linkPreview: agent }
+}, logger)
+```
+
+### IPv4 and IPv6 hosts
+
+The proxy host can be a domain or an IP literal. **IPv6 addresses must be wrapped in brackets**:
+
+```ts
+// IPv4
+new ProxyAgent('http://203.0.113.10:8080')
+new SocksProxyAgent('socks5://203.0.113.10:1080')
+
+// IPv6 — bracket the address
+new ProxyAgent('http://[2001:db8::1]:8080')
+new SocksProxyAgent('socks5://[2001:db8::1]:1080')
+
+// With credentials
+new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
+```
+
+<Tip>
+  Point only the legs you need at a proxy — e.g. set just `ws` to tunnel the connection while letting media transfer directly, or vice-versa.
+</Tip>
+
+## Logout store clearing
+
+<ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
+  Per-domain control over what [`logout()`](/en/concepts/authentication#logging-out) wipes. Defaults to clearing everything; set a domain to `false` to preserve it.
+
+  ```ts
+  // Keep archived messages and contacts after logout
+  logoutStoreClear: { messages: false, contacts: false }
+  ```
+</ParamField>
+
+## Logging
+
+Pass a logger as the second constructor argument. Two implementations ship with the package:
+
+```ts
+import { ConsoleLogger, createPinoLogger } from 'zapo-js'
+
+// Lightweight, zero-dependency
+const client = new WaClient(options, new ConsoleLogger('info'))
+
+// Structured (requires `pino` + `pino-pretty`)
+const logger = await createPinoLogger({ level: 'debug', pretty: true })
+const client2 = new WaClient(options, logger)
+```
+
+If you omit the logger, a default `ConsoleLogger` is used. Log levels: `trace`, `debug`, `info`, `warn`, `error`.
+
+## Dangerous options
+
+<Warning>
+  `dangerous` flags each disable a security check the production path enforces (signature verification, app-state MAC checks, …). They exist for testing against a fake server. **Never enable them in production.**
+</Warning>

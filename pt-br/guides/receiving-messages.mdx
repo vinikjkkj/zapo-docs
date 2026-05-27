@@ -1,0 +1,148 @@
+---
+title: "Recebendo mensagens"
+description: "Faça o parse dos eventos de mensagens recebidas, extraia texto, envie recibos e trate addons."
+icon: "inbox"
+---
+
+As mensagens recebidas chegam no evento `message` como um `WaIncomingMessageEvent`.
+
+```ts
+import type { WaIncomingMessageEvent } from 'zapo-js'
+
+client.on('message', (event: WaIncomingMessageEvent) => {
+  // ...
+})
+```
+
+## O payload do evento {#the-event-payload}
+
+Campos principais em `WaIncomingMessageEvent`:
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `message` | `Proto.IMessage` | O conteúdo descriptografado da mensagem. |
+| `chatJid` | `string` | O JID da conversa (grupo ou 1:1). |
+| `senderJid` | `string` | Quem enviou. |
+| `stanzaId` | `string` | O id da mensagem. |
+| `timestampSeconds` | `number` | Timestamp do servidor (segundos unix). |
+| `pushName` | `string` | O nome de exibição do remetente. |
+| `isGroupChat` | `boolean` | Verdadeiro para mensagens de grupo. |
+| `isBroadcastChat` | `boolean` | Verdadeiro para broadcast/status. |
+| `isNewsletterChat` | `boolean` | Verdadeiro para mensagens de newsletter. |
+| `isSender` | `boolean` | Verdadeiro quando a mensagem foi enviada por esta conta. |
+
+<Note>
+  Você também recebe aqui suas **próprias** mensagens enviadas (sincronização multi-dispositivo), marcadas com `isSender: true`. Filtre-as se quiser apenas tráfego de entrada.
+</Note>
+
+## Extraindo texto {#extracting-text}
+
+O texto de uma mensagem fica em campos diferentes dependendo do seu tipo. Um pequeno helper cobre os casos comuns:
+
+```ts
+function extractText(message?: Proto.IMessage | null): string | undefined {
+  if (!message) return undefined
+  return (
+    message.conversation ??
+    message.extendedTextMessage?.text ??
+    message.imageMessage?.caption ??
+    message.videoMessage?.caption ??
+    undefined
+  )
+}
+
+client.on('message', (event) => {
+  const text = extractText(event.message)
+  if (text) console.log(`${event.pushName}: ${text}`)
+})
+```
+
+## Identificando o tipo da mensagem {#identifying-the-message-type}
+
+`message` é uma union protobuf — inspecione qual campo está definido:
+
+```ts
+client.on('message', (event) => {
+  const m = event.message
+  if (!m) return
+
+  if (m.conversation || m.extendedTextMessage) console.log('text')
+  else if (m.imageMessage) console.log('image')
+  else if (m.videoMessage) console.log('video')
+  else if (m.audioMessage) console.log('audio')
+  else if (m.documentMessage) console.log('document')
+  else if (m.stickerMessage) console.log('sticker')
+  else if (m.pollCreationMessage) console.log('poll')
+  else if (m.locationMessage) console.log('location')
+})
+```
+
+Para baixar mídia de uma mensagem de imagem/vídeo/áudio/documento, veja [Mídia → baixando](/pt-br/guides/media#downloading-incoming-media).
+
+## Enviando recibos {#sending-receipts}
+
+O `client.message.sendReceipt` marca mensagens como recebidas/lidas/reproduzidas. A forma mais simples recebe o(s) evento(s) diretamente:
+
+```ts
+client.on('message', async (event) => {
+  // marcar como lida
+  await client.message.sendReceipt(event, { type: 'read' })
+})
+```
+
+Você também pode passar um array de eventos, ou endereçá-lo manualmente por JID e ids:
+
+```ts
+await client.message.sendReceipt(chatJid, [id1, id2], { type: 'read' })
+```
+
+## Addons {#addons}
+
+**Addons** são complementos criptografados anexados a uma mensagem: reações, votos em enquetes e comentários. Eles aparecem como o evento `message_addon`.
+
+### Descriptografia automática {#automatic-decryption}
+
+Defina `addons.autoDecrypt` no client e os addons são descriptografados e emitidos para você:
+
+```ts
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  addons: { autoDecrypt: true }
+}, logger)
+
+client.on('message_addon', (event) => {
+  console.log('addon:', event)
+})
+```
+
+### Descriptografia manual {#manual-decryption}
+
+Se você deixar o `autoDecrypt` desligado, descriptografe sob demanda a partir do evento da mensagem de origem:
+
+```ts
+client.on('message', async (event) => {
+  await client.message.tryDecryptAddon(event)
+})
+```
+
+## Mensagens de protocolo {#protocol-messages}
+
+Edições, revogações e outras atualizações em nível de protocolo chegam em `message_protocol` como `WaIncomingProtocolMessageEvent` (que estende o evento de mensagem com um campo `protocolMessage`):
+
+```ts
+client.on('message_protocol', (event) => {
+  console.log(event.protocolMessage)
+})
+```
+
+## Recibos (entrada) {#receipts-inbound}
+
+Quando outras pessoas leem ou reproduzem suas mensagens, você recebe eventos `receipt`:
+
+```ts
+client.on('receipt', (event) => {
+  // event.status: 'delivered' | 'read' | 'played' | 'inactive'
+  console.log(event.status, 'for', event.stanzaId)
+})
+```

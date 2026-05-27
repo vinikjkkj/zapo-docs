@@ -1,0 +1,161 @@
+---
+title: "Início rápido"
+description: "Conecte uma sessão, escaneie um QR code e responda sua primeira mensagem."
+icon: "rocket"
+---
+
+Este guia constrói um bot mínimo de "ping → pong". Ele se conecta, imprime um QR code para parear e responde `pong` sempre que recebe `ping`.
+
+<Steps>
+  <Step title="Instale os pacotes">
+    ```bash
+    npm install zapo-js @zapo-js/store-sqlite better-sqlite3 pino pino-pretty
+    ```
+  </Step>
+
+  <Step title="Crie a store e o client">
+    A [store](/pt-br/concepts/stores) persiste o estado de auth e do Signal. Aqui usamos SQLite, gravando em `.auth/state.sqlite`.
+
+    ```ts
+    import { createPinoLogger, createStore, WaClient } from 'zapo-js'
+    import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+    const logger = await createPinoLogger({ level: 'info', pretty: true })
+
+    const store = createStore({
+      backends: {
+        sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' })
+      },
+      providers: {
+        auth: 'sqlite',
+        signal: 'sqlite',
+        senderKey: 'sqlite',
+        appState: 'sqlite',
+        messages: 'sqlite',
+        threads: 'sqlite',
+        contacts: 'sqlite',
+        privacyToken: 'sqlite'
+      }
+    })
+
+    const client = new WaClient(
+      {
+        store,
+        sessionId: 'default',
+        connectTimeoutMs: 15_000,
+        nodeQueryTimeoutMs: 30_000,
+        history: { enabled: true, requireFullSync: true }
+      },
+      logger
+    )
+    ```
+  </Step>
+
+  <Step title="Trate o pareamento">
+    Em uma sessão nova, o client emite `auth_qr`. Renderize o valor como um QR code (por exemplo, com o pacote [`qrcode-terminal`](https://www.npmjs.com/package/qrcode-terminal)) e escaneie a partir de **WhatsApp → Aparelhos conectados**.
+
+    ```ts
+    client.on('auth_qr', ({ qr, ttlMs }) => {
+      console.log('Scan this QR within', ttlMs, 'ms:')
+      console.log(qr)
+    })
+
+    client.on('auth_paired', ({ credentials }) => {
+      console.log('Paired as', credentials.meJid)
+    })
+    ```
+
+    <Tip>
+      Prefere um **código de pareamento de 8 dígitos** em vez de um QR? Veja [Autenticação](/pt-br/concepts/authentication#pairing-with-a-code).
+    </Tip>
+  </Step>
+
+  <Step title="Responda mensagens recebidas">
+    Escute o evento `message` e envie uma resposta com `client.message.send`.
+
+    ```ts
+    function extractText(message) {
+      return (
+        message?.conversation ??
+        message?.extendedTextMessage?.text ??
+        undefined
+      )
+    }
+
+    client.on('message', async (event) => {
+      const text = extractText(event.message)
+      if (text?.trim().toLowerCase() !== 'ping') return
+
+      const to = event.chatJid ?? event.senderJid
+      if (!to) return
+
+      await client.message.send(to, 'pong')
+    })
+    ```
+  </Step>
+
+  <Step title="Conecte">
+    ```ts
+    await client.connect()
+    ```
+
+    O `connect()` resolve assim que o socket está aberto. A primeira conexão conduz o pareamento; conexões subsequentes reutilizam as credenciais armazenadas.
+  </Step>
+</Steps>
+
+## Exemplo completo {#full-example}
+
+```ts
+import { createPinoLogger, createStore, WaClient } from 'zapo-js'
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const logger = await createPinoLogger({ level: 'info', pretty: true })
+
+const store = createStore({
+  backends: {
+    sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' })
+  },
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    messages: 'sqlite',
+    threads: 'sqlite',
+    contacts: 'sqlite',
+    privacyToken: 'sqlite'
+  }
+})
+
+const client = new WaClient({ store, sessionId: 'default' }, logger)
+
+client.on('auth_qr', ({ qr }) => console.log(qr))
+client.on('connection', (event) => console.log('connection:', event.status, event.reason))
+
+client.on('message', async (event) => {
+  const text =
+    event.message?.conversation ?? event.message?.extendedTextMessage?.text
+  if (text?.trim().toLowerCase() !== 'ping') return
+  const to = event.chatJid ?? event.senderJid
+  if (to) await client.message.send(to, 'pong')
+})
+
+await client.connect()
+```
+
+## Próximos passos {#whats-next}
+
+<CardGroup cols={2}>
+  <Card title="Enviando mensagens" icon="paper-plane" href="/pt-br/guides/sending-messages">
+    Respostas, menções, prévias de link e a union de conteúdo completa.
+  </Card>
+  <Card title="Recebendo mensagens" icon="inbox" href="/pt-br/guides/receiving-messages">
+    Faça o parse dos eventos recebidos, envie recibos e descriptografe addons.
+  </Card>
+  <Card title="Reconexão" icon="arrows-rotate" href="/pt-br/guides/reconnection">
+    O `zapo` não reconecta automaticamente — aqui está o padrão para lidar com isso.
+  </Card>
+  <Card title="Configuração" icon="sliders" href="/pt-br/concepts/configuration">
+    Sessões, sincronização de histórico, timeouts, proxy e muito mais.
+  </Card>
+</CardGroup>

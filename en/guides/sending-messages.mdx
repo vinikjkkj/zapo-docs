@@ -1,0 +1,137 @@
+---
+title: "Sending messages"
+description: "Send text, replies, mentions, and link previews with client.message.send."
+icon: "paper-plane"
+---
+
+All outgoing content goes through a single method:
+
+```ts
+client.message.send(to, content, options?): Promise<WaMessagePublishResult>
+```
+
+- **`to`** — the recipient JID (`5511999999999@s.whatsapp.net`, a group `...@g.us`, etc.). See [JID helpers](/en/reference/jid-helpers) for building these.
+- **`content`** — a string, a typed content object, or a raw `Proto.IMessage`.
+- **`options`** — quoting, mentions, forwarding, view-once, edits, and more.
+
+The promise resolves to a `WaMessagePublishResult` once the server acks:
+
+```ts
+const result = await client.message.send(jid, 'Hello!')
+console.log(result.id) // the message id (stanza id)
+```
+
+## Plain text
+
+The simplest content is a string:
+
+```ts
+await client.message.send(jid, 'Hello from zapo!')
+```
+
+For more control, use the text object form — it lets you attach context info and tune link previews:
+
+```ts
+await client.message.send(jid, {
+  type: 'text',
+  text: 'Check this out: https://example.com',
+  linkPreview: true // auto-fetch a preview
+})
+```
+
+## Replying (quoting)
+
+Pass the original message event (or a reference) as `options.quote`:
+
+```ts
+client.on('message', async (event) => {
+  await client.message.send(event.chatJid!, 'Replying to you', {
+    quote: event
+  })
+})
+```
+
+The quote is rendered as a reply bubble referencing the original message.
+
+## Mentions
+
+`options.mentions` is a list of JIDs to tag. Include the matching `@number` text in the body so WhatsApp renders the mention:
+
+```ts
+await client.message.send(groupJid, {
+  type: 'text',
+  text: 'Hey @5511999999999, welcome!'
+}, {
+  mentions: ['5511999999999@s.whatsapp.net']
+})
+```
+
+## Link previews
+
+Link-preview behavior is controlled per message via the text object's `linkPreview` field:
+
+| Value | Behavior |
+| --- | --- |
+| `undefined` | Follow the global `linkPreview` default. |
+| `false` | Disable the preview. |
+| `true` | Force auto-fetch of the preview. |
+| object | Skip the fetch and use the provided preview fields directly. |
+
+```ts
+// Provide your own preview instead of fetching
+await client.message.send(jid, {
+  type: 'text',
+  text: 'https://example.com',
+  linkPreview: { title: 'Example', description: 'My custom preview' }
+})
+```
+
+Configure the default fetcher globally with the `linkPreview` client option.
+
+## Forwarding
+
+Set `options.forward` to mark a message as forwarded:
+
+```ts
+await client.message.send(jid, 'Forwarded text', { forward: true })
+// or with a frequently-forwarded score
+await client.message.send(jid, content, { forward: { score: 4 } })
+```
+
+## Send options reference
+
+`WaSendMessageOptions` (third argument) includes:
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `quote` | `WaIncomingMessageEvent \| WaQuoteRef` | Reply to a message. |
+| `mentions` | `string[]` | JIDs to mention. |
+| `forward` | `boolean \| { score }` | Mark as forwarded. |
+| `viewOnce` | `boolean` | Wrap image/video/audio as view-once. |
+| `editKey` | `WaSendEditKey` | Edit a previously sent message (see [interactive](/en/guides/interactive-messages#editing-a-message)). |
+| `contextInfo` | `WaSendContextInfo` | Raw context info (advanced). |
+| `id` | `string` | Use a specific message id. |
+| `ackTimeoutMs` / `maxAttempts` / `retryDelayMs` | `number` | Per-send retry tuning. |
+
+## The content union
+
+`content` accepts any `WaSendMessageContent`. The typed variants are documented across these guides:
+
+<CardGroup cols={2}>
+  <Card title="Media" icon="image" href="/en/guides/media">
+    Images, video, audio, documents, stickers.
+  </Card>
+  <Card title="Polls & reactions" icon="square-poll-vertical" href="/en/guides/interactive-messages">
+    Polls, votes, reactions, pins, edits, revokes, events.
+  </Card>
+</CardGroup>
+
+You can always drop down to a raw `Proto.IMessage` for anything not covered by a typed builder:
+
+```ts
+import { proto } from 'zapo-js'
+
+await client.message.send(jid, {
+  conversation: 'Raw protobuf message'
+})
+```

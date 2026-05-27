@@ -1,0 +1,115 @@
+---
+title: "Low-level API"
+description: "The raw escape hatch — send nodes, issue IQs, and register custom incoming-node handlers and filters."
+icon: "terminal"
+---
+
+`client.lowlevel` (`WaLowLevelCoordinator`) is the raw escape hatch beneath the typed coordinators. Use it to send protocol stanzas the high-level API doesn't cover, issue custom IQs, or intercept inbound stanzas.
+
+<Warning>
+  This is unsafe by design — you're building protocol nodes by hand. Prefer the typed coordinators when one exists; reach for `lowlevel` only for protocol surfaces zapo doesn't wrap yet.
+</Warning>
+
+## Binary nodes
+
+Everything here speaks `BinaryNode` — zapo's representation of a WhatsApp protocol stanza:
+
+```ts
+interface BinaryNode {
+  tag: string
+  attrs: Record<string, string>
+  content?: Uint8Array | string | readonly BinaryNode[]
+}
+```
+
+## Sending a node
+
+`sendNode` writes a raw stanza. Failures that look like a transient receipt-send issue are buffered to the receipt queue and logged rather than thrown.
+
+```ts
+await client.lowlevel.sendNode({
+  tag: 'presence',
+  attrs: { type: 'available' }
+})
+```
+
+## Issuing an IQ
+
+`query` sends an IQ stanza and awaits the matching response (within `timeoutMs`). It throws if the client isn't connected.
+
+```ts
+const result = await client.lowlevel.query(
+  {
+    tag: 'iq',
+    attrs: { to: '@s.whatsapp.net', type: 'get', xmlns: 'w:profile:picture' },
+    content: [{ tag: 'picture', attrs: { type: 'image' } }]
+  },
+  30_000 // optional timeout (ms); defaults to WA_DEFAULTS.IQ_TIMEOUT_MS
+)
+// result is the response BinaryNode
+```
+
+| Param | Type | Notes |
+| --- | --- | --- |
+| `node` | `BinaryNode` | The IQ to send. |
+| `timeoutMs` | `number` | Response timeout. Defaults to the IQ default (60s). |
+| `options.useSystemId` | `boolean` | Use a system-generated stanza id. |
+
+## Intercepting incoming nodes
+
+Register a handler for inbound nodes that match a `tag` (and optional `subtype`). The handler returns a `Promise<boolean>` — return `true` when you've handled the node. `registerIncomingHandler` returns an `unregister` function.
+
+```ts
+const unregister = client.lowlevel.registerIncomingHandler({
+  tag: 'notification',
+  subtype: 'server_sync', // optional
+  prepend: false,          // run before the default handlers when true
+  handler: async (node) => {
+    console.log('got notification', node.attrs)
+    return false // false = let other handlers also process it
+  }
+})
+
+// later
+unregister()
+```
+
+`WaIncomingNodeHandlerRegistration`:
+
+```ts
+interface WaIncomingNodeHandlerRegistration {
+  tag: string
+  subtype?: string
+  handler: (node: BinaryNode) => Promise<boolean>
+  prepend?: boolean
+}
+```
+
+You can also remove a registration explicitly:
+
+```ts
+client.lowlevel.unregisterIncomingHandler(registration) // returns boolean
+```
+
+## Filtering inbound stanzas
+
+A **stanza filter** runs before the typed handlers. Return `true` to **drop** a stanza entirely. zapo still sends the appropriate ack for `message`/`receipt`/`notification`, so the server stops re-delivering it.
+
+```ts
+const unregister = client.lowlevel.registerIncomingStanzaFilter((node) => {
+  // Drop everything from a noisy JID
+  return node.attrs.from === 'spam@s.whatsapp.net'
+})
+```
+
+| Method | Signature |
+| --- | --- |
+| `sendNode` | `(node: BinaryNode) => Promise<void>` |
+| `query` | `(node, timeoutMs?, options?) => Promise<BinaryNode>` |
+| `registerIncomingHandler` | `(registration) => () => void` |
+| `unregisterIncomingHandler` | `(registration) => boolean` |
+| `registerIncomingStanzaFilter` | `(filter) => () => void` |
+
+<Tip>
+  Inbound nodes are also observable read-only via the `debug_transport_node_in` / `debug_transport_node_out` [events](/en/concepts/events#debug-events) — handy for discovering stanza shapes before you write a handler.
+</Tip>

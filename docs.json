@@ -1,126 +1,153 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "zapo",
   "colors": {
     "primary": "#16A34A",
-    "light": "#07C983",
+    "light": "#22C55E",
     "dark": "#15803D"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "navigation": {
-    "tabs": [
+    "languages": [
       {
-        "tab": "Guides",
+        "language": "en",
         "groups": [
           {
             "group": "Getting started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "en/introduction",
+              "en/installation",
+              "en/quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "en/concepts/architecture",
+              "en/concepts/authentication",
+              "en/concepts/identities",
+              "en/concepts/configuration",
+              "en/concepts/events",
+              "en/concepts/stores"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/components",
-              "essentials/reusable-snippets"
+              "en/guides/sending-messages",
+              "en/guides/media",
+              "en/guides/interactive-messages",
+              "en/guides/receiving-messages",
+              "en/guides/groups",
+              "en/guides/newsletters",
+              "en/guides/bots",
+              "en/guides/presence-status",
+              "en/guides/profile-privacy",
+              "en/guides/reconnection"
             ]
           },
           {
-            "group": "Agent ready",
+            "group": "Reference",
             "pages": [
-              "agent-ready/prompt",
-              "agent-ready/visibility",
-              "agent-ready/contextual",
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "en/reference/client",
+              "en/reference/message-types",
+              "en/reference/chat-mutations",
+              "en/reference/low-level",
+              "en/reference/stores",
+              "en/reference/jid-helpers"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "en/concepts/protocol",
+              "en/concepts/internals",
+              "en/concepts/mobile"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "language": "pt-BR",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Primeiros passos",
             "pages": [
-              "api-reference/introduction"
+              "pt-br/introduction",
+              "pt-br/installation",
+              "pt-br/quickstart"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Conceitos",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "pt-br/concepts/architecture",
+              "pt-br/concepts/authentication",
+              "pt-br/concepts/identities",
+              "pt-br/concepts/configuration",
+              "pt-br/concepts/events",
+              "pt-br/concepts/stores"
+            ]
+          },
+          {
+            "group": "Guias",
+            "pages": [
+              "pt-br/guides/sending-messages",
+              "pt-br/guides/media",
+              "pt-br/guides/interactive-messages",
+              "pt-br/guides/receiving-messages",
+              "pt-br/guides/groups",
+              "pt-br/guides/newsletters",
+              "pt-br/guides/bots",
+              "pt-br/guides/presence-status",
+              "pt-br/guides/profile-privacy",
+              "pt-br/guides/reconnection"
+            ]
+          },
+          {
+            "group": "Referência",
+            "pages": [
+              "pt-br/reference/client",
+              "pt-br/reference/message-types",
+              "pt-br/reference/chat-mutations",
+              "pt-br/reference/low-level",
+              "pt-br/reference/stores",
+              "pt-br/reference/jid-helpers"
+            ]
+          },
+          {
+            "group": "Avançado",
+            "pages": [
+              "pt-br/concepts/protocol",
+              "pt-br/concepts/internals",
+              "pt-br/concepts/mobile"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
+    ]
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/zapo-light.png",
+    "dark": "/logo/zapo.png"
   },
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "label": "Sponsor",
+        "href": "https://github.com/sponsors/vinikjkkj"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "npm",
+      "href": "https://www.npmjs.com/package/zapo-js"
     }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/vinikjkkj"
     }
   }
 }

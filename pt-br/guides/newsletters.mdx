@@ -1,0 +1,126 @@
+---
+title: "Newsletters (canais)"
+description: "Crie, descubra, siga, publique e administre canais do WhatsApp."
+icon: "newspaper"
+---
+
+Newsletters — os **canais** do WhatsApp — ficam em `client.newsletter` ([`WaNewsletterCoordinator`](/pt-br/reference/client#newsletter)). O coordinator combina três conjuntos de operações: **descoberta**, **administração** e **mensagens**. Os JIDs de newsletter terminam em `@newsletter`.
+
+## Descoberta {#discovery}
+
+```ts
+// Buscar metadados por JID ou código de convite
+const meta = await client.newsletter.fetch('1234567890@newsletter')
+const byInvite = await client.newsletter.fetchByInvite('AbCdEf')
+
+// Canais que a conta segue
+const subscribed = await client.newsletter.listSubscribed()
+
+// Pesquisar no diretório público
+const results = await client.newsletter.searchDirectory({ /* text, categories */ })
+
+// Recomendações e canais similares
+const recommended = await client.newsletter.fetchRecommended()
+const similar = await client.newsletter.fetchSimilar(newsletterJid)
+```
+
+## Seguindo {#following}
+
+```ts
+await client.newsletter.follow(newsletterJid)
+await client.newsletter.unfollow(newsletterJid)
+await client.newsletter.mute({ newsletterJid, muted: true })
+```
+
+## Publicando {#posting}
+
+O `send` recebe a mesma [union de conteúdo](/pt-br/guides/sending-messages#the-content-union) de uma mensagem normal — texto, mídia, enquetes e assim por diante:
+
+```ts
+const result = await client.newsletter.send(newsletterJid, 'Hello, subscribers!')
+
+// Editar uma mensagem publicada
+await client.newsletter.editMessage(newsletterJid, result.stanzaId, 'Edited')
+
+// Revogá-la
+await client.newsletter.revoke({ newsletterJid, messageId: result.stanzaId })
+```
+
+### Reações e votos em enquetes {#reactions--poll-votes}
+
+```ts
+await client.newsletter.react({ newsletterJid, messageServerId, reaction: '🔥' })
+await client.newsletter.votePoll({ /* WaNewsletterVotePollInput */ })
+await client.newsletter.sendViewReceipt({ /* WaNewsletterViewReceiptInput */ })
+```
+
+### Lendo mensagens {#reading-messages}
+
+```ts
+const page = await client.newsletter.fetchMessages({
+  newsletterJid,
+  count: 50
+})
+
+// Edições / reações / atualizações de enquete desde um ponto
+const updates = await client.newsletter.fetchMessageUpdates({
+  newsletterJid,
+  count: 50,
+  since: someTimestamp
+})
+
+// Assinatura de atualizações ao vivo
+const { durationSeconds } = await client.newsletter.subscribeLiveUpdates(newsletterJid)
+```
+
+## Administração {#administration}
+
+Para canais que a conta possui:
+
+```ts
+// Criar um canal
+const created = await client.newsletter.create({ name: 'My channel', description: '...' })
+
+// Atualizar campos editáveis (nome / descrição / foto)
+await client.newsletter.update(newsletterJid, { name: 'Renamed' })
+
+// Excluir
+await client.newsletter.delete(newsletterJid)
+
+// Visões de admin
+const adminInfo = await client.newsletter.fetchAdminInfo(newsletterJid)
+const followers = await client.newsletter.fetchFollowers(newsletterJid)
+const insights = await client.newsletter.fetchInsights(newsletterJid, metrics)
+```
+
+### Admins e propriedade {#admins--ownership}
+
+```ts
+await client.newsletter.createAdminInvite({ /* WaNewsletterAdminInviteInput */ })
+await client.newsletter.changeOwner({ /* ... */ })
+await client.newsletter.demoteAdmin({ /* ... */ })
+```
+
+### Votantes de enquetes e quem reagiu {#poll-voters--reaction-senders}
+
+```ts
+const voters = await client.newsletter.fetchPollVoters({
+  newsletterJid,
+  messageServerId,
+  voteHash
+})
+
+const reactors = await client.newsletter.fetchMessageReactionSenders({
+  newsletterJid,
+  messageServerId
+})
+```
+
+## Eventos {#events}
+
+A atividade de newsletter chega em `newsletter`, e edições/reações/atualizações de enquete em `newsletter_message_update`:
+
+```ts
+client.on('newsletter', (event) => console.log(event))
+client.on('newsletter_message_update', (event) => console.log(event))
+```

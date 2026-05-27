@@ -1,0 +1,148 @@
+---
+title: "Receiving messages"
+description: "Parse incoming message events, extract text, send receipts, and handle addons."
+icon: "inbox"
+---
+
+Incoming messages arrive on the `message` event as a `WaIncomingMessageEvent`.
+
+```ts
+import type { WaIncomingMessageEvent } from 'zapo-js'
+
+client.on('message', (event: WaIncomingMessageEvent) => {
+  // ...
+})
+```
+
+## The event payload
+
+Key fields on `WaIncomingMessageEvent`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `message` | `Proto.IMessage` | The decrypted message content. |
+| `chatJid` | `string` | The conversation JID (group or 1:1). |
+| `senderJid` | `string` | Who sent it. |
+| `stanzaId` | `string` | The message id. |
+| `timestampSeconds` | `number` | Server timestamp (unix seconds). |
+| `pushName` | `string` | The sender's display name. |
+| `isGroupChat` | `boolean` | True for group messages. |
+| `isBroadcastChat` | `boolean` | True for broadcast/status. |
+| `isNewsletterChat` | `boolean` | True for newsletter messages. |
+| `isSender` | `boolean` | True when the message was sent by this account. |
+
+<Note>
+  You also receive your **own** outgoing messages here (multi-device sync), flagged with `isSender: true`. Filter them out if you only want inbound traffic.
+</Note>
+
+## Extracting text
+
+A message's text lives in different fields depending on its type. A small helper covers the common cases:
+
+```ts
+function extractText(message?: Proto.IMessage | null): string | undefined {
+  if (!message) return undefined
+  return (
+    message.conversation ??
+    message.extendedTextMessage?.text ??
+    message.imageMessage?.caption ??
+    message.videoMessage?.caption ??
+    undefined
+  )
+}
+
+client.on('message', (event) => {
+  const text = extractText(event.message)
+  if (text) console.log(`${event.pushName}: ${text}`)
+})
+```
+
+## Identifying the message type
+
+`message` is a protobuf union — inspect which field is set:
+
+```ts
+client.on('message', (event) => {
+  const m = event.message
+  if (!m) return
+
+  if (m.conversation || m.extendedTextMessage) console.log('text')
+  else if (m.imageMessage) console.log('image')
+  else if (m.videoMessage) console.log('video')
+  else if (m.audioMessage) console.log('audio')
+  else if (m.documentMessage) console.log('document')
+  else if (m.stickerMessage) console.log('sticker')
+  else if (m.pollCreationMessage) console.log('poll')
+  else if (m.locationMessage) console.log('location')
+})
+```
+
+To download media from an image/video/audio/document message, see [Media → downloading](/en/guides/media#downloading-incoming-media).
+
+## Sending receipts
+
+`client.message.sendReceipt` marks messages as received/read/played. The easiest form takes the event(s) directly:
+
+```ts
+client.on('message', async (event) => {
+  // mark as read
+  await client.message.sendReceipt(event, { type: 'read' })
+})
+```
+
+You can also pass an array of events, or address it manually by JID and ids:
+
+```ts
+await client.message.sendReceipt(chatJid, [id1, id2], { type: 'read' })
+```
+
+## Addons
+
+**Addons** are encrypted follow-ups attached to a message: reactions, poll votes, and comments. They surface as the `message_addon` event.
+
+### Automatic decryption
+
+Set `addons.autoDecrypt` on the client and addons are decrypted and emitted for you:
+
+```ts
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  addons: { autoDecrypt: true }
+}, logger)
+
+client.on('message_addon', (event) => {
+  console.log('addon:', event)
+})
+```
+
+### Manual decryption
+
+If you leave `autoDecrypt` off, decrypt on demand from the originating message event:
+
+```ts
+client.on('message', async (event) => {
+  await client.message.tryDecryptAddon(event)
+})
+```
+
+## Protocol messages
+
+Edits, revokes, and other protocol-level updates arrive on `message_protocol` as `WaIncomingProtocolMessageEvent` (it extends the message event with a `protocolMessage` field):
+
+```ts
+client.on('message_protocol', (event) => {
+  console.log(event.protocolMessage)
+})
+```
+
+## Receipts (inbound)
+
+When others read or play your messages, you receive `receipt` events:
+
+```ts
+client.on('receipt', (event) => {
+  // event.status: 'delivered' | 'read' | 'played' | 'inactive'
+  console.log(event.status, 'for', event.stanzaId)
+})
+```

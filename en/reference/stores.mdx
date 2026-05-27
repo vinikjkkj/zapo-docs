@@ -1,0 +1,134 @@
+---
+title: "Stores reference"
+description: "Config options for each storage backend package."
+icon: "database"
+---
+
+Each backend package exports a `create*Store` factory you pass into a `backends` entry of [`createStore`](/en/concepts/stores). All backends implement the same per-domain store contracts, so switching backends is a config change, not a code change.
+
+## SQLite
+
+`@zapo-js/store-sqlite` — `createSqliteStore(config)`.
+
+```ts
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const sqlite = createSqliteStore({
+  path: '.auth/state.sqlite',
+  driver: 'auto'
+})
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Database file path. **Required.** |
+| `driver` | `WaSqliteDriver` | Native driver selection (`'auto'`, …). |
+| `pragmas` | `Record<string, string \| number>` | SQLite pragmas. |
+| `tableNames` | `WaSqliteTableNameOverrides` | Override table names. |
+| `batchSizes` | `WaSqliteBatchSizeSelection` | Tune batch sizes. |
+| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | Cache TTLs. |
+
+Requires the `better-sqlite3` peer dependency.
+
+## PostgreSQL
+
+`@zapo-js/store-postgres` — `createPostgresStore(config)`.
+
+```ts
+import { createPostgresStore } from '@zapo-js/store-postgres'
+
+const postgres = createPostgresStore({
+  pool: { connectionString: process.env.DATABASE_URL },
+  tablePrefix: 'wa_'
+})
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `pool` | `Pool \| PoolConfig` | An existing `pg` pool or a pool config. **Required.** |
+| `tablePrefix` | `string` | Prefix for created tables. |
+| `cacheTtlMs` | object | Cache TTLs (same shape as SQLite). |
+| `cleanup` | `{ intervalMs?, onError? }` | Background cleanup poller. |
+
+Also exports `createPgPool` and `ensurePgMigrations`. Requires the `pg` peer dependency.
+
+## MySQL
+
+`@zapo-js/store-mysql` — `createMysqlStore(config)`.
+
+```ts
+import { createMysqlStore } from '@zapo-js/store-mysql'
+
+const mysql = createMysqlStore({
+  pool: { uri: process.env.MYSQL_URL },
+  tablePrefix: 'wa_'
+})
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `pool` | `Pool \| PoolOptions` | A `mysql2` pool or options. **Required.** |
+| `tablePrefix` | `string` | Prefix for created tables. |
+| `cacheTtlMs` | object | Cache TTLs. |
+| `cleanup` | `{ enabled?, intervalMs?, onError? }` | Background cleanup poller. |
+
+Also exports `createMysqlPool` and `ensureMysqlMigrations`. Requires the `mysql2` peer dependency.
+
+## Redis
+
+`@zapo-js/store-redis` — `createRedisStore(config)`.
+
+```ts
+import { createRedisStore } from '@zapo-js/store-redis'
+
+const redis = createRedisStore({
+  redis: { host: '127.0.0.1', port: 6379 },
+  keyPrefix: 'wa:'
+})
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `redis` | `Redis \| RedisOptions` | An `ioredis` instance or options. **Required.** |
+| `keyPrefix` | `string` | Prefix for all keys. |
+| `cacheTtlMs` | object | Cache TTLs. |
+
+Requires the `ioredis` peer dependency.
+
+## MongoDB
+
+`@zapo-js/store-mongo` — `createMongoStore(config)`.
+
+```ts
+import { createMongoStore } from '@zapo-js/store-mongo'
+
+const mongo = createMongoStore({
+  db: { uri: process.env.MONGO_URL, database: 'zapo' },
+  collectionPrefix: 'wa_'
+})
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `db` | `Db \| { uri, database, options? }` | A `mongodb` `Db` or connection info. **Required.** |
+| `collectionPrefix` | `string` | Prefix for created collections. |
+| `cacheTtlMs` | object | Cache TTLs. |
+
+Requires the `mongodb` peer dependency.
+
+## Mixing backends
+
+`createStore` lets each domain choose a backend by name, so you can combine them:
+
+```ts
+createStore({
+  backends: { redis, postgres },
+  providers: {
+    auth: 'redis', signal: 'redis', senderKey: 'redis',
+    appState: 'redis', privacyToken: 'redis',
+    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+  }
+})
+```
+
+See [Stores](/en/concepts/stores) for the full list of domains.

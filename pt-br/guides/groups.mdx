@@ -1,0 +1,120 @@
+---
+title: "Grupos e comunidades"
+description: "Crie e gerencie grupos, participantes, convites e comunidades."
+icon: "users"
+---
+
+As operações de grupo ficam em `client.group` ([`WaGroupCoordinator`](/pt-br/reference/client#group)). Os JIDs de grupo terminam em `@g.us`.
+
+## Consultando grupos {#querying-groups}
+
+```ts
+// Todos os grupos a que a conta pertence
+const groups = await client.group.queryAllGroups()
+
+// Os metadados de um grupo
+const meta = await client.group.queryGroupMetadata('123456@g.us')
+console.log(meta.subject, meta.participants.length)
+```
+
+`WaGroupMetadata` inclui o assunto, o dono, a lista de participantes (`WaGroupParticipant[]` com `isAdmin` / `isSuperAdmin`) e o conjunto completo de flags do grupo (`announce`, `restrict`, `ephemeral`, flags de comunidade, …).
+
+## Criando um grupo {#creating-a-group}
+
+```ts
+await client.group.createGroup('My group', [
+  '5511999999999@s.whatsapp.net',
+  '5511888888888@s.whatsapp.net'
+])
+```
+
+## Gerenciando participantes {#managing-participants}
+
+```ts
+const jids = ['5511999999999@s.whatsapp.net']
+
+await client.group.addParticipants(groupJid, jids)
+await client.group.removeParticipants(groupJid, jids)
+await client.group.promoteParticipants(groupJid, jids) // tornar admin
+await client.group.demoteParticipants(groupJid, jids)  // remover admin
+```
+
+## Configurações do grupo {#group-settings}
+
+```ts
+await client.group.setSubject(groupJid, 'New name')
+await client.group.setDescription(groupJid, 'A description')   // null para limpar
+await client.group.setSetting(groupJid, 'announce', true)      // mensagens só de admins
+await client.group.setSetting(groupJid, 'restrict', true)      // editar info só por admins
+```
+
+## Convites {#invites}
+
+```ts
+// Resolver as informações de um código de convite
+const info = await client.group.queryGroupInviteInfo('AbCdEf...')
+
+// Entrar via código de convite
+await client.group.joinGroupViaInvite('AbCdEf...')
+
+// Revogar o link de convite atual
+await client.group.revokeInvite(groupJid)
+```
+
+## Saindo {#leaving}
+
+```ts
+await client.group.leaveGroup([groupJid]) // em lote — aceita múltiplos
+```
+
+## Aprovação de entrada {#membership-approval}
+
+Para grupos que exigem aprovação do admin para entrar:
+
+```ts
+const requests = await client.group.queryMembershipApprovalRequests(groupJid)
+
+await client.group.approveMembershipRequests(groupJid, [requesterJid])
+await client.group.rejectMembershipRequests(groupJid, [requesterJid])
+
+// Cancelar sua própria solicitação pendente
+await client.group.cancelMembershipRequests(groupJid, [myJid])
+```
+
+## Comunidades {#communities}
+
+Comunidades são grupos-pai que vinculam subgrupos:
+
+```ts
+// Criar uma comunidade
+const community = await client.group.createCommunity('My community')
+
+// Vincular / desvincular grupos existentes como subgrupos
+await client.group.linkSubGroups(community.jid, [subGroupJidA, subGroupJidB])
+await client.group.unlinkSubGroups(community.jid, [subGroupJidA], {
+  removeOrphanedMembers: true
+})
+
+// Listar subgrupos (e o grupo de avisos)
+const subs = await client.group.fetchSubGroups(community.jid)
+
+// Entrar em um subgrupo vinculado ao qual você ainda não pertence
+await client.group.joinLinkedGroup(community.jid, subGroupJid)
+
+// Participantes mesclados de toda a comunidade
+const everyone = await client.group.queryLinkedGroupsParticipants(community.jid)
+```
+
+Outras operações de comunidade incluem `deactivateCommunity`, `transferCommunityOwnership` e `fetchSubgroupSuggestions`.
+
+## Eventos de grupo {#group-events}
+
+Mudanças feitas por outras pessoas (assunto, participantes, configurações) chegam no evento `group`:
+
+```ts
+client.on('group', (event) => {
+  console.log(event.action, 'in', event.groupJid)
+})
+```
+
+Veja [Eventos](/pt-br/concepts/events#groups-newsletters--profiles) para o payload completo.

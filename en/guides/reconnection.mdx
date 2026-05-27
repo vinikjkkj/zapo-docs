@@ -1,0 +1,97 @@
+---
+title: "Reconnection"
+description: "zapo does not auto-reconnect — here is the pattern to handle dropped connections."
+icon: "arrows-rotate"
+---
+
+<Warning>
+  `WaClient` does **not** reconnect automatically. This is a deliberate design choice: reconnection policy (backoff, max retries, alerting) belongs to your application. You listen for `connection: close` and decide what to do.
+</Warning>
+
+## The connection event
+
+`connection` is a discriminated union on `status`:
+
+```ts
+client.on('connection', (event) => {
+  if (event.status === 'open') {
+    console.log('connected', { isNewLogin: event.isNewLogin })
+    return
+  }
+
+  // status === 'close'
+  console.log('disconnected', {
+    reason: event.reason,
+    code: event.code,
+    isLogout: event.isLogout
+  })
+})
+```
+
+On `close`:
+
+- **`isLogout: true`** — the device was unlinked (server-side logout). Do **not** reconnect; the credentials are gone and you must re-pair.
+- **`isLogout: false`** — a transient drop. Safe to reconnect with the stored credentials.
+
+## A reconnection loop with backoff
+
+```ts
+const MAX_ATTEMPTS = 10
+
+async function connectWithRetry(client: WaClient) {
+  let attempt = 0
+
+  client.on('connection', (event) => {
+    if (event.status === 'open') {
+      attempt = 0 // reset backoff on a healthy connection
+      return
+    }
+    if (event.isLogout) {
+      console.error('logged out — re-pairing required')
+      return
+    }
+    void reconnect()
+  })
+
+  async function reconnect() {
+    if (attempt >= MAX_ATTEMPTS) {
+      console.error('giving up after', attempt, 'attempts')
+      return
+    }
+    const delayMs = Math.min(30_000, 1_000 * 2 ** attempt)
+    attempt += 1
+    console.log(`reconnecting in ${delayMs}ms (attempt ${attempt})`)
+    await new Promise((r) => setTimeout(r, delayMs))
+    try {
+      await client.connect()
+    } catch (err) {
+      console.error('reconnect failed', err)
+      void reconnect()
+    }
+  }
+
+  await client.connect()
+}
+```
+
+## After reconnecting
+
+Some state is **connection-scoped** and must be re-established after a successful reconnect:
+
+- **Presence subscriptions** — re-`subscribe()` to any contacts you were watching ([Presence](/en/guides/presence-status#subscribing-to-a-contact)).
+- **Newsletter live updates** — re-`subscribeLiveUpdates()` if you rely on them.
+
+Persisted state (credentials, Signal sessions, app-state) is restored from the [store](/en/concepts/stores) automatically — you do **not** re-pair on a normal reconnect.
+
+## Graceful shutdown
+
+Call `disconnect()` for a clean shutdown that keeps credentials so you can resume later:
+
+```ts
+process.on('SIGINT', async () => {
+  await client.disconnect()
+  process.exit(0)
+})
+```
+
+This flushes pending write-behind data and closes the socket without unlinking the device.

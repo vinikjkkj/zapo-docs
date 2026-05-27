@@ -1,0 +1,89 @@
+---
+title: "O protocolo do WhatsApp"
+description: "Um tour pelo protocolo multi-dispositivo do WhatsApp — transporte, stanzas, criptografia — e como o zapo implementa cada camada."
+icon: "diagram-project"
+---
+
+O `zapo` é uma implementação independente e feita do zero do protocolo multi-dispositivo do WhatsApp. Esta página explica como o protocolo se parece na rede (on the wire) e aponta para os módulos onde o `zapo` cuida de cada camada. Você não precisa de nada disso para usar a biblioteca — está aqui para os curiosos e para contribuidores.
+
+## As camadas {#the-layers}
+
+Do socket para cima:
+
+```
+   Your code  ─►  coordinators  ─►  message pipeline
+                                          │
+                              Signal / sender-key encryption
+                                          │
+                                  binary node codec
+                                          │
+                                   Noise (encrypted)
+                                          │
+                              WebSocket (web) / TCP (mobile)
+                                          ▼
+                              WhatsApp servers
+```
+
+## Transporte e o handshake Noise {#transport--the-noise-handshake}
+
+O WhatsApp não fala WebSocket puro — cada byte após o connect é envolvido em uma sessão do **protocolo Noise** (um handshake estilo `XX` usando Curve25519, AES-GCM e SHA-256). O handshake autentica o servidor, negocia as chaves de sessão e, a partir daí, cada frame é criptografado com AES-GCM usando um nonce contador.
+
+No `zapo`:
+
+- `src/transport/WaComms.ts` é dono do ciclo de vida do socket + Noise.
+- `src/transport/noise/` implementa a máquina de estados do handshake (`WaNoiseHandshake`), o wrapper do socket criptografado e o **client payload** de login/registro (metadados do dispositivo, versão do app, locale).
+- O socket em si é plugável: `src/transport/WaWebSocket.ts` para o WebSocket do navegador/Node (modo companion), `src/transport/node/WaMobileTcpSocket.ts` para o transporte TCP bruto ([modo mobile](/pt-br/concepts/mobile)).
+
+## Stanzas: o codec de binary node {#stanzas-the-binary-node-codec}
+
+Dentro do túnel Noise, o WhatsApp fala uma forma binária compacta de **stanzas** semelhantes a XMPP. O `zapo` modela cada stanza como um [`BinaryNode`](/pt-br/reference/low-level#binary-nodes):
+
+```ts
+interface BinaryNode {
+  tag: string
+  attrs: Record<string, string>
+  content?: Uint8Array | string | readonly BinaryNode[]
+}
+```
+
+O formato de rede usa um **dicionário de tokens** (strings comuns como `s.whatsapp.net` são bytes únicos), empacotamento em nibble/hex para JIDs e números, e compressão opcional. O codec do `zapo` fica em `src/transport/binary/` (`encoder.ts`, `decoder.ts`, `tokens.ts`) e é escrito para **zero-copy** — o decoder retorna views `subarray` sobre os bytes recebidos em vez de copiá-los.
+
+## Requests e responses (IQ) {#requests--responses-iq}
+
+Muitas operações são stanzas **IQ** de request/response (`<iq type="get|set">` → `<iq type="result|error">`), correlacionadas por um `id` de stanza. `src/transport/node/WaNodeOrchestrator.ts` atribui ids, rastreia queries em andamento em um map e resolve a response correspondente (ou expira por timeout). Os coordinators tipados são construídos sobre isso; você pode acessá-lo diretamente via [`client.lowlevel.query`](/pt-br/reference/low-level#issuing-an-iq).
+
+## Criptografia ponta a ponta (Signal) {#end-to-end-encryption-signal}
+
+Os corpos das mensagens são criptografados ponta a ponta com o **protocolo Signal**. O `zapo` o implementa em `src/signal/` sobre as primitivas em `src/crypto/`:
+
+- **Identidade e prekeys** — cada dispositivo tem uma chave de identidade de longo prazo e um conjunto de prekeys de uso único. Estabelecer uma sessão com um novo peer busca o prekey bundle dele.
+- **Chats 1:1** — uma sessão Double-Ratchet criptografa cada mensagem. Na rede, o envelope é `msg` (uma sessão estabelecida) ou `pkmsg` (uma prekey message que também inicializa a sessão).
+- **Grupos** — um esquema de **sender-key** (`skmsg`): cada membro distribui uma sender key uma vez, e então criptografa as mensagens do grupo simetricamente (AES-CBC) com ela. As distribution messages acompanham para os membros que ainda não têm sua sender key.
+
+O discriminador de envelope (`'msg' | 'pkmsg' | 'skmsg'`) aparece em todo lugar como o tipo de mensagem criptografada.
+
+## Multi-dispositivo e fanout {#multi-device--fanout}
+
+O WhatsApp é **multi-dispositivo**: uma conta é um conjunto de dispositivos, e uma mensagem deve ser criptografada **uma vez por dispositivo destinatário**. O `zapo` resolve a lista de dispositivos para cada destinatário, estabelece sessões Signal conforme necessário e faz o fanout do ciphertext em uma única stanza `<message>`. Os destinatários são endereçados pelo JID de número de telefone ou por [LID](/pt-br/concepts/identities), com o `addressing_mode` escolhido a partir da composição do grupo. Seus próprios outros dispositivos recebem uma cópia `deviceSentMessage` para que todos os seus dispositivos fiquem sincronizados.
+
+## Sincronização de app-state {#app-state-sync}
+
+Configurações que precisam parecer iguais em todos os dispositivos — silenciar, fixar, arquivar, estado de leitura, labels, contatos — **não** são mensagens. Elas sincronizam por um canal **app-state** separado: **mutations** criptografadas e com MAC, organizadas em coleções e reconciliadas com um LT-hash para que os dispositivos convirjam. O `zapo` implementa isso em `src/appstate/` (`WaAppStateSyncClient` + `WaAppStateCrypto`) e o expõe através de [`client.chat`](/pt-br/reference/chat-mutations) e do evento [`mutation`](/pt-br/concepts/events#state-history--mex).
+
+## Mídia {#media}
+
+A mídia não é enviada inline. Os bytes são criptografados com uma media key por mensagem (AES-CBC + HMAC) e enviados a uma CDN do WhatsApp; a stanza carrega a URL, as chaves e os digests. O destinatário faz o download e descriptografa. O `zapo` cuida do upload/download em `src/media/` — veja o [guia de mídia](/pt-br/guides/media).
+
+## MEX (GraphQL) {#mex-graphql}
+
+Superfícies mais novas — newsletters, partes do business, algumas notificações — usam o **MEX**, uma camada de GraphQL-sobre-IQ. O `zapo` envolve essas queries nos coordinators relevantes (por exemplo, [`client.newsletter`](/pt-br/guides/newsletters)); o peer opcional [`argo-codec`](/pt-br/installation#optional-peer-dependencies) decodifica certas respostas MEX.
+
+## Escolhas de design {#design-choices}
+
+O `zapo` faz escolhas deliberadas e informadas pelo protocolo:
+
+- **`index-first`** — o comportamento é validado contra o WhatsApp Web antes de ser implementado.
+- **`performance-first`** — `Uint8Array` em todo lugar, zero-copy nos caminhos quentes, estruturas em memória limitadas. A criptografia é **síncrona** exceto pelas operações de curva elíptica (que são assíncronas) — veja [internals](/pt-br/concepts/internals#crypto).
+- **I/O `async-first`** — rede e I/O são assíncronos; os caminhos quentes de decode/encode evitam alocação desnecessária.
+
+Para saber como essas camadas se conectam ao client, veja [Arquitetura em profundidade](/pt-br/concepts/internals).

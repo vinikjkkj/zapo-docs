@@ -1,0 +1,138 @@
+---
+title: "Stores"
+description: "Persista o estado de auth e do Signal com uma store plugável e por domínio."
+icon: "database"
+---
+
+Uma **store** é onde o `zapo` persiste tudo o que uma sessão precisa para sobreviver a um reinício: credenciais de pareamento, estado do protocolo Signal, coleções de app-state e, opcionalmente, seu arquivo de mensagens/threads/contatos. Você constrói uma com `createStore` e a passa para o client.
+
+```ts
+import { createStore } from 'zapo-js'
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const store = createStore({
+  backends: {
+    sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' })
+  },
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    messages: 'sqlite',
+    threads: 'sqlite',
+    contacts: 'sqlite',
+    privacyToken: 'sqlite'
+  }
+})
+```
+
+## O modelo {#the-model}
+
+O `createStore` separa **backends** (onde os dados ficam) de **providers** (qual backend cada domínio usa). Isso permite misturar backends — por exemplo, manter o estado quente do signal no Redis enquanto arquiva mensagens no Postgres.
+
+```ts
+createStore({
+  backends: {
+    redis: createRedisStore({ redis }),
+    postgres: createPostgresStore({ pool })
+  },
+  providers: {
+    auth: 'redis',
+    signal: 'redis',
+    senderKey: 'redis',
+    appState: 'redis',
+    privacyToken: 'redis',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
+  }
+})
+```
+
+Qualquer domínio que você omitir usa por padrão o backend **memory** embutido — nenhuma entrada em `backends` é necessária.
+
+## Domínios persistidos {#persisted-domains}
+
+Estes mantêm o estado necessário para manter uma sessão viva. Apoie-os com um backend durável em produção.
+
+| Domínio | Mantém |
+| --- | --- |
+| `auth` | Credenciais de pareamento e identidade do dispositivo. **Persista isto.** |
+| `signal` | Sessões do Signal (guarda-chuva sobre as sub-stores abaixo). |
+| `preKey` | Pre-keys do Signal. |
+| `session` | Sessões do Signal. |
+| `identity` | Chaves de identidade do Signal. |
+| `senderKey` | Sender keys de grupo. |
+| `appState` | Coleções de app-state (silenciar, fixar, ler, arquivar, …). |
+| `privacyToken` | Tokens de contato confiável / privacidade. |
+
+## Domínios de arquivo opcionais {#optional-archive-domains}
+
+Estes aceitam `'none'` para desabilitar a persistência por completo:
+
+| Domínio | Mantém |
+| --- | --- |
+| `messages` | Arquivo de mensagens (`B \| 'memory' \| 'none'`). |
+| `threads` | Metadados de thread. |
+| `contacts` | Diretório de contatos. |
+
+## Domínios de cache {#cache-domains}
+
+Configurados em `cacheProviders` e usam por padrão memória limitada com TTLs:
+
+| Domínio | Mantém |
+| --- | --- |
+| `retry` | Fila de retentativa de mensagens de saída. |
+| `groupMetadata` | Cache de metadados de grupo. |
+| `deviceList` | Cache da lista de dispositivos. |
+| `messageSecret` | Cache de message-secret para addons. |
+
+```ts
+createStore({
+  backends: { sqlite },
+  providers: { /* ... */ },
+  cacheProviders: { groupMetadata: 'sqlite', deviceList: 'sqlite' },
+  memory: {
+    cacheTtlMs: { groupMetadataMs: 600_000, deviceListMs: 600_000 }
+  }
+})
+```
+
+## Backends {#backends}
+
+<CardGroup cols={2}>
+  <Card title="SQLite" icon="database" href="/pt-br/reference/stores#sqlite">
+    `@zapo-js/store-sqlite` — local, processo único.
+  </Card>
+  <Card title="PostgreSQL" icon="elephant" href="/pt-br/reference/stores#postgresql">
+    `@zapo-js/store-postgres` — distribuído, relacional.
+  </Card>
+  <Card title="MySQL" icon="dolphin" href="/pt-br/reference/stores#mysql">
+    `@zapo-js/store-mysql` — distribuído, relacional.
+  </Card>
+  <Card title="Redis" icon="bolt" href="/pt-br/reference/stores#redis">
+    `@zapo-js/store-redis` — cache + persistência.
+  </Card>
+  <Card title="MongoDB" icon="leaf" href="/pt-br/reference/stores#mongodb">
+    `@zapo-js/store-mongo` — document store.
+  </Card>
+  <Card title="Memory" icon="memory">
+    Embutido. Ótimo para testes; não sobrevive a um reinício.
+  </Card>
+</CardGroup>
+
+Veja a [referência de stores](/pt-br/reference/stores) para as opções de config de cada backend.
+
+## Apenas memória (testes) {#memory-only-tests}
+
+Para experimentos rápidos ou testes, omita `backends` por completo — cada domínio recorre à memória:
+
+```ts
+const store = createStore({})
+const client = new WaClient({ store, sessionId: 'test' }, logger)
+```
+
+<Warning>
+  Uma store apenas em memória perde todas as credenciais ao reiniciar, então você pareia novamente a cada boot. Use um backend durável para qualquer coisa de longa duração.
+</Warning>

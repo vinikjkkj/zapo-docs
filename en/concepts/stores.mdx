@@ -1,0 +1,138 @@
+---
+title: "Stores"
+description: "Persist auth and Signal state with a pluggable, per-domain store."
+icon: "database"
+---
+
+A **store** is where `zapo` persists everything a session needs to survive a restart: pairing credentials, Signal protocol state, app-state collections, and optionally your message/thread/contact archive. You build one with `createStore` and pass it to the client.
+
+```ts
+import { createStore } from 'zapo-js'
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const store = createStore({
+  backends: {
+    sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' })
+  },
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    messages: 'sqlite',
+    threads: 'sqlite',
+    contacts: 'sqlite',
+    privacyToken: 'sqlite'
+  }
+})
+```
+
+## The model
+
+`createStore` separates **backends** (where data lives) from **providers** (which backend each domain uses). This lets you mix backends — e.g. keep hot signal state in Redis while archiving messages in Postgres.
+
+```ts
+createStore({
+  backends: {
+    redis: createRedisStore({ redis }),
+    postgres: createPostgresStore({ pool })
+  },
+  providers: {
+    auth: 'redis',
+    signal: 'redis',
+    senderKey: 'redis',
+    appState: 'redis',
+    privacyToken: 'redis',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
+  }
+})
+```
+
+Any domain you omit defaults to the built-in **memory** backend — no `backends` entry required.
+
+## Persisted domains
+
+These hold the state required to keep a session alive. Back them with a durable backend in production.
+
+| Domain | Holds |
+| --- | --- |
+| `auth` | Pairing credentials and device identity. **Persist this.** |
+| `signal` | Signal sessions (umbrella over the sub-stores below). |
+| `preKey` | Signal pre-keys. |
+| `session` | Signal sessions. |
+| `identity` | Signal identity keys. |
+| `senderKey` | Group sender keys. |
+| `appState` | App-state collections (mute, pin, read, archive, …). |
+| `privacyToken` | Trusted-contact / privacy tokens. |
+
+## Optional archive domains
+
+These accept `'none'` to disable persistence entirely:
+
+| Domain | Holds |
+| --- | --- |
+| `messages` | Message archive (`B \| 'memory' \| 'none'`). |
+| `threads` | Thread metadata. |
+| `contacts` | Contact directory. |
+
+## Cache domains
+
+Configured under `cacheProviders` and default to bounded memory with TTLs:
+
+| Domain | Holds |
+| --- | --- |
+| `retry` | Outbound message retry queue. |
+| `groupMetadata` | Group metadata cache. |
+| `deviceList` | Device list cache. |
+| `messageSecret` | Message-secret cache for addons. |
+
+```ts
+createStore({
+  backends: { sqlite },
+  providers: { /* ... */ },
+  cacheProviders: { groupMetadata: 'sqlite', deviceList: 'sqlite' },
+  memory: {
+    cacheTtlMs: { groupMetadataMs: 600_000, deviceListMs: 600_000 }
+  }
+})
+```
+
+## Backends
+
+<CardGroup cols={2}>
+  <Card title="SQLite" icon="database" href="/en/reference/stores#sqlite">
+    `@zapo-js/store-sqlite` — local, single-process.
+  </Card>
+  <Card title="PostgreSQL" icon="elephant" href="/en/reference/stores#postgresql">
+    `@zapo-js/store-postgres` — distributed, relational.
+  </Card>
+  <Card title="MySQL" icon="dolphin" href="/en/reference/stores#mysql">
+    `@zapo-js/store-mysql` — distributed, relational.
+  </Card>
+  <Card title="Redis" icon="bolt" href="/en/reference/stores#redis">
+    `@zapo-js/store-redis` — cache + persistence.
+  </Card>
+  <Card title="MongoDB" icon="leaf" href="/en/reference/stores#mongodb">
+    `@zapo-js/store-mongo` — document store.
+  </Card>
+  <Card title="Memory" icon="memory">
+    Built in. Great for tests; does not survive a restart.
+  </Card>
+</CardGroup>
+
+See the [stores reference](/en/reference/stores) for each backend's config options.
+
+## Memory-only (tests)
+
+For quick experiments or tests, omit `backends` entirely — every domain falls back to memory:
+
+```ts
+const store = createStore({})
+const client = new WaClient({ store, sessionId: 'test' }, logger)
+```
+
+<Warning>
+  A memory-only store loses all credentials on restart, so you re-pair every boot. Use a durable backend for anything long-lived.
+</Warning>

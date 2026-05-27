@@ -1,0 +1,110 @@
+---
+title: "Eventos"
+description: "O mapa completo de eventos do client e como escutar atividades de entrada."
+icon: "bell"
+---
+
+O `WaClient` é um emissor de eventos fortemente tipado. Cada atividade de entrada — mensagens, recibos, mudanças em grupos, presença — é exposta como um evento com um payload tipado.
+
+## Escutando {#listening}
+
+```ts
+import type { WaIncomingMessageEvent } from 'zapo-js'
+
+client.on('message', (event: WaIncomingMessageEvent) => {
+  console.log(event.chatJid, event.message)
+})
+
+client.once('auth_paired', ({ credentials }) => {
+  console.log('paired', credentials.meJid)
+})
+
+const handler = (e) => { /* ... */ }
+client.on('receipt', handler)
+client.off('receipt', handler) // para de escutar
+```
+
+`on`, `once` e `off` são todos verificados por tipo contra o mapa de eventos — o tipo do payload é inferido a partir do nome do evento, então os listeners têm autocomplete completo.
+
+## Auth e conexão {#auth--connection}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `auth_qr` | `{ qr, ttlMs }` | Um QR code para renderizar no pareamento. |
+| `auth_pairing_code` | `{ code }` | Um código de pareamento de 8 dígitos foi emitido. |
+| `auth_pairing_required` | `{ forceManual }` | A sessão precisa de entrada de pareamento. |
+| `auth_paired` | `{ credentials }` | O pareamento teve sucesso. |
+| `connection` | `WaConnectionEvent` | Socket aberto ou fechado (veja abaixo). |
+
+O evento `connection` é uma union discriminada por `status`:
+
+```ts
+client.on('connection', (event) => {
+  if (event.status === 'open') {
+    console.log('online; new login?', event.isNewLogin)
+  } else {
+    console.log('closed:', event.reason, 'logout?', event.isLogout)
+  }
+})
+```
+
+Veja [Reconexão](/pt-br/guides/reconnection) para o padrão de tratamento.
+
+## Mensagens {#messages}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `message` | `WaIncomingMessageEvent` | Uma mensagem de entrada (ou enviada por você mesmo). |
+| `message_addon` | `WaIncomingAddonEvent` | Reações, votos em enquetes, comentários (addons descriptografados). |
+| `message_protocol` | `WaIncomingProtocolMessageEvent` | Mensagens de protocolo (edições, revogações, …). |
+| `message_bot_chunk` | `WaIncomingBotChunkEvent` | Chunks de resposta de bot em stream. |
+| `receipt` | `WaIncomingReceiptEvent` | Recibos de entrega / leitura / reprodução. |
+
+Veja [Recebendo mensagens](/pt-br/guides/receiving-messages) para detalhes do payload e extração de texto.
+
+## Presença e chat-state {#presence--chat-state}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `presence` | `WaIncomingPresenceEvent` | A presença de um contato mudou (disponível / visto por último). |
+| `chatstate` | `WaIncomingChatstateEvent` | Digitando / gravando / pausado. |
+| `call` | `WaIncomingCallEvent` | Sinalização de chamada de entrada. |
+
+## Grupos, newsletters e perfis {#groups-newsletters--profiles}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `group` | `WaGroupEvent` | Mudanças de criação/assunto/participante/configuração de grupo. |
+| `newsletter` | `WaIncomingNewsletterEvent` | Atividade de newsletter. |
+| `newsletter_message_update` | `WaIncomingNewsletterMessageUpdateEvent` | Edições/reações/atualizações de enquete em mensagens de newsletter. |
+| `business` | `WaBusinessEvent` | Mudanças no perfil business. |
+| `picture` | `WaPictureEvent` | Mudanças de foto de perfil/grupo. |
+
+## Estado, histórico e MEX {#state-history--mex}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `mutation` | `WaAppStateMutationEvent` | Mutation de app-state (silenciar, fixar, arquivar, …) sincronizada de outro dispositivo. |
+| `history_sync_chunk` | `WaHistorySyncChunkEvent` | Um chunk de histórico de mensagens sincronizado. |
+| `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. |
+| `mex_notification` | `WaMexNotificationEvent` | Notificações MEX (GraphQL): nome de usuário, status, mudanças de LID, capping. |
+
+## Falhas {#failures}
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `stream_failure` | `WaIncomingFailureEvent` | Uma falha em nível de stream (pode preceder uma desconexão). |
+| `stanza_error` | `WaIncomingErrorStanzaEvent` | Uma stanza de erro do servidor. |
+
+## Eventos de debug {#debug-events}
+
+Uma família de eventos `debug_*` expõe internals de baixo nível — frames brutos, nodes decodificados, erros de decode, stanzas não tratadas e erros do client. São úteis para depuração de protocolo, mas barulhentos; inscreva-se seletivamente.
+
+```ts
+client.on('debug_transport_node_in', ({ node }) => console.dir(node, { depth: null }))
+client.on('debug_client_error', ({ error }) => console.error(error))
+```
+
+<Note>
+  Os eventos de registro mobile (`mobile_registration_code`, `mobile_account_takeover_notice`) existem para o caminho de registro mobile e não fazem parte do fluxo companion padrão.
+</Note>

@@ -1,0 +1,137 @@
+---
+title: "Enviando mensagens"
+description: "Envie texto, respostas, menções e prévias de link com client.message.send."
+icon: "paper-plane"
+---
+
+Todo o conteúdo de saída passa por um único método:
+
+```ts
+client.message.send(to, content, options?): Promise<WaMessagePublishResult>
+```
+
+- **`to`** — o JID do destinatário (`5511999999999@s.whatsapp.net`, um grupo `...@g.us`, etc.). Veja [Helpers de JID](/pt-br/reference/jid-helpers) para construí-los.
+- **`content`** — uma string, um objeto de conteúdo tipado ou um `Proto.IMessage` bruto.
+- **`options`** — citação, menções, encaminhamento, visualização única, edições e mais.
+
+A promise resolve para um `WaMessagePublishResult` assim que o servidor envia o ack:
+
+```ts
+const result = await client.message.send(jid, 'Hello!')
+console.log(result.id) // o id da mensagem (id da stanza)
+```
+
+## Texto simples {#plain-text}
+
+O conteúdo mais simples é uma string:
+
+```ts
+await client.message.send(jid, 'Hello from zapo!')
+```
+
+Para mais controle, use a forma de objeto de texto — ela permite anexar context info e ajustar as prévias de link:
+
+```ts
+await client.message.send(jid, {
+  type: 'text',
+  text: 'Check this out: https://example.com',
+  linkPreview: true // busca a prévia automaticamente
+})
+```
+
+## Respondendo (citação) {#replying-quoting}
+
+Passe o evento da mensagem original (ou uma referência) como `options.quote`:
+
+```ts
+client.on('message', async (event) => {
+  await client.message.send(event.chatJid!, 'Replying to you', {
+    quote: event
+  })
+})
+```
+
+A citação é renderizada como um balão de resposta referenciando a mensagem original.
+
+## Menções {#mentions}
+
+`options.mentions` é uma lista de JIDs para marcar. Inclua o texto `@número` correspondente no corpo para que o WhatsApp renderize a menção:
+
+```ts
+await client.message.send(groupJid, {
+  type: 'text',
+  text: 'Hey @5511999999999, welcome!'
+}, {
+  mentions: ['5511999999999@s.whatsapp.net']
+})
+```
+
+## Prévias de link {#link-previews}
+
+O comportamento da prévia de link é controlado por mensagem através do campo `linkPreview` do objeto de texto:
+
+| Valor | Comportamento |
+| --- | --- |
+| `undefined` | Segue o padrão global de `linkPreview`. |
+| `false` | Desabilita a prévia. |
+| `true` | Força a busca automática da prévia. |
+| objeto | Pula a busca e usa os campos de prévia fornecidos diretamente. |
+
+```ts
+// Forneça sua própria prévia em vez de buscar
+await client.message.send(jid, {
+  type: 'text',
+  text: 'https://example.com',
+  linkPreview: { title: 'Example', description: 'My custom preview' }
+})
+```
+
+Configure o fetcher padrão globalmente com a opção `linkPreview` do client.
+
+## Encaminhamento {#forwarding}
+
+Defina `options.forward` para marcar uma mensagem como encaminhada:
+
+```ts
+await client.message.send(jid, 'Forwarded text', { forward: true })
+// ou com uma pontuação de encaminhamento frequente
+await client.message.send(jid, content, { forward: { score: 4 } })
+```
+
+## Referência de opções de envio {#send-options-reference}
+
+`WaSendMessageOptions` (terceiro argumento) inclui:
+
+| Opção | Tipo | Propósito |
+| --- | --- | --- |
+| `quote` | `WaIncomingMessageEvent \| WaQuoteRef` | Responder a uma mensagem. |
+| `mentions` | `string[]` | JIDs para mencionar. |
+| `forward` | `boolean \| { score }` | Marcar como encaminhada. |
+| `viewOnce` | `boolean` | Empacotar imagem/vídeo/áudio como visualização única. |
+| `editKey` | `WaSendEditKey` | Editar uma mensagem enviada anteriormente (veja [interativas](/pt-br/guides/interactive-messages#editing-a-message)). |
+| `contextInfo` | `WaSendContextInfo` | Context info bruto (avançado). |
+| `id` | `string` | Usar um id de mensagem específico. |
+| `ackTimeoutMs` / `maxAttempts` / `retryDelayMs` | `number` | Ajuste de retentativa por envio. |
+
+## A union de conteúdo {#the-content-union}
+
+`content` aceita qualquer `WaSendMessageContent`. As variantes tipadas estão documentadas ao longo destes guias:
+
+<CardGroup cols={2}>
+  <Card title="Mídia" icon="image" href="/pt-br/guides/media">
+    Imagens, vídeo, áudio, documentos, figurinhas.
+  </Card>
+  <Card title="Enquetes e reações" icon="square-poll-vertical" href="/pt-br/guides/interactive-messages">
+    Enquetes, votos, reações, fixações, edições, revogações, eventos.
+  </Card>
+</CardGroup>
+
+Você sempre pode recorrer a um `Proto.IMessage` bruto para qualquer coisa não coberta por um builder tipado:
+
+```ts
+import { proto } from 'zapo-js'
+
+await client.message.send(jid, {
+  conversation: 'Raw protobuf message'
+})
+```

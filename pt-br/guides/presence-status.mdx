@@ -1,0 +1,95 @@
+---
+title: "Presença e status"
+description: "Transmita presença, envie indicadores de digitação, assine contatos e publique atualizações de status."
+icon: "circle-dot"
+---
+
+## Presença própria {#own-presence}
+
+Transmita se a conta está online com `client.presence.send`:
+
+```ts
+await client.presence.send('available')   // aparece online
+await client.presence.send('unavailable') // aparece offline
+```
+
+<Note>
+  A presença anunciada logo após a conexão é controlada pela opção [`markOnlineOnConnect`](/pt-br/concepts/configuration#presence-on-connect).
+</Note>
+
+## Indicadores de digitação (chat-state) {#typing-indicators-chat-state}
+
+O `sendChatstate` envia uma dica por chat, como digitando ou gravando:
+
+```ts
+// "digitando…"
+await client.presence.sendChatstate(jid, { state: 'composing' })
+
+// "gravando áudio…"
+await client.presence.sendChatstate(jid, { state: 'recording' })
+
+// limpa o indicador
+await client.presence.sendChatstate(jid, { state: 'paused' })
+```
+
+Um padrão comum é exibir o estado digitando por um breve momento antes de responder:
+
+```ts
+await client.presence.sendChatstate(jid, { state: 'composing' })
+await new Promise((r) => setTimeout(r, 1200))
+await client.message.send(jid, 'Done thinking!')
+await client.presence.sendChatstate(jid, { state: 'paused' })
+```
+
+## Assinando um contato {#subscribing-to-a-contact}
+
+Para receber a presença e o chat-state de um contato, assine-o:
+
+```ts
+await client.presence.subscribe(jid)
+
+client.on('presence', (event) => {
+  console.log(event.type, event.lastSeen)
+})
+
+client.on('chatstate', (event) => {
+  console.log(event.state, 'from', event.participantJid)
+})
+```
+
+<Warning>
+  As assinaturas são **por JID** e vivem apenas durante a conexão atual. Após uma [reconexão](/pt-br/guides/reconnection), você precisa assinar novamente para continuar recebendo atualizações.
+</Warning>
+
+## Transmissões de status {#status-broadcasts}
+
+Publique um status (a funcionalidade de "stories") com `client.status` ([`WaStatusCoordinator`](/pt-br/reference/client#status)). O conteúdo é a mesma [union de conteúdo](/pt-br/guides/sending-messages#the-content-union) de uma mensagem normal; você fornece a lista de destinatários:
+
+```ts
+const result = await client.status.send({
+  content: 'Hello from my status!',
+  recipients: ['5511999999999@s.whatsapp.net', '5511888888888@s.whatsapp.net']
+})
+```
+
+Mídia também funciona:
+
+```ts
+await client.status.send({
+  content: { type: 'image', media: './story.jpg', mimetype: 'image/jpeg' },
+  recipients
+})
+```
+
+### Privacidade e silenciamento de status {#status-privacy--mute}
+
+```ts
+// Quem pode ver o seu status
+await client.status.setPrivacy({ /* WaSetStatusPrivacyInput */ })
+
+// Silenciar o status de um contato
+await client.status.setUserMuted(jid, true)
+
+// Revogar um status que você publicou
+await client.status.revokeStatus({ messageId, recipients })
+```

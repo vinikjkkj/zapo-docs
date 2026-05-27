@@ -1,0 +1,212 @@
+---
+title: "WaClient e coordinators"
+description: "A superfície do client e um índice de métodos para cada coordinator."
+icon: "code"
+---
+
+## WaClient {#waclient}
+
+```ts
+new WaClient(options: WaClientOptions, logger?: Logger)
+```
+
+Veja [Configuração](/pt-br/concepts/configuration) para cada opção.
+
+### Ciclo de vida e estado {#lifecycle--state}
+
+| Membro | Assinatura | Descrição |
+| --- | --- | --- |
+| `connect` | `() => Promise<void>` | Abre o socket; conduz o pareamento na primeira execução. |
+| `disconnect` | `() => Promise<void>` | Fecha de forma graciosa, mantendo as credenciais. |
+| `logout` | `(reason?) => Promise<void>` | Desvincula o dispositivo no servidor. |
+| `getState` | `() => WaAuthState` | Estado atual de auth/conexão. |
+| `getCredentials` | `() => WaAuthCredentials \| null` | Credenciais atuais, se pareado. |
+| `getClockSkewMs` | `() => number \| null` | Estimativa de desvio do relógio do servidor. |
+
+### Emissor de eventos {#event-emitter}
+
+| Membro | Assinatura |
+| --- | --- |
+| `on` | `(event, listener) => this` |
+| `once` | `(event, listener) => this` |
+| `off` | `(event, listener) => this` |
+
+Os três são tipados contra [`WaClientEventMap`](/pt-br/concepts/events).
+
+### Getters de coordinator {#coordinator-getters}
+
+| Getter | Tipo |
+| --- | --- |
+| `auth` | `WaAuthClient` |
+| `message` | `WaMessageCoordinator` |
+| `presence` | `WaPresenceCoordinator` |
+| `chat` | `WaAppStateMutationCoordinator` |
+| `group` | `WaGroupCoordinator` |
+| `status` | `WaStatusCoordinator` |
+| `broadcastList` | `WaBroadcastListCoordinator` |
+| `newsletter` | `WaNewsletterCoordinator` |
+| `privacy` | `WaPrivacyCoordinator` |
+| `profile` | `WaProfileCoordinator` |
+| `business` | `WaBusinessCoordinator` |
+| `bot` | `WaBotCoordinator` |
+| `email` | `WaEmailCoordinator` |
+| `lowlevel` | `WaLowLevelCoordinator` |
+
+---
+
+## message {#message}
+
+`WaMessageCoordinator` — [guia](/pt-br/guides/sending-messages).
+
+| Método | Assinatura |
+| --- | --- |
+| `send` | `(to, content: WaSendMessageContent, options?) => Promise<WaMessagePublishResult>` |
+| `sendReceipt` | `(event \| events, options?)` / `(jid, ids, options?) => Promise<void>` |
+| `download` | `(source, options?) => Promise<Readable>` |
+| `downloadToFile` | `(source, filePath, options?) => Promise<void>` |
+| `downloadBytes` | `(source, options?) => Promise<Uint8Array>` |
+| `tryDecryptAddon` | `(event) => Promise<void>` |
+| `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` |
+
+---
+
+## group {#group}
+
+`WaGroupCoordinator` — [guia](/pt-br/guides/groups).
+
+| Método | Assinatura |
+| --- | --- |
+| `queryGroupMetadata` | `(groupJid) => Promise<WaGroupMetadata>` |
+| `queryAllGroups` | `() => Promise<readonly WaGroupMetadata[]>` |
+| `queryGroupInviteInfo` | `(code) => Promise<BinaryNode>` |
+| `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` |
+| `setSubject` | `(groupJid, subject) => Promise<void>` |
+| `setDescription` | `(groupJid, description \| null, prevDescId?) => Promise<void>` |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` |
+| `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` |
+| `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` |
+| `leaveGroup` | `(groupJids) => Promise<BinaryNode>` |
+| `revokeInvite` | `(groupJid) => Promise<BinaryNode>` |
+| `joinGroupViaInvite` | `(code) => Promise<BinaryNode>` |
+| `createCommunity` | `(subject, options?) => Promise<WaGroupMetadata>` |
+| `linkSubGroups` / `unlinkSubGroups` | `(communityJid, jids, options?) => Promise<…>` |
+| `fetchSubGroups` | `(communityJid) => Promise<WaCommunitySubGroupsResult>` |
+| `queryMembershipApprovalRequests` | `(groupJid) => Promise<readonly WaMembershipRequest[]>` |
+| `approveMembershipRequests` / `rejectMembershipRequests` / `cancelMembershipRequests` | `(groupJid, jids) => Promise<void>` |
+
+---
+
+## newsletter {#newsletter}
+
+`WaNewsletterCoordinator` — [guia](/pt-br/guides/newsletters). Combina operações de descoberta, administração e mensagens.
+
+| Método | Assinatura |
+| --- | --- |
+| `fetch` / `fetchByInvite` | `(jid \| code, options?) => Promise<WaNewsletterMetadata>` |
+| `listSubscribed` | `(options?) => Promise<readonly WaNewsletterMetadata[]>` |
+| `searchDirectory` / `fetchRecommended` / `fetchSimilar` | `(options?) => Promise<…>` |
+| `follow` / `unfollow` | `(jid) => Promise<void>` |
+| `mute` | `(input) => Promise<void>` |
+| `send` | `(jid, content, options?) => Promise<WaNewsletterSendResult>` |
+| `editMessage` | `(jid, parentMessageId, content) => Promise<WaNewsletterSendResult>` |
+| `react` / `revoke` / `votePoll` / `sendViewReceipt` | `(input) => Promise<{ stanzaId }>` |
+| `fetchMessages` / `fetchMessageUpdates` | `(input) => Promise<BinaryNode>` |
+| `create` | `(input) => Promise<WaNewsletterMetadata>` |
+| `update` | `(jid, input) => Promise<WaNewsletterMetadata>` |
+| `delete` | `(jid) => Promise<void>` |
+| `fetchAdminInfo` / `fetchFollowers` / `fetchInsights` | `(jid, …) => Promise<…>` |
+| `createAdminInvite` / `changeOwner` / `demoteAdmin` | `(input) => Promise<…>` |
+
+---
+
+## privacy {#privacy}
+
+`WaPrivacyCoordinator` — [guia](/pt-br/guides/profile-privacy#privacy).
+
+| Método | Assinatura |
+| --- | --- |
+| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` |
+| `setPrivacySetting` | `(setting, value) => Promise<void>` |
+| `getBlocklist` | `() => Promise<WaBlocklistResult>` |
+| `blockUser` / `unblockUser` | `(jid) => Promise<void>` |
+| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` |
+
+---
+
+## profile {#profile}
+
+`WaProfileCoordinator` — [guia](/pt-br/guides/profile-privacy#profile).
+
+| Método | Assinatura |
+| --- | --- |
+| `getProfilePicture` | `(jid, type?, existingId?) => Promise<WaProfilePictureResult>` |
+| `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` |
+| `deleteProfilePicture` | `(targetJid?) => Promise<void>` |
+| `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` |
+| `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` |
+| `getOwnUsername` | `() => Promise<WaOwnUsernameResult>` |
+| `setUsername` / `deleteUsername` | `(input) / () => Promise<boolean>` |
+| `checkUsernameAvailability` | `(username) => Promise<…>` |
+
+---
+
+## status {#status}
+
+`WaStatusCoordinator` — [guia](/pt-br/guides/presence-status#status-broadcasts).
+
+| Método | Assinatura |
+| --- | --- |
+| `send` | `(input: WaSendStatusInput) => Promise<WaMessagePublishResult>` |
+| `setPrivacy` | `(input) => Promise<void>` |
+| `setUserMuted` | `(jid, muted) => Promise<void>` |
+| `revokeStatus` | `(input) => Promise<WaMessagePublishResult>` |
+
+---
+
+## business {#business}
+
+`WaBusinessCoordinator` — [guia](/pt-br/guides/profile-privacy#business).
+
+| Método | Assinatura |
+| --- | --- |
+| `getBusinessProfile` | `(jids) => Promise<readonly WaBusinessProfileResult[]>` |
+| `editBusinessProfile` | `(input) => Promise<void>` |
+| `getVerifiedName` / `getVerifiedNames` | `(jid \| jids) => Promise<…>` |
+| `updateCoverPhoto` / `deleteCoverPhoto` | `(media) / (id) => Promise<void>` |
+
+---
+
+## chat {#chat}
+
+`WaAppStateMutationCoordinator` — [guia](/pt-br/guides/profile-privacy#chat-settings).
+
+| Método | Assinatura |
+| --- | --- |
+| `setChatMute` | `(chatJid, muted, muteEndTimestampMs?) => Promise<void>` |
+| `setChatPin` / `setChatArchive` / `setChatRead` / `setChatLock` | `(chatJid, boolean) => Promise<void>` |
+| `setMessageStar` | `(message, starred) => Promise<void>` |
+| `clearChat` / `deleteChat` | `(chatJid, options?) => Promise<void>` |
+| `deleteMessageForMe` | `(message, options?) => Promise<void>` |
+| `sync` | `(options?) => Promise<WaAppStateSyncResult>` |
+
+---
+
+## presence {#presence}
+
+`WaPresenceCoordinator` — [guia](/pt-br/guides/presence-status).
+
+| Método | Assinatura |
+| --- | --- |
+| `send` | `(type?: 'available' \| 'unavailable') => Promise<void>` |
+| `sendChatstate` | `(jid, options) => Promise<void>` |
+| `subscribe` | `(jid, options?) => Promise<void>` |
+
+---
+
+## bot, email, broadcastList {#bot-email-broadcastlist}
+
+| Coordinator | Métodos principais |
+| --- | --- |
+| `WaBotCoordinator` | `listBots()`, `getBotProfile(jid, options?)`, `sendPrompt(to, content, options?)` |
+| `WaEmailCoordinator` | `getStatus()`, `setEmail(email, context?)`, `requestVerificationCode(input)`, `verifyCode(code)`, `confirm(context?)` |
+| `WaBroadcastListCoordinator` | `setList(input)`, `removeList(id)`, `send(input)` |

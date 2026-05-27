@@ -1,0 +1,63 @@
+---
+title: "Introdução"
+description: "zapo é uma implementação TypeScript de alta performance do protocolo do WhatsApp Web, construída para cargas de trabalho em larga escala e com múltiplas sessões."
+icon: "book-open"
+---
+
+`zapo` (publicado no npm como [`zapo-js`](https://www.npmjs.com/package/zapo-js)) é uma implementação independente e em runtime do protocolo do WhatsApp Web escrita em TypeScript. **Não** é um wrapper ou fork de uma biblioteca de client de WhatsApp existente — a fonte da verdade do protocolo é o client desofuscado do WhatsApp Web, e o objetivo é paridade de comportamento com o WhatsApp Web ao mesmo tempo em que melhora a eficiência de CPU, memória e alocação.
+
+<Warning>
+  **Aviso de estabilidade.** O `zapo` está em pré-`1.0`. Mudanças que quebram compatibilidade são esperadas até o primeiro release major. Fixe versões exatas em deployments de longa duração e valide os upgrades com cuidado.
+</Warning>
+
+## Por que zapo {#why-zapo}
+
+<CardGroup cols={2}>
+  <Card title="API coordinator-first" icon="diagram-project">
+    Cada área de funcionalidade é um coordinator focado: `client.message`, `client.group`, `client.newsletter`, `client.privacy` e mais.
+  </Card>
+  <Card title="Armazenamento plugável" icon="database">
+    Uma única factory `createStore`, seleção de provider por domínio e backends oficiais para SQLite, PostgreSQL, MySQL, Redis e MongoDB.
+  </Card>
+  <Card title="Pronto para múltiplas sessões" icon="layer-group">
+    Cada query é escopada por `sessionId`, então um único processo pode operar muitas contas — construído para cargas de trabalho multi-tenant.
+  </Card>
+  <Card title="Disciplinado em performance" icon="gauge-high">
+    `Uint8Array` em todo lugar, zero-copy nos caminhos quentes, estruturas em memória limitadas, I/O assíncrono e crypto síncrono (exceto operações de curva elíptica) para throughput bruto.
+  </Card>
+</CardGroup>
+
+## Princípios de design {#design-principles}
+
+Estes princípios guiam cada decisão de implementação na base de código:
+
+- **index-first** — o comportamento do protocolo é validado contra o WhatsApp Web antes de qualquer coisa ser implementada.
+- **performance-first** — otimizar para baixo uso de CPU, baixo uso de RAM, poucas alocações e zero-copy nos caminhos quentes.
+- **I/O async-first** — operações de I/O e de rede são assíncronas. A crypto, em contraste, roda **de forma síncrona** — apenas operações de curva elíptica são assíncronas. Manter o resto da crypto síncrono trouxe um ganho de throughput grande e mensurável.
+
+## Requisitos {#requirements}
+
+- **Node.js** `>= 20.9.0`
+- Um gerenciador de pacotes (`npm`, `pnpm` ou similar)
+- Nenhuma dependência de runtime obrigatória — backends e logging são peer dependencies opt-in.
+
+## Comece agora {#get-started}
+
+<CardGroup cols={2}>
+  <Card title="Instalação" icon="download" href="/pt-br/installation">
+    Instale o `zapo-js`, escolha um backend de armazenamento e configure os peers opcionais.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/pt-br/quickstart">
+    Conecte, escaneie um QR code e responda à sua primeira mensagem em minutos.
+  </Card>
+  <Card title="Arquitetura" icon="sitemap" href="/pt-br/concepts/architecture">
+    Entenda o client, os coordinators, as stores e o fluxo de eventos.
+  </Card>
+  <Card title="Enviando mensagens" icon="paper-plane" href="/pt-br/guides/sending-messages">
+    Texto, respostas, menções, mídia, enquetes, reações e mais.
+  </Card>
+</CardGroup>
+
+## Aviso legal {#disclaimer}
+
+Este projeto é uma implementação independente para pesquisa de engenharia e interoperabilidade. **Não** é afiliado nem endossado pelo WhatsApp.

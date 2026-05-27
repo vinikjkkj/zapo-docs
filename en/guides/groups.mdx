@@ -1,0 +1,120 @@
+---
+title: "Groups & communities"
+description: "Create and manage groups, participants, invites, and communities."
+icon: "users"
+---
+
+Group operations live on `client.group` ([`WaGroupCoordinator`](/en/reference/client#group)). Group JIDs end in `@g.us`.
+
+## Querying groups
+
+```ts
+// All groups the account belongs to
+const groups = await client.group.queryAllGroups()
+
+// One group's metadata
+const meta = await client.group.queryGroupMetadata('123456@g.us')
+console.log(meta.subject, meta.participants.length)
+```
+
+`WaGroupMetadata` includes the subject, owner, participant list (`WaGroupParticipant[]` with `isAdmin` / `isSuperAdmin`), and the full set of group flags (`announce`, `restrict`, `ephemeral`, community flags, …).
+
+## Creating a group
+
+```ts
+await client.group.createGroup('My group', [
+  '5511999999999@s.whatsapp.net',
+  '5511888888888@s.whatsapp.net'
+])
+```
+
+## Managing participants
+
+```ts
+const jids = ['5511999999999@s.whatsapp.net']
+
+await client.group.addParticipants(groupJid, jids)
+await client.group.removeParticipants(groupJid, jids)
+await client.group.promoteParticipants(groupJid, jids) // make admin
+await client.group.demoteParticipants(groupJid, jids)  // remove admin
+```
+
+## Group settings
+
+```ts
+await client.group.setSubject(groupJid, 'New name')
+await client.group.setDescription(groupJid, 'A description')   // null to clear
+await client.group.setSetting(groupJid, 'announce', true)      // admins-only messages
+await client.group.setSetting(groupJid, 'restrict', true)      // admins-only edit info
+```
+
+## Invites
+
+```ts
+// Resolve info for an invite code
+const info = await client.group.queryGroupInviteInfo('AbCdEf...')
+
+// Join via invite code
+await client.group.joinGroupViaInvite('AbCdEf...')
+
+// Revoke the current invite link
+await client.group.revokeInvite(groupJid)
+```
+
+## Leaving
+
+```ts
+await client.group.leaveGroup([groupJid]) // batched — accepts multiple
+```
+
+## Membership approval
+
+For groups that require admin approval to join:
+
+```ts
+const requests = await client.group.queryMembershipApprovalRequests(groupJid)
+
+await client.group.approveMembershipRequests(groupJid, [requesterJid])
+await client.group.rejectMembershipRequests(groupJid, [requesterJid])
+
+// Cancel your own pending request
+await client.group.cancelMembershipRequests(groupJid, [myJid])
+```
+
+## Communities
+
+Communities are parent groups that link sub-groups:
+
+```ts
+// Create a community
+const community = await client.group.createCommunity('My community')
+
+// Link / unlink existing groups as sub-groups
+await client.group.linkSubGroups(community.jid, [subGroupJidA, subGroupJidB])
+await client.group.unlinkSubGroups(community.jid, [subGroupJidA], {
+  removeOrphanedMembers: true
+})
+
+// List sub-groups (and the announcement group)
+const subs = await client.group.fetchSubGroups(community.jid)
+
+// Join a linked sub-group you don't yet belong to
+await client.group.joinLinkedGroup(community.jid, subGroupJid)
+
+// Merged participants across the whole community
+const everyone = await client.group.queryLinkedGroupsParticipants(community.jid)
+```
+
+Other community operations include `deactivateCommunity`, `transferCommunityOwnership`, and `fetchSubgroupSuggestions`.
+
+## Group events
+
+Changes made by others (subject, participants, settings) arrive on the `group` event:
+
+```ts
+client.on('group', (event) => {
+  console.log(event.action, 'in', event.groupJid)
+})
+```
+
+See [Events](/en/concepts/events#groups-newsletters--profiles) for the full payload.

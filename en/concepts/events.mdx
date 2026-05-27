@@ -1,0 +1,110 @@
+---
+title: "Events"
+description: "The full client event map and how to listen for incoming activity."
+icon: "bell"
+---
+
+`WaClient` is a strongly-typed event emitter. Every incoming activity — messages, receipts, group changes, presence — is surfaced as an event with a typed payload.
+
+## Listening
+
+```ts
+import type { WaIncomingMessageEvent } from 'zapo-js'
+
+client.on('message', (event: WaIncomingMessageEvent) => {
+  console.log(event.chatJid, event.message)
+})
+
+client.once('auth_paired', ({ credentials }) => {
+  console.log('paired', credentials.meJid)
+})
+
+const handler = (e) => { /* ... */ }
+client.on('receipt', handler)
+client.off('receipt', handler) // stop listening
+```
+
+`on`, `once`, and `off` are all type-checked against the event map — the payload type is inferred from the event name, so listeners get full autocomplete.
+
+## Auth & connection
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `auth_qr` | `{ qr, ttlMs }` | A QR code to render for pairing. |
+| `auth_pairing_code` | `{ code }` | An 8-digit pairing code was issued. |
+| `auth_pairing_required` | `{ forceManual }` | The session needs pairing input. |
+| `auth_paired` | `{ credentials }` | Pairing succeeded. |
+| `connection` | `WaConnectionEvent` | Socket opened or closed (see below). |
+
+The `connection` event is a discriminated union on `status`:
+
+```ts
+client.on('connection', (event) => {
+  if (event.status === 'open') {
+    console.log('online; new login?', event.isNewLogin)
+  } else {
+    console.log('closed:', event.reason, 'logout?', event.isLogout)
+  }
+})
+```
+
+See [Reconnection](/en/guides/reconnection) for the handling pattern.
+
+## Messages
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `message` | `WaIncomingMessageEvent` | An incoming (or self-sent) message. |
+| `message_addon` | `WaIncomingAddonEvent` | Reactions, poll votes, comments (decrypted addons). |
+| `message_protocol` | `WaIncomingProtocolMessageEvent` | Protocol messages (edits, revokes, …). |
+| `message_bot_chunk` | `WaIncomingBotChunkEvent` | Streamed bot response chunks. |
+| `receipt` | `WaIncomingReceiptEvent` | Delivery / read / played receipts. |
+
+See [Receiving messages](/en/guides/receiving-messages) for payload details and text extraction.
+
+## Presence & chat-state
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `presence` | `WaIncomingPresenceEvent` | A contact's presence changed (available / last-seen). |
+| `chatstate` | `WaIncomingChatstateEvent` | Typing / recording / paused. |
+| `call` | `WaIncomingCallEvent` | Incoming call signaling. |
+
+## Groups, newsletters & profiles
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `group` | `WaGroupEvent` | Group create/subject/participant/setting changes. |
+| `newsletter` | `WaIncomingNewsletterEvent` | Newsletter activity. |
+| `newsletter_message_update` | `WaIncomingNewsletterMessageUpdateEvent` | Edits/reactions/poll updates on newsletter messages. |
+| `business` | `WaBusinessEvent` | Business profile changes. |
+| `picture` | `WaPictureEvent` | Profile/group picture changes. |
+
+## State, history & MEX
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) synced from another device. |
+| `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history. |
+| `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
+| `mex_notification` | `WaMexNotificationEvent` | MEX (GraphQL) notifications: username, status, LID changes, capping. |
+
+## Failures
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `stream_failure` | `WaIncomingFailureEvent` | A stream-level failure (may precede a disconnect). |
+| `stanza_error` | `WaIncomingErrorStanzaEvent` | An error stanza from the server. |
+
+## Debug events
+
+A family of `debug_*` events expose low-level internals — raw frames, decoded nodes, decode errors, unhandled stanzas, and client errors. They are useful for protocol debugging but noisy; subscribe selectively.
+
+```ts
+client.on('debug_transport_node_in', ({ node }) => console.dir(node, { depth: null }))
+client.on('debug_client_error', ({ error }) => console.error(error))
+```
+
+<Note>
+  Mobile-registration events (`mobile_registration_code`, `mobile_account_takeover_notice`) exist for the mobile-registration path and are not part of the standard companion flow.
+</Note>

@@ -1,0 +1,116 @@
+---
+title: "Profile, privacy & business"
+description: "Manage your profile, control privacy settings and the blocklist, and read business profiles."
+icon: "id-card"
+---
+
+## Profile
+
+`client.profile` ([`WaProfileCoordinator`](/en/reference/client#profile)) reads and writes profile fields for your account and looks them up for others.
+
+### Profile picture
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+// Read someone's picture (or your own)
+const pic = await client.profile.getProfilePicture(jid)
+
+// Set your own
+await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
+
+// Remove it
+await client.profile.deleteProfilePicture()
+```
+
+### About / status text
+
+```ts
+const about = await client.profile.getStatus(jid)
+await client.profile.setStatus('Available')
+```
+
+### Batched lookups
+
+```ts
+const profiles = await client.profile.getProfiles([jidA, jidB])
+const usernames = await client.profile.getUsernames([jidA, jidB])
+const modes = await client.profile.getDisappearingMode([jidA, jidB])
+```
+
+### Usernames
+
+```ts
+const mine = await client.profile.getOwnUsername()
+const available = await client.profile.checkUsernameAvailability('myhandle')
+
+await client.profile.setUsername({ username: 'myhandle' })
+await client.profile.deleteUsername()
+```
+
+## Privacy
+
+`client.privacy` ([`WaPrivacyCoordinator`](/en/reference/client#privacy)) controls privacy categories and the blocklist.
+
+### Privacy settings
+
+```ts
+const settings = await client.privacy.getPrivacySettings()
+
+// Update a single setting
+await client.privacy.setPrivacySetting('last', 'contacts')
+```
+
+Setting names and values come from the `WA_PRIVACY_*` constants (`last`, `online`, `profile`, `status`, `readreceipts`, `groupadd`, …). See the [JID & constants reference](/en/reference/jid-helpers#constants).
+
+### Blocklist
+
+```ts
+const { jids } = await client.privacy.getBlocklist()
+
+await client.privacy.blockUser(jid)
+await client.privacy.unblockUser(jid)
+```
+
+### Disallowed lists
+
+For settings scoped to a specific list of contacts (e.g. "share with everyone except…"):
+
+```ts
+const result = await client.privacy.getDisallowedList(category)
+```
+
+## Business
+
+`client.business` ([`WaBusinessCoordinator`](/en/reference/client#business)) reads business profiles and verified names, and manages your own business profile.
+
+```ts
+// Read business profiles (batched)
+const profiles = await client.business.getBusinessProfile([jidA, jidB])
+
+// Verified-name lookups
+const name = await client.business.getVerifiedName(jid)
+const names = await client.business.getVerifiedNames([jidA, jidB])
+
+// Edit your own business profile
+await client.business.editBusinessProfile({ /* WaEditBusinessProfileInput */ })
+
+// Cover photo
+await client.business.updateCoverPhoto(mediaSource)
+await client.business.deleteCoverPhoto(coverId)
+```
+
+## Chat settings
+
+Per-chat settings — mute, pin, archive, mark read, delete — live on `client.chat` ([`WaAppStateMutationCoordinator`](/en/reference/client#chat)), because they sync across your devices via app-state:
+
+```ts
+await client.chat.setChatMute(chatJid, true, Date.now() + 8 * 3600_000)
+await client.chat.setChatPin(chatJid, true)
+await client.chat.setChatArchive(chatJid, true)
+await client.chat.setChatRead(chatJid, true)
+await client.chat.clearChat(chatJid)
+await client.chat.deleteChat(chatJid)
+```
+
+These changes are also surfaced as [`mutation`](/en/concepts/events#state-history--mex) events when made from another device.
