@@ -66,6 +66,7 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | --- | --- | --- |
 | `send` | `(to, content: WaSendMessageContent, options?: WaSendMessageOptions) => Promise<WaMessagePublishResult>` | Envia qualquer [tipo de conteúdo](/pt-br/reference/message-types); lida com o fanout de dispositivos e retries por envio. Retorna o id da stanza + metadados de ack. |
 | `sendReceipt` | `(event\|events, options?)` / `(jid, ids, options?) => Promise<void>` | Envia um recibo de entrega/leitura/reprodução/inatividade. A entrega recebe ack automático ao descriptografar; use isto para leitura/reprodução manual. |
+| `requestHistorySync` | `(input: WaRequestHistorySyncInput) => Promise<{ messageId }>` | Pede ao servidor para baixar mensagens mais antigas de um chat. Resolve assim que despachado — o backlog chega depois como `history_sync_chunk`. Veja [Solicitando histórico antigo](/pt-br/guides/receiving-messages#requesting-older-history). |
 | `download` | `(source, options?) => Promise<Readable>` | Faz streaming de mídia descriptografada (MAC + SHA-256 verificados conforme consumida). Cancele via `options.signal`. |
 | `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Faz streaming de mídia descriptografada para um arquivo. |
 | `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Bufferiza mídia descriptografada na memória — apenas mídia pequena; limite com `options.maxBytes`. |
@@ -125,7 +126,11 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Cria um grupo (você é adicionado automaticamente como admin; não inclua seu próprio JID). |
 | `setSubject` | `(groupJid, subject) => Promise<void>` | Renomeia. |
 | `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Define/limpa a descrição. |
-| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Alterna announce / restrict / ephemeral / … |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Alterna uma flag booleana do grupo (`announce`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, flags de comunidade). |
+| `setMemberAddMode` | `(groupJid, 'admin_add' \| 'all_member_add') => Promise<void>` | Restringe quem pode adicionar membros (só admins ou qualquer um). Op. de admin. |
+| `setMemberLinkMode` | `(groupJid, 'admin_link' \| 'all_member_link') => Promise<void>` | Restringe quem pode compartilhar o link de convite. Op. de admin. |
+| `setMemberShareGroupHistoryMode` | `(groupJid, 'admin_share' \| 'all_member_share') => Promise<void>` | Esconde ou expõe o histórico anterior para novos membros. Op. de admin. |
+| `setEphemeralDuration` | `(groupJid, expirationSeconds, trigger?) => Promise<void>` | Liga as mensagens temporárias com uma duração específica (`86400` = 24h, `604800` = 7d, `7776000` = 90d). Use `setSetting('ephemeral', false)` para desligar. Op. de admin. |
 | `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Adiciona / remove membros. |
 | `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Concede / revoga admin. |
 | `leaveGroup` | `(groupJids) => Promise<BinaryNode>` | Sai de um ou mais grupos (em lote). |
@@ -229,8 +234,10 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` | Define a imagem sua/de um alvo. `imageBytes` é enviado **como está** — pré-codifique um JPEG quadrado. Retorna o id da imagem. |
 | `deleteProfilePicture` | `(targetJid?) => Promise<void>` | Remove a imagem (operação de admin para grupos). |
 | `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` | Obtém/define o "Sobre" legado. |
+| `setPushName` | `(name) => Promise<void>` | Atualiza o nome de exibição broadcast aos contatos. Roteado por uma mutação de app-state; chega aos contatos na sua próxima mensagem enviada. String vazia restaura o padrão do dispositivo. |
 | `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` | Id de imagem + status em lote. |
 | `getDisappearingMode` | `(jids) => Promise<readonly WaDisappearingModeResult[]>` | Configuração de modo temporário em lote. |
+| `setDisappearingMode` | `(durationSeconds) => Promise<void>` | Define a duração padrão de modo temporário aplicada a **novos** chats 1:1 (`0`/`86400`/`604800`/`7776000`). Chats existentes mantêm a configuração. |
 | `getTextStatuses` | `(jids) => Promise<readonly WaTextStatusResult[]>` | Status de texto moderno em lote (emoji + texto). |
 | `setTextStatus` | `(input) => Promise<void>` | Define seu status de texto moderno; `text: null`/`''` o limpa. |
 | `getUsernames` | `(jids) => Promise<readonly WaUsernameResult[]>` | Consulta de username em lote. |

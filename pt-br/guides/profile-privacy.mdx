@@ -30,6 +30,30 @@ const about = await client.profile.getStatus(jid)
 await client.profile.setStatus('Available')
 ```
 
+### Push name {#push-name}
+
+O `pushName` é o nome de exibição que os contatos veem para a sua conta em chats e listas de participantes de grupo. A mudança é enfileirada como uma mutação de app-state e se propaga na próxima mensagem que você enviar — não há broadcast imediato.
+
+```ts
+await client.profile.setPushName('Alice')
+```
+
+Passar string vazia restaura o nome para o padrão de fingerprint do dispositivo.
+
+### Modo temporário padrão {#default-disappearing-mode}
+
+O `setDisappearingMode` define a duração padrão de modo temporário aplicada a **novos** chats 1:1 iniciados por você. Chats existentes mantêm a configuração por chat.
+
+```ts
+// 0 desliga, 86400 = 24h, 604800 = 7d, 7776000 = 90d
+await client.profile.setDisappearingMode(604_800)
+
+// Desligar
+await client.profile.setDisappearingMode(0)
+```
+
+Para mensagens temporárias por grupo, veja [Grupos → mensagens temporárias](/pt-br/guides/groups#disappearing-messages).
+
 ### Consultas em lote {#batched-lookups}
 
 ```ts
