@@ -1,0 +1,40 @@
+---
+title: "Semana de 27 de maio de 2026"
+description: "Auto-recuperação do erro 405 (client too old) do WhatsApp Web, resolução dinâmica de versão e store de auth em memória por padrão."
+icon: "rocket"
+---
+
+## Novidades {#new-features}
+
+### Auto-recuperação de `failure_client_too_old` (HTTP 405) {#auto-recover-from-failure_client_too_old-http-405}
+
+Quando o WhatsApp rejeita o client porque a versão do WA Web embutida está desatualizada, o `zapo` agora consegue atualizar a versão e reconectar automaticamente em vez de falhar a conexão.
+
+- Ative com a nova flag `recoverFromClientTooOld` em [`WaClientOptions`](/pt-br/concepts/configuration).
+- Em um 405, o client emite um warning recomendando atualizar a biblioteca, busca a revisão atual do WA Web, aplica como override one-shot e reconecta.
+
+### Opção `version` dinâmica {#dynamic-version-option}
+
+`WaClientOptions.version` agora aceita uma string **ou** uma função que retorna `string | Promise<string>`. A resolução roda uma vez por connect, então você pode fixar uma versão, lê-la de uma config ou buscá-la em runtime sem reiniciar o processo.
+
+### `fetchLatestWaWebVersion()` agora é público {#fetchlatestwawebversion-is-now-public}
+
+Um novo helper de topo extrai o `client_revision` atual de `web.whatsapp.com/sw.js`. Ele aceita proxy, timeout, abort signal e headers customizados — útil para construir seu próprio pinning de versão ou monitoramento sobre o [client](/pt-br/reference/client).
+
+### Store de auth em memória por padrão {#default-in-memory-auth-store}
+
+`createStore()` não lança mais erro quando `providers.auth` é omitido. O auth agora cai para um `WaAuthMemoryStore` embutido, igualando-se aos outros domínios. Veja [Stores](/pt-br/concepts/stores).
+
+<Warning>
+  Auth em memória serve para desenvolvimento local e testes, mas as credenciais são perdidas no restart do processo. Use um backend durável (SQLite, Postgres, Redis, …) em produção.
+</Warning>
+
+## Atualizações {#updates}
+
+- A versão padrão do WA Web foi movida para o pipeline diário de regen do `wa-spec`, então futuros bumps de versão não exigem mais um release da biblioteca.
+- `createStore` agora é seguro de chamar só com `backends`/`providers` parciais — todo domínio (incluindo `auth`) cai para memória.
+
+## Correções {#bug-fixes}
+
+- `version` agora é resolvido apenas no caminho web/login, então um resolver que joga exceção não consegue mais quebrar fluxos exclusivos de mobile. Veja [Mobile](/pt-br/concepts/mobile).
+- O caminho de recovery do 405 agora aguarda o connect em voo falho drenar antes de iniciar uma nova tentativa, evitando anexar à promise condenada.

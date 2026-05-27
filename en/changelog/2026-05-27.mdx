@@ -1,0 +1,40 @@
+---
+title: "Week of May 27, 2026"
+description: "Auto-recovery from the WhatsApp Web 405 (client too old) error, dynamic version resolution, and a default in-memory auth store."
+icon: "rocket"
+---
+
+## New features
+
+### Auto-recover from `failure_client_too_old` (HTTP 405)
+
+When WhatsApp rejects the client because the bundled WA Web version is stale, `zapo` can now refresh the version and reconnect automatically instead of failing the connection.
+
+- Opt in with the new `recoverFromClientTooOld` flag on [`WaClientOptions`](/en/concepts/configuration).
+- On a 405, the client logs a warning recommending a library upgrade, fetches the current WA Web revision, applies it as a one-shot override, and reconnects.
+
+### Dynamic `version` option
+
+`WaClientOptions.version` now accepts a string **or** a function returning `string | Promise<string>`. Resolution runs once per connect, so you can pin a version, read it from config, or fetch it at runtime without restarting your process.
+
+### `fetchLatestWaWebVersion()` is now public
+
+A new top-level helper scrapes the current `client_revision` from `web.whatsapp.com/sw.js`. It accepts proxy, timeout, abort signal, and custom headers — useful for building your own version pinning or monitoring on top of the [client](/en/reference/client).
+
+### Default in-memory auth store
+
+`createStore()` no longer throws when `providers.auth` is omitted. Auth now falls back to a built-in `WaAuthMemoryStore`, matching every other domain. See [Stores](/en/concepts/stores).
+
+<Warning>
+  Memory auth is fine for local development and tests, but credentials are lost on process restart. Use a durable backend (SQLite, Postgres, Redis, …) in production.
+</Warning>
+
+## Updates
+
+- The default WA Web version moved into the `wa-spec` daily-regen pipeline, so future version bumps no longer require a library release.
+- `createStore` is now safe to call with only `backends`/partial `providers` — every domain (including `auth`) defaults to memory.
+
+## Bug fixes
+
+- `version` is now resolved only on the web/login path, so a throwing version resolver can no longer break mobile-only flows. See [Mobile](/en/concepts/mobile).
+- The 405 recovery path now waits for the failing in-flight connect to drain before starting a fresh attempt, avoiding attachment to the doomed promise.
