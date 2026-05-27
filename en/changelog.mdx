@@ -1,13 +1,13 @@
 ---
 title: "Changelog"
-description: "Product updates and notable changes shipped in zapo."
+description: "Weekly product updates for zapo-js — new features, API changes, reliability improvements, and bug fixes across the WhatsApp Web client."
 icon: "rss"
 ---
 
 <Update label="May 27, 2026" tags={["feature", "reliability"]}>
   ## Auto-recover from `failure_client_too_old` (HTTP 405)
 
-  When WhatsApp Web rolls a new client revision, older sessions are rejected at the noise handshake with `failure_client_too_old` (HTTP `405`). zapo can now recover from this automatically.
+  When WhatsApp Web rolls a new client revision, older sessions are rejected at the Noise handshake with `failure_client_too_old` (HTTP `405`). zapo can now recover from this automatically.
 
   - **New option:** [`WaClientOptions.recoverFromClientTooOld`](/en/concepts/configuration). When enabled, the client fetches the current WhatsApp Web version, applies it as a one-shot override for the next connect, and reconnects. A warning is logged asking you to upgrade `zapo-js` so the recovery does not become permanent.
   - **Off by default** — opt in per session.
