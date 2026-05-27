@@ -21,12 +21,40 @@ const sqlite = createSqliteStore({
 
 | Campo | Tipo | Descrição |
 | --- | --- | --- |
-| `path` | `string` | Caminho do arquivo de banco de dados. **Obrigatório.** |
-| `driver` | `WaSqliteDriver` | Seleção do driver nativo (`'auto'`, …). |
-| `pragmas` | `Record<string, string \| number>` | Pragmas do SQLite. |
-| `tableNames` | `WaSqliteTableNameOverrides` | Sobrescreve os nomes das tabelas. |
+| `path` | `string` | Caminho do arquivo de banco de dados. Mutuamente exclusivo com `connection`. |
+| `connection` | `WaSqliteConnection` | Connection já aberta para reutilizar. Mutuamente exclusivo com `path`. |
+| `driver` | `WaSqliteDriver` | Seleção do driver nativo (`'auto'`, …). Ignorado quando `connection` é informado. |
+| `pragmas` | `Record<string, string \| number>` | Pragmas do SQLite. Ignorado quando `connection` é informado. |
+| `tableNames` | `WaSqliteTableNameOverrides` | Sobrescreve os nomes das tabelas. Ignorado quando `connection` é informado. |
 | `batchSizes` | `WaSqliteBatchSizeSelection` | Ajusta os tamanhos de lote. |
 | `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | TTLs de cache. |
+
+Informe exatamente um entre `path` e `connection`. Com `path`, a biblioteca abre (e faz ref-count d)a própria connection e a fecha em `store.destroy()`. Com `connection`, você é dono do ciclo de vida — `store.destroy()` mantém a connection aberta para você continuar usando em outros lugares.
+
+### Use sua própria connection {#bring-your-own-connection}
+
+Compartilhe um único handle do SQLite com o resto da sua aplicação abrindo-o você mesmo com `openSqliteConnection` e passando via `connection`:
+
+```ts
+import { createStore } from 'zapo-js'
+import { createSqliteStore, openSqliteConnection } from '@zapo-js/store-sqlite'
+
+const connection = await openSqliteConnection({
+  path: 'app.sqlite',
+  sessionId: 'shared',
+  pragmas: { journal_mode: 'WAL', synchronous: 'NORMAL' }
+})
+
+const store = createStore({
+  backends: { sqlite: createSqliteStore({ connection }) },
+  providers: { auth: 'sqlite', signal: 'sqlite', senderKey: 'sqlite', appState: 'sqlite' }
+})
+
+// ... use a connection em outras partes da sua aplicação ...
+
+await store.destroy()
+connection.close() // você abriu, você fecha
+```
 
 Requer a peer dependency `better-sqlite3`.
 
