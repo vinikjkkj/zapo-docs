@@ -89,6 +89,51 @@ Todos em milissegundos; os padrões são ajustados para produção.
 | `messageRetryDelayMs` | Atraso entre as retentativas de envio de mensagem. |
 | `signalFetchKeyBundlesTimeoutMs` | Timeout para buscas de key bundles (prekeys) do Signal. |
 
+## Versão do WhatsApp Web {#whatsapp-web-version}
+
+O zapo embarca uma versão de produção testada do WA Web. Ocasionalmente o WhatsApp rejeita clients antigos durante o handshake noise com HTTP `405` / `failure_client_too_old`. Você tem três opções para se recuperar.
+
+<ParamField path="version" type="string | () => string | Promise<string>">
+  Sobrescreve a string de versão anunciada pelo client (`'x.y.z'`). Aceita um literal ou um resolver chamado **uma vez por `connect()`** — útil para buscar a versão atual sob demanda sem recriar o client.
+</ParamField>
+
+<ParamField path="recoverFromClientTooOld" type="boolean" default="false">
+  Quando `true`, ao receber `failure_client_too_old` o client emite um warning, busca a versão atual do WA Web via [`fetchLatestWaWebVersion()`](#fetchlatestwawebversion), aplica como override de uso único e reconecta automaticamente. Trate como paliativo até atualizar o zapo — o default embarcado continua sendo o caminho recomendado.
+</ParamField>
+
+```ts
+import { WaClient, fetchLatestWaWebVersion } from 'zapo-js'
+
+// Fixa uma versão específica
+new WaClient({ store, sessionId: 'default', version: '2.3000.1027421623' }, logger)
+
+// Resolve sob demanda a cada connect()
+new WaClient({
+  store,
+  sessionId: 'default',
+  version: async () => (await fetchLatestWaWebVersion()).version
+}, logger)
+
+// Auto-recupera de HTTP 405 uma vez
+new WaClient({ store, sessionId: 'default', recoverFromClientTooOld: true }, logger)
+```
+
+### `fetchLatestWaWebVersion()`
+
+Faz scraping do `client_revision` atual em `web.whatsapp.com/sw.js` e retorna uma string de versão no formato `2.3000.x` aceito por `version`.
+
+```ts
+import { fetchLatestWaWebVersion } from 'zapo-js'
+
+const { version, parts } = await fetchLatestWaWebVersion({
+  timeoutMs: 10_000,
+  // Reaproveite o mesmo dispatcher usado para mídia / link-preview
+  proxy: dispatcher
+})
+```
+
+Opções: `timeoutMs` (padrão 10s), `proxy` (apenas dispatcher do undici — o `fetch` global não honra `http.Agent`), `signal`, `userAgent`, `headers` e uma override de `fetch` para testes. Erros de rede e parsing são lançados — envolva em `try`/`catch` se quiser cair no default embarcado.
+
 ## Presença ao conectar {#presence-on-connect}
 
 <ParamField path="markOnlineOnConnect" type="boolean" default="true">

@@ -57,6 +57,10 @@ icon: "circle-question"
   `disconnect()` closes the socket but **keeps** credentials so you can resume later. `logout()` **unlinks** the device server-side and clears stored state (per `logoutStoreClear`). See [Authentication](/en/concepts/authentication#disconnect-vs-logout).
 </Accordion>
 
+<Accordion title="Handshake fails with HTTP 405 / failure_client_too_old" icon="triangle-exclamation">
+  WhatsApp rejected the bundled WA Web version. Upgrade `zapo` when possible. As a stopgap, set `recoverFromClientTooOld: true` to auto-fetch the current version and retry, or pass a `version` resolver that returns a fresh string per connect. See [WhatsApp Web version](/en/concepts/configuration#whatsapp-web-version).
+</Accordion>
+
 <Accordion title="A business/newsletter operation throws" icon="briefcase">
   Some operations are gated: `editBusinessProfile`, cover-photo ops, and broadcast lists are **business-only**; email binding is **mobile-only**; several community/newsletter ops require an active **MEX** transport. The [coordinator reference](/en/reference/client) flags each.
 </Accordion>

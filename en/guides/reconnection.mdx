@@ -87,6 +87,15 @@ async function connectWithRetry(client: WaClient) {
 }
 ```
 
+## Recovering from `client_too_old` (HTTP 405)
+
+If the server starts rejecting the noise handshake with `failure_client_too_old`, the bundled WA Web version is out of date. Two options:
+
+- Set [`recoverFromClientTooOld: true`](/en/concepts/configuration#whatsapp-web-version) on `WaClient` — on every 405 the client fetches the current version from `web.whatsapp.com`, swaps it in, and reconnects.
+- Pass a [`version` resolver](/en/concepts/configuration#whatsapp-web-version) that returns a fresh string per connect.
+
+Both are stopgaps — upgrade zapo when a release ships with a refreshed default.
+
 ## After reconnecting
 
 Some state is **connection-scoped** and must be re-established after a successful reconnect:
