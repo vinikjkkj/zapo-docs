@@ -1,0 +1,33 @@
+---
+title: "Changelog"
+description: "Product updates and improvements to Zapo."
+icon: "rss"
+---
+
+Recent changes to `zapo-js`. For the full release history, see the [CHANGELOG on GitHub](https://github.com/vinikjkkj/zapo/blob/main/CHANGELOG.md).
+
+<Update label="May 27, 2026">
+
+## New features
+
+**Bring your own SQLite connection**
+
+The SQLite backend now accepts a pre-opened connection via the new `connection` option on `createSqliteStore`, matching the `pg`, `mysql`, `mongo`, and `redis` backends. Open a single SQLite handle once with `openSqliteConnection`, share it across your application, and Zapo will skip closing it on `store.destroy()` — you own the lifecycle.
+
+Useful when your app already manages a SQLite database and you want Zapo to coexist with it.
+
+See [SQLite store reference](/en/reference/stores#sqlite).
+
+## Updates
+
+**Auth provider defaults to in-memory**
+
+`createStore()` no longer throws when `providers.auth` is omitted. Auth now falls back to a built-in `WaAuthMemoryStore`, matching every other domain. You can drop the boilerplate from quick experiments and tests.
+
+<Warning>
+  Memory auth loses credentials on restart — keep a durable backend (SQLite, Postgres, MySQL, Mongo, Redis) for anything long-lived.
+</Warning>
+
+See [memory-only stores](/en/concepts/stores#memory-only-tests).
+
+</Update>
