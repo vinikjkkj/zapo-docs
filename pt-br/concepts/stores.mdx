@@ -58,7 +58,7 @@ createStore({
 
 ## Providers são obrigatórios quando você define `backends` {#providers-are-required-when-you-set-backends}
 
-Assim que `backends` contém ao menos uma entrada, **todo domínio de persistência precisa ser atribuído explicitamente** em `providers` (`auth`, `signal`, `preKey`, `session`, `identity`, `senderKey`, `appState`, `privacyToken`, `messages`, `threads`, `contacts`). Tanto os tipos TypeScript quanto uma verificação em tempo de execução garantem isso — `createStore` lança um erro listando as chaves `providers.*` faltantes quando alguma é omitida.
+Assim que `backends` contém ao menos uma entrada, **todo domínio de persistência precisa ser atribuído explicitamente** em `providers`. Os domínios obrigatórios são `auth`, `signal`, `preKey`, `session`, `identity`, `senderKey`, `appState`, `privacyToken`, `messages`, `threads` e `contacts`. Tanto os tipos TypeScript quanto uma verificação em tempo de execução garantem isso — `createStore` lança um erro listando as chaves `providers.*` faltantes quando alguma é omitida.
 
 Três valores são válidos para cada domínio:
 
@@ -66,7 +66,7 @@ Três valores são válidos para cada domínio:
 - `'memory'` — mantém esse domínio no provider de memória embutido nesta execução.
 - `'none'` — válido apenas para os domínios de arquivo opcionais (`messages`, `threads`, `contacts`); ignora o domínio por completo.
 
-A verificação existe porque cobertura parcial é quase sempre uma armadilha: persistir apenas `auth` enquanto o estado do Signal, o app-state ou a caixa de mensagens silenciosamente recaem para a memória significa que o dispositivo pareia uma vez e depois perde o estado de protocolo a cada reinício. Escolha `'memory'` de forma deliberada se for esse o seu objetivo.
+A verificação existe porque cobertura parcial é quase sempre um bug. Se você persiste apenas `auth` e deixa o estado do Signal, o app-state ou a caixa de mensagens recairem para a memória, o dispositivo pareia uma vez e depois perde o estado de protocolo a cada reinício. Escolha `'memory'` de forma deliberada quando for esse o seu objetivo.
 
 ```ts
 createStore({
