@@ -58,8 +58,8 @@ Each client pairs, reconnects, and emits events independently. Budget memory/CPU
 ## Tune for throughput
 
 - **Write-behind** batches incoming message/thread/contact writes off the hot path. Tune `writeBehind.maxPendingKeys` / `maxWriteConcurrency` / `flushTimeoutMs` to your database. ([config](/en/concepts/configuration#write-behind-persistence))
-- **History sync** (`history.enabled`) adds a large initial download. Leave it off unless you need backfill, and set `requireFullSync` deliberately.
-- **Bots that shouldn't appear online**: set `markOnlineOnConnect: false`.
+- **History sync** (`history.enabled`) is on by default and adds a large initial download. Set it to `false` if you don't persist mailbox/threads/contacts; set `requireFullSync` deliberately.
+- **Bots that shouldn't appear online**: `markOnlineOnConnect` defaults to `false`, so bots are invisible on connect out of the box. Pass `true` only when you want a visible "online" presence.
 - **Timeouts** (`iqTimeoutMs`, `keepAliveIntervalMs`, `deadSocketTimeoutMs`, …) ship with production defaults — override only with a reason. ([config](/en/concepts/configuration#timeouts))
 
 ## Reconnection & error policy

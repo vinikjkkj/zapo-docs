@@ -1,6 +1,6 @@
 ---
 title: "Receiving messages"
-description: "Parse incoming WhatsApp message events, extract text and media, send delivery and read receipts, and handle addons like reactions and edits."
+description: "Handle incoming message events: extract text and media, send delivery and read receipts, decrypt addons, and request older history."
 icon: "inbox"
 ---
 
@@ -121,14 +121,10 @@ Useful fields: `type` (the signaling stage), `callId`, `callCreatorJid` / `calle
 
 ### Automatic decryption
 
-Set `addons.autoDecrypt` on the client and addons are decrypted and emitted for you:
+Addons are decrypted and emitted for you by default — just subscribe to `message_addon`:
 
 ```ts
-const client = new WaClient({
-  store,
-  sessionId: 'default',
-  addons: { autoDecrypt: true }
-}, logger)
+const client = new WaClient({ store, sessionId: 'default' }, logger)
 
 client.on('message_addon', (event) => {
   console.log('addon:', event)
@@ -137,9 +133,15 @@ client.on('message_addon', (event) => {
 
 ### Manual decryption
 
-If you leave `autoDecrypt` off, decrypt on demand from the originating message event:
+Pass `addons: { autoDecrypt: false }` to receive the encrypted payload and decrypt on demand from the originating message event:
 
 ```ts
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  addons: { autoDecrypt: false }
+}, logger)
+
 client.on('message', async (event) => {
   await client.message.tryDecryptAddon(event)
 })

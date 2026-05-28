@@ -58,8 +58,8 @@ Cada client pareia, reconecta e emite eventos de forma independente. Reserve mem
 ## Ajuste para throughput {#tune-for-throughput}
 
 - **Write-behind** agrupa as escritas de mensagens/threads/contatos fora do hot path. Ajuste `writeBehind.maxPendingKeys` / `maxWriteConcurrency` / `flushTimeoutMs` ao seu banco. ([config](/pt-br/concepts/configuration#write-behind-persistence))
-- **History sync** (`history.enabled`) adiciona um download inicial grande. Deixe desligado a menos que precise de backfill, e use `requireFullSync` deliberadamente.
-- **Bots que não devem aparecer online**: defina `markOnlineOnConnect: false`.
+- **History sync** (`history.enabled`) é ligado por padrão e adiciona um download inicial grande. Defina como `false` se você não persiste mailbox/threads/contacts; use `requireFullSync` deliberadamente.
+- **Bots que não devem aparecer online**: `markOnlineOnConnect` é `false` por padrão, então bots ficam invisíveis ao conectar. Passe `true` apenas quando quiser uma presença "online" visível.
 - **Timeouts** (`iqTimeoutMs`, `keepAliveIntervalMs`, `deadSocketTimeoutMs`, …) vêm com padrões de produção — sobrescreva só com motivo. ([config](/pt-br/concepts/configuration#timeouts))
 
 ## Política de reconexão & erros {#reconnection--error-policy}
