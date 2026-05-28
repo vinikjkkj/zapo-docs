@@ -14,7 +14,7 @@ Este guia constrói um bot mínimo de "ping → pong". Ele se conecta, imprime u
   </Step>
 
   <Step title="Crie a store e o client">
-    A [store](/pt-br/concepts/stores) persiste o estado de auth e do Signal. Aqui usamos SQLite, gravando em `.auth/state.sqlite`.
+    A [store](/pt-br/concepts/stores) persiste o estado de auth e do Signal. Este exemplo usa SQLite, gravando em `.auth/state.sqlite`.
 
     ```ts
     import { createPinoLogger, createStore, WaClient } from 'zapo-js'
