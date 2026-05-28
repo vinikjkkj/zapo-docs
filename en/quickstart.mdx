@@ -29,12 +29,15 @@ This guide builds a minimal "ping → pong" bot. It connects, prints a QR code t
       providers: {
         auth: 'sqlite',
         signal: 'sqlite',
+        preKey: 'sqlite',
+        session: 'sqlite',
+        identity: 'sqlite',
         senderKey: 'sqlite',
         appState: 'sqlite',
+        privacyToken: 'sqlite',
         messages: 'sqlite',
         threads: 'sqlite',
-        contacts: 'sqlite',
-        privacyToken: 'sqlite'
+        contacts: 'sqlite'
       }
     })
 
@@ -118,12 +121,15 @@ const store = createStore({
   providers: {
     auth: 'sqlite',
     signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
     senderKey: 'sqlite',
     appState: 'sqlite',
+    privacyToken: 'sqlite',
     messages: 'sqlite',
     threads: 'sqlite',
-    contacts: 'sqlite',
-    privacyToken: 'sqlite'
+    contacts: 'sqlite'
   }
 })
 

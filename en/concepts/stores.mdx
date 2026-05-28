@@ -17,12 +17,15 @@ const store = createStore({
   providers: {
     auth: 'sqlite',
     signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
     senderKey: 'sqlite',
     appState: 'sqlite',
+    privacyToken: 'sqlite',
     messages: 'sqlite',
     threads: 'sqlite',
-    contacts: 'sqlite',
-    privacyToken: 'sqlite'
+    contacts: 'sqlite'
   }
 })
 ```
@@ -40,6 +43,9 @@ createStore({
   providers: {
     auth: 'redis',
     signal: 'redis',
+    preKey: 'redis',
+    session: 'redis',
+    identity: 'redis',
     senderKey: 'redis',
     appState: 'redis',
     privacyToken: 'redis',
@@ -50,7 +56,38 @@ createStore({
 })
 ```
 
-Any domain you omit defaults to the built-in **memory** backend — no `backends` entry required.
+## Providers are required when you set `backends`
+
+As soon as `backends` contains at least one entry, **every persistence domain must be assigned explicitly** in `providers` (`auth`, `signal`, `preKey`, `session`, `identity`, `senderKey`, `appState`, `privacyToken`, `messages`, `threads`, `contacts`). Both the TypeScript types and a runtime check enforce this — `createStore` throws and lists the missing `providers.*` keys when any are omitted.
+
+Three values are valid for each domain:
+
+- A backend name from `backends` (e.g. `'sqlite'`) — persist that domain there.
+- `'memory'` — keep that domain in the in-tree memory provider for this run.
+- `'none'` — only valid for the optional archive domains (`messages`, `threads`, `contacts`); skips the domain entirely.
+
+This guard exists because partial coverage is almost always a footgun: persisting only `auth` while letting Signal state, app-state, or the mailbox silently fall back to memory means the device pairs once and then loses its protocol state on every restart. Pick `'memory'` deliberately if that is what you want.
+
+```ts
+createStore({
+  backends: { sqlite: createSqliteStore({ path: '.auth/state.sqlite' }) },
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none',  // skip the message archive
+    threads: 'none',
+    contacts: 'none'
+  }
+})
+```
+
+When `backends` is empty or omitted, every domain falls back to memory (mailbox domains to `'none'`) — useful for tests, but the device re-pairs on every restart.
 
 ## Persisted domains
 
