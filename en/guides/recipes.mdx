@@ -1,0 +1,123 @@
+---
+title: "Recipes"
+description: "Copy-paste patterns for the most common things you'll build with zapo — command bots, media handling, replies, and group automation."
+icon: "book-bookmark"
+---
+
+Short, complete patterns built on the real API. They assume you already have a connected `client` — see the [Quickstart](/en/quickstart) for setup.
+
+## Extract text from any message
+
+Incoming text can arrive as a plain `conversation` or an `extendedTextMessage` (when it has a reply/preview). Normalize both:
+
+```ts
+function getText(message: { conversation?: string | null; extendedTextMessage?: { text?: string | null } | null } | null | undefined) {
+  return message?.conversation ?? message?.extendedTextMessage?.text ?? undefined
+}
+```
+
+## Command router
+
+Parse a leading `/command` and dispatch. Skip your own outgoing messages with `event.isSender`:
+
+```ts
+client.on('message', async (event) => {
+  if (event.isSender) return // ignore our own sends (multi-device echo)
+  const text = getText(event.message)?.trim()
+  const to = event.chatJid ?? event.senderJid
+  if (!text || !text.startsWith('/') || !to) return
+
+  const [command, ...args] = text.slice(1).split(/\s+/)
+  switch (command) {
+    case 'ping':
+      await client.message.send(to, 'pong')
+      break
+    case 'echo':
+      await client.message.send(to, args.join(' ') || '(nothing to echo)')
+      break
+    default:
+      await client.message.send(to, `Unknown command: ${command}`)
+  }
+})
+```
+
+## Reply with a quote and a mention
+
+```ts
+client.on('message', async (event) => {
+  const to = event.chatJid
+  if (!to || event.isSender) return
+
+  await client.message.send(
+    to,
+    { type: 'text', text: 'got it 👍' },
+    { quote: event, mentions: event.senderJid ? [event.senderJid] : [] }
+  )
+})
+```
+
+## Auto-download incoming media
+
+Stream straight to disk — never buffer large files in memory:
+
+```ts
+client.on('message', async (event) => {
+  if (!event.message?.imageMessage) return
+  const file = `./media/${Date.now()}.jpg`
+  await client.message.downloadToFile(event, file)
+  console.log('saved', file)
+})
+```
+
+See [Media › Downloading incoming media](/en/guides/media#downloading-incoming-media) for video/audio/documents and `maxBytes`.
+
+## Welcome new group members
+
+The `group` event fires on membership changes. Greet everyone added (`action: 'add'`) and @-mention them:
+
+```ts
+client.on('group', async (event) => {
+  if (event.action !== 'add' || !event.groupJid || !event.participants?.length) return
+
+  const jids = event.participants.map((p) => p.jid).filter((j): j is string => Boolean(j))
+  const mentions = jids.map((j) => `@${j.split('@')[0]}`).join(' ')
+
+  await client.message.send(
+    event.groupJid,
+    { type: 'text', text: `Welcome ${mentions}! 🎉` },
+    { mentions: jids }
+  )
+})
+```
+
+## Send a poll
+
+```ts
+await client.message.send(chatJid, {
+  type: 'poll',
+  name: 'Lunch?',
+  options: ['Pizza', 'Sushi', 'Salad'],
+  selectableCount: 1
+})
+```
+
+## React to a message
+
+```ts
+client.on('message', async (event) => {
+  if (event.isSender || !event.chatJid) return
+  await client.message.send(event.chatJid, {
+    type: 'reaction',
+    emoji: '❤️',
+    target: { stanzaId: event.stanzaId!, fromMe: false, participant: event.senderJid }
+  })
+})
+```
+
+## Keep the bot alive across drops
+
+`zapo` doesn't auto-reconnect — wire the `connection` event to a backoff loop. The full pattern (including when **not** to reconnect) is in [Reconnection](/en/guides/reconnection) and [Errors & disconnects](/en/guides/errors).
+
+<Note>
+  Every snippet uses the [content union](/en/guides/sending-messages#the-content-union) — the same shapes `client.message.send` accepts everywhere. See [Sending messages](/en/guides/sending-messages) and the [message types reference](/en/reference/message-types) for the full set.
+</Note>

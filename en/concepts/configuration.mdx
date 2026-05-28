@@ -87,6 +87,7 @@ All in milliseconds; defaults are tuned for production.
 | `messageAckTimeoutMs` | How long `message.send` waits for the server `<ack>` per attempt. |
 | `messageMaxAttempts` | Max attempts for a single `message.send`. |
 | `messageRetryDelayMs` | Delay between message-send retries. |
+| `signalFetchKeyBundlesTimeoutMs` | Timeout for Signal prekey-bundle fetches. |
 
 ## Presence on connect
 
@@ -99,6 +100,40 @@ All in milliseconds; defaults are tuned for production.
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean }">
   Set `autoDecrypt: true` to automatically decrypt encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, …) and emit them as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Otherwise call `client.message.tryDecryptAddon(event)` yourself.
+</ParamField>
+
+## Media
+
+<ParamField path="media" type="WaMediaOptions">
+  Media processing. Pass a `processor` (from [`@zapo-js/media-utils`](/en/installation#sending-media)) to generate thumbnails/previews, probe dimensions and durations, and build voice-note waveforms before upload — then toggle each step. Without a processor media still uploads, just without this processing. See the [media guide](/en/guides/media#media-processing) for the full wiring.
+
+  - `processor?: WaMediaProcessor` — the processor instance
+  - `generateThumbnail?: boolean` — image/video preview thumbnails
+  - `generateProbe?: boolean` — probe width/height/duration
+  - `generateWaveform?: boolean` — voice-note (PTT) waveform
+  - `generateStickerThumbnail?: boolean`
+  - `normalizeVoiceNote?: boolean` — re-encode PTT audio to the format WhatsApp expects
+</ParamField>
+
+## Link previews
+
+<ParamField path="linkPreview" type="WaLinkPreviewOptions">
+  Global configuration for the built-in link-preview fetcher used when sending text that contains a URL. Override per message with the `linkPreview` [send option](/en/guides/sending-messages#send-options-reference).
+
+  - `enabled?: boolean` — turn automatic link-preview fetching on or off globally
+  - `fetchTimeoutMs?: number` — how long to wait for the target page
+  - `uploadHqThumbnail?: boolean` — upload a high-resolution preview thumbnail
+  - `allowPrivateHosts?: boolean` — allow fetching private/loopback addresses (off by default, as an SSRF guard)
+  - `maxHtmlBytes?: number` / `maxThumbnailBytes?: number` — size caps for the fetched HTML and image
+  - `userAgent?: string` — User-Agent sent when fetching
+  - `proxy?: WaProxyTransport` — proxy just this fetcher (same as [`proxy.linkPreview`](#proxy))
+  - `fetcher?: WaLinkPreviewFetcher` — replace the default fetcher entirely (e.g. your own scraping pipeline)
+</ParamField>
+
+## Chat events
+
+<ParamField path="chatEvents" type="{ emitSnapshotMutations?: boolean }">
+  Set `emitSnapshotMutations: true` to re-emit [`mutation`](/en/concepts/events) events for every change seen during an app-state **snapshot** sync. Off by default, since snapshot mutations represent historical state rather than live changes.
 </ParamField>
 
 ## Write-behind persistence
@@ -222,8 +257,16 @@ const client2 = new WaClient(options, logger)
 
 If you omit the logger, a default `ConsoleLogger` is used. Log levels: `trace`, `debug`, `info`, `warn`, `error`.
 
+## Advanced options
+
+Rarely needed — listed for completeness.
+
+- `chatSocketUrls?: readonly string[]` — override the WhatsApp chat WebSocket endpoint list (e.g. to route through a fake server in tests, or pin a specific edge).
+- `privacyToken?: WaPrivacyTokenOptions` — tune trusted-contact-token (TC token) issuance: token durations and bucket counts.
+- `testHooks?: WaClientTestHooks` — test-only fixtures (e.g. a custom Noise root CA). These do **not** bypass any security check; to actually skip a check, use the `dangerous` options below.
+
 ## Dangerous options
 
-<Warning>
+<Danger>
   `dangerous` flags each disable a security check the production path enforces (signature verification, app-state MAC checks, …). They exist for testing against a fake server. **Never enable them in production.**
-</Warning>
+</Danger>

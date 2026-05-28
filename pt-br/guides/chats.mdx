@@ -102,6 +102,6 @@ Quando uma configuração de chat muda em outro dispositivo, você recebe um eve
 
 ```ts
 client.on('mutation', (event) => {
-  console.log(event.collection, event.operation, event.index)
+  console.log(event.collection, event.schema, event.operation)
 })
 ```

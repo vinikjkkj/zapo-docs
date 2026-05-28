@@ -29,7 +29,7 @@ const similar = await client.newsletter.fetchSimilar(newsletterJid)
 ```ts
 await client.newsletter.follow(newsletterJid)
 await client.newsletter.unfollow(newsletterJid)
-await client.newsletter.mute({ newsletterJid, muted: true })
+await client.newsletter.mute({ newsletterJid, mute: true })
 ```
 
 ## Publicando {#posting}
@@ -40,16 +40,16 @@ O `send` recebe a mesma [union de conteúdo](/pt-br/guides/sending-messages#the-
 const result = await client.newsletter.send(newsletterJid, 'Hello, subscribers!')
 
 // Editar uma mensagem publicada
-await client.newsletter.editMessage(newsletterJid, result.stanzaId, 'Edited')
+await client.newsletter.editMessage(newsletterJid, result.id, 'Edited')
 
 // Revogá-la
-await client.newsletter.revoke({ newsletterJid, messageId: result.stanzaId })
+await client.newsletter.revoke({ newsletterJid, originalMessageId: result.id })
 ```
 
 ### Reações e votos em enquetes {#reactions--poll-votes}
 
 ```ts
-await client.newsletter.react({ newsletterJid, messageServerId, reaction: '🔥' })
+await client.newsletter.react({ newsletterJid, parentMessageServerId, reactionCode: '🔥' })
 await client.newsletter.votePoll({ /* WaNewsletterVotePollInput */ })
 await client.newsletter.sendViewReceipt({ /* WaNewsletterViewReceiptInput */ })
 ```

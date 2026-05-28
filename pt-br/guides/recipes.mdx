@@ -1,0 +1,123 @@
+---
+title: "Receitas"
+description: "Padrões prontos para copiar e colar das coisas mais comuns que você vai construir com o zapo — bots de comando, mídia, respostas e automação de grupo."
+icon: "book-bookmark"
+---
+
+Padrões curtos e completos, construídos sobre a API real. Eles assumem que você já tem um `client` conectado — veja o [Quickstart](/pt-br/quickstart) para o setup.
+
+## Extrair texto de qualquer mensagem {#extract-text}
+
+O texto recebido pode chegar como um `conversation` simples ou um `extendedTextMessage` (quando tem reply/preview). Normalize os dois:
+
+```ts
+function getText(message: { conversation?: string | null; extendedTextMessage?: { text?: string | null } | null } | null | undefined) {
+  return message?.conversation ?? message?.extendedTextMessage?.text ?? undefined
+}
+```
+
+## Roteador de comandos {#command-router}
+
+Faça o parse de um `/comando` inicial e despache. Ignore suas próprias mensagens enviadas com `event.isSender`:
+
+```ts
+client.on('message', async (event) => {
+  if (event.isSender) return // ignora nossos próprios envios (echo multi-device)
+  const text = getText(event.message)?.trim()
+  const to = event.chatJid ?? event.senderJid
+  if (!text || !text.startsWith('/') || !to) return
+
+  const [command, ...args] = text.slice(1).split(/\s+/)
+  switch (command) {
+    case 'ping':
+      await client.message.send(to, 'pong')
+      break
+    case 'echo':
+      await client.message.send(to, args.join(' ') || '(nothing to echo)')
+      break
+    default:
+      await client.message.send(to, `Unknown command: ${command}`)
+  }
+})
+```
+
+## Responder com citação e menção {#reply-quote-mention}
+
+```ts
+client.on('message', async (event) => {
+  const to = event.chatJid
+  if (!to || event.isSender) return
+
+  await client.message.send(
+    to,
+    { type: 'text', text: 'got it 👍' },
+    { quote: event, mentions: event.senderJid ? [event.senderJid] : [] }
+  )
+})
+```
+
+## Baixar mídia recebida automaticamente {#auto-download-media}
+
+Faça stream direto para o disco — nunca bufferize arquivos grandes na memória:
+
+```ts
+client.on('message', async (event) => {
+  if (!event.message?.imageMessage) return
+  const file = `./media/${Date.now()}.jpg`
+  await client.message.downloadToFile(event, file)
+  console.log('saved', file)
+})
+```
+
+Veja [Mídia › Baixando mídia recebida](/pt-br/guides/media#downloading-incoming-media) para vídeo/áudio/documentos e `maxBytes`.
+
+## Dar boas-vindas a novos membros do grupo {#welcome-group-members}
+
+O evento `group` dispara em mudanças de participantes. Cumprimente todos que foram adicionados (`action: 'add'`) e mencione-os:
+
+```ts
+client.on('group', async (event) => {
+  if (event.action !== 'add' || !event.groupJid || !event.participants?.length) return
+
+  const jids = event.participants.map((p) => p.jid).filter((j): j is string => Boolean(j))
+  const mentions = jids.map((j) => `@${j.split('@')[0]}`).join(' ')
+
+  await client.message.send(
+    event.groupJid,
+    { type: 'text', text: `Welcome ${mentions}! 🎉` },
+    { mentions: jids }
+  )
+})
+```
+
+## Enviar uma enquete {#send-poll}
+
+```ts
+await client.message.send(chatJid, {
+  type: 'poll',
+  name: 'Lunch?',
+  options: ['Pizza', 'Sushi', 'Salad'],
+  selectableCount: 1
+})
+```
+
+## Reagir a uma mensagem {#react}
+
+```ts
+client.on('message', async (event) => {
+  if (event.isSender || !event.chatJid) return
+  await client.message.send(event.chatJid, {
+    type: 'reaction',
+    emoji: '❤️',
+    target: { stanzaId: event.stanzaId!, fromMe: false, participant: event.senderJid }
+  })
+})
+```
+
+## Manter o bot vivo entre quedas {#keep-alive}
+
+O `zapo` não reconecta sozinho — ligue o evento `connection` a um loop de backoff. O padrão completo (incluindo quando **não** reconectar) está em [Reconexão](/pt-br/guides/reconnection) e [Erros & desconexões](/pt-br/guides/errors).
+
+<Note>
+  Todo snippet usa a [union de conteúdo](/pt-br/guides/sending-messages#the-content-union) — os mesmos formatos que `client.message.send` aceita em todo lugar. Veja [Enviando mensagens](/pt-br/guides/sending-messages) e a [referência de tipos de mensagem](/pt-br/reference/message-types) para o conjunto completo.
+</Note>

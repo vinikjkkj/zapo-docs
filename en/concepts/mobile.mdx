@@ -95,6 +95,25 @@ client.on('mobile_account_takeover_notice', (event) => {
   These events are **informational** — `zapo` surfaces them but intentionally does not expose methods to submit a code or respond to a takeover. Provisioning a number is done on a real phone; bring the resulting credentials to zapo and connect.
 </Note>
 
+## Email binding
+
+<Badge color="orange" icon="mobile">Mobile-only</Badge>
+
+`client.email` ([`WaEmailCoordinator`](/en/reference/client)) binds and verifies an email address on the account — a recovery/login factor. It is **mobile-only**: every method throws on a Web/companion connection.
+
+```ts
+// Current binding state
+const status = await client.email.getStatus()
+// { email: string | null, verified: boolean, confirmed: boolean }
+
+// Bind an address, request a code, submit it, then confirm
+await client.email.setEmail('me@example.com')
+await client.email.requestVerificationCode({ /* BuildRequestEmailVerificationCodeInput */ })
+const result = await client.email.verifyCode('123456')
+// { verified, autoVerifyFailed, email }
+await client.email.confirm()
+```
+
 ## Standard features still apply
 
 Once connected in mobile mode, the rest of the API is unchanged — `client.message`, `client.group`, events, stores, etc. all work the same way. The only difference is the transport and the auth/identity model.

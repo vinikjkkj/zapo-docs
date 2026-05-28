@@ -43,7 +43,8 @@
             "pages": [
               "en/introduction",
               "en/installation",
-              "en/quickstart"
+              "en/quickstart",
+              "en/guides/migrating-from-baileys"
             ]
           },
           {
@@ -69,11 +70,15 @@
               "en/guides/chats",
               "en/guides/groups",
               "en/guides/newsletters",
+              "en/guides/broadcast-lists",
               "en/guides/bots",
               "en/guides/presence-status",
               "en/guides/profile-privacy",
               "en/guides/reconnection",
-              "en/troubleshooting"
+              "en/guides/errors",
+              "en/guides/production",
+              "en/troubleshooting",
+              "en/guides/recipes"
             ]
           },
           {
@@ -95,7 +100,8 @@
             "pages": [
               "en/concepts/protocol",
               "en/concepts/internals",
-              "en/concepts/mobile"
+              "en/concepts/mobile",
+              "en/dev-tools"
             ]
           }
         ],
@@ -113,7 +119,8 @@
             "pages": [
               "pt-br/introduction",
               "pt-br/installation",
-              "pt-br/quickstart"
+              "pt-br/quickstart",
+              "pt-br/guides/migrating-from-baileys"
             ]
           },
           {
@@ -139,11 +146,15 @@
               "pt-br/guides/chats",
               "pt-br/guides/groups",
               "pt-br/guides/newsletters",
+              "pt-br/guides/broadcast-lists",
               "pt-br/guides/bots",
               "pt-br/guides/presence-status",
               "pt-br/guides/profile-privacy",
               "pt-br/guides/reconnection",
-              "pt-br/troubleshooting"
+              "pt-br/guides/errors",
+              "pt-br/guides/production",
+              "pt-br/troubleshooting",
+              "pt-br/guides/recipes"
             ]
           },
           {
@@ -165,7 +176,8 @@
             "pages": [
               "pt-br/concepts/protocol",
               "pt-br/concepts/internals",
-              "pt-br/concepts/mobile"
+              "pt-br/concepts/mobile",
+              "pt-br/dev-tools"
             ]
           }
         ],

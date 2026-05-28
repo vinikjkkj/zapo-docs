@@ -1,6 +1,6 @@
 ---
 title: "Authentication"
-description: "Pair a device with a QR code or an 8-digit code, persist credentials, and log out."
+description: "Pair a device with a QR code or an 8-character code, persist credentials, and log out."
 icon: "qrcode"
 ---
 
@@ -27,11 +27,15 @@ sequenceDiagram
 | Event | Payload | When |
 | --- | --- | --- |
 | `auth_qr` | `{ qr: string, ttlMs: number }` | A new QR is available to render. Re-emitted as it rotates. |
-| `auth_pairing_code` | `{ code: string }` | An 8-digit pairing code was issued (code flow). |
+| `auth_pairing_code` | `{ code: string }` | An 8-character pairing code was issued (code flow). |
 | `auth_pairing_required` | `{ forceManual: boolean }` | The session needs pairing input. |
 | `auth_paired` | `{ credentials: WaAuthCredentials }` | Pairing succeeded; credentials are now persisted. |
 
 Once `auth_paired` fires, the credentials are written to the store and reused on every subsequent `connect()` — you will not see `auth_qr` again unless the session is unlinked or cleared.
+
+<Check>
+  Paired. Credentials now live in your store — restart the process and `connect()` resumes the session with no new QR.
+</Check>
 
 ## Pairing with a QR code
 
@@ -56,7 +60,7 @@ The QR rotates automatically; `auth_qr` fires again with a fresh value each time
 
 ## Pairing with a code
 
-Prefer entering an 8-digit code on the phone instead of scanning? Request one through `client.auth` after the connection is established. Listen for `auth_pairing_required`, then request the code for the target phone number (digits only, with country code):
+Prefer entering an 8-character code on the phone instead of scanning? Request one through `client.auth` after the connection is established. Listen for `auth_pairing_required`, then request the code for the target phone number (digits only, with country code):
 
 ```ts
 client.on('auth_pairing_required', async () => {

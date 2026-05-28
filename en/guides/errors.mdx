@@ -1,0 +1,104 @@
+---
+title: "Errors & disconnects"
+description: "Read disconnect reasons, handle stream failures and error stanzas, and decide when to reconnect vs. stop."
+icon: "triangle-exclamation"
+---
+
+`zapo` surfaces problems through three event channels:
+
+- **`connection`** with `status: 'close'` — the socket dropped, carrying a `reason` and optional `code`.
+- **`stream_failure`** — a stream-level failure, often *just before* a close.
+- **`stanza_error`** — a single request/stanza was rejected, without dropping the connection.
+
+For the **reconnection loop** itself (backoff, `isLogout`, graceful shutdown), see [Reconnection](/en/guides/reconnection). This page is about understanding *why* something failed.
+
+## Disconnect reasons
+
+The `close` event is `{ status: 'close', reason, code, isLogout }`. `reason` is a [`WaDisconnectReason`](/en/reference/jid-helpers#constants) string; `code` is a numeric `WaConnectionCode` (or `null`). Use them to decide whether to reconnect:
+
+```ts
+client.on('connection', (event) => {
+  if (event.status !== 'close') return
+  if (event.isLogout || isFatal(event.reason)) {
+    console.error('not reconnecting:', event.reason, event.code)
+    return
+  }
+  void reconnect() // see the Reconnection guide
+})
+
+const FATAL = new Set([
+  'stream_error_replaced',          // same credentials connected elsewhere
+  'stream_error_device_removed',    // device unlinked
+  'stream_error_force_logout',      // server forced logout (code 516)
+  'failure_not_authorized',         // 401
+  'failure_banned',                 // 406
+  'failure_locked',                 // 403
+  'failure_client_too_old',         // 405 — bump the advertised version
+  'failure_bad_user_agent',         // 409
+  'primary_identity_key_change'     // account identity changed — re-pair
+])
+const isFatal = (reason: string) => FATAL.has(reason)
+```
+
+<Note>
+  `stream_error_force_login` (code **515**) is **not** fatal — it's a routine "reconnect now" the server sends right after pairing and occasionally during a session. Just reconnect with the stored credentials.
+</Note>
+
+Transient reasons worth reconnecting on include `stream_error_force_login`, `stream_error_ack`, `stream_error_xml_not_well_formed`, `stream_error_other`, `failure_service_unavailable`, and `comms_stopped`. `client_disconnected` means *you* called `disconnect()` — expected, don't reconnect.
+
+## Code reference
+
+When present, `code` (on the close event and on `stream_failure.failureCode`) is one of:
+
+| Code | Meaning | Action |
+| --- | --- | --- |
+| `401` | Not authorized | Re-pair |
+| `402` | Temporarily banned | Back off hard |
+| `403` | Locked | Stop |
+| `405` | Client too old | Bump `version` |
+| `406` | Banned | Stop |
+| `409` | Bad user agent | Fix device fingerprint |
+| `500` | Internal server error | Retry later |
+| `503` | Service unavailable | Back off and retry |
+| `515` | Reconnect required | Reconnect now |
+| `516` | Forced logout | Re-pair (`isLogout: true`) |
+
+The reason strings live in `WA_DISCONNECT_REASONS` and the `515`/`516` stream codes in `WA_STREAM_SIGNALING`, both exported from the package root. The numeric `code` values are typed as `WaConnectionCode` (also exported).
+
+## Stream failures
+
+`stream_failure` (`WaIncomingFailureEvent`) carries the raw failure detail and usually precedes a disconnect — log it for context:
+
+```ts
+client.on('stream_failure', (event) => {
+  console.warn('stream failure', {
+    reason: event.failureReason,
+    code: event.failureCode,
+    message: event.failureMessage,
+    url: event.failureUrl
+  })
+})
+```
+
+## Error stanzas
+
+`stanza_error` (`WaIncomingErrorStanzaEvent`) reports that a single stanza was rejected — for example a malformed query or a throttled request. The connection stays up:
+
+```ts
+client.on('stanza_error', (event) => {
+  console.warn('stanza error', event.code, event.text)
+})
+```
+
+A rejected `client.message.send` or `client.lowlevel.query` typically rejects its own promise too, so wrap individual calls in `try/catch` for per-operation handling; use `stanza_error` for visibility into errors that aren't tied to a call you `await`.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Reconnection" icon="arrows-rotate" href="/en/guides/reconnection" arrow>
+    The backoff loop and `isLogout` handling.
+  </Card>
+  <Card title="Troubleshooting" icon="circle-question" href="/en/troubleshooting" arrow>
+    Common pitfalls and quick answers.
+  </Card>
+</CardGroup>

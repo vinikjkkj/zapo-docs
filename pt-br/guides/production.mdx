@@ -1,0 +1,83 @@
+---
+title: "Produção & deploy"
+description: "Rode o zapo de forma confiável em produção: persistência, shutdown gracioso, escalar sessões e os botões que importam."
+icon: "server"
+---
+
+O `zapo` foi feito para cargas de trabalho longevas e multi-sessão. Esta página reúne as decisões operacionais que importam quando você passa do protótipo local.
+
+## Persista as credenciais (não refaça o pareamento) {#persist-credentials}
+
+Sessões de produção **precisam** usar uma [store](/pt-br/concepts/stores) durável para os domínios `auth` e Signal, além de um **`sessionId` estável** entre reinícios. A store em memória perde tudo ao sair, forçando um novo pareamento a cada boot.
+
+```ts
+const client = new WaClient({ store, sessionId: 'tenant-42' }, logger)
+```
+
+Trocar o `sessionId` deixa as credenciais anteriores órfãs — trate-o como a chave durável de um dispositivo/conta.
+
+## Escolha um backend de store {#choose-a-store-backend}
+
+| Backend | Melhor para |
+| --- | --- |
+| `@zapo-js/store-sqlite` | Processo único / host único — a opção local mais simples e rápida. |
+| `@zapo-js/store-postgres` · `@zapo-js/store-mysql` | Múltiplos hosts, operações relacionais, backups gerenciados. |
+| `@zapo-js/store-redis` | Cache de baixa latência + persistência. |
+| `@zapo-js/store-mongo` | Deployments orientados a documentos. |
+
+Você pode misturar backends por domínio (ex.: `auth`/`signal` no Postgres, caches no Redis). Veja [Instalação](/pt-br/installation#add-a-storage-backend) e a [referência de stores](/pt-br/reference/stores).
+
+## Shutdown gracioso {#graceful-shutdown}
+
+Chame `disconnect()` (nunca `logout()`) no shutdown — ele descarrega os dados pendentes de [write-behind](/pt-br/concepts/configuration#write-behind-persistence) e fecha o socket **sem** desvincular o dispositivo, então o próximo boot retoma a partir da store.
+
+```ts
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, async () => {
+    await client.disconnect()
+    process.exit(0)
+  })
+}
+```
+
+<Warning>
+  `logout()` desvincula o dispositivo no servidor e limpa o estado armazenado — força um novo pareamento completo. Use-o apenas para desconectar permanentemente, nunca como hook de shutdown.
+</Warning>
+
+## Rode muitas sessões {#run-many-sessions}
+
+Uma única store pode conter muitas contas independentes, cada uma indexada por `sessionId`. Crie um `WaClient` por conta:
+
+```ts
+const clients = tenants.map((id) => new WaClient({ store, sessionId: id }, logger))
+await Promise.all(clients.map((c) => c.connect()))
+```
+
+Cada client pareia, reconecta e emite eventos de forma independente. Reserve memória/CPU por sessão (cada uma mantém estado Signal e caches em memória) e faça sharding entre processos/hosts conforme escala — um processo por sessão é o modelo de isolamento mais simples. Veja [multi-tenancy](/pt-br/concepts/configuration#sessions-and-multi-tenancy).
+
+## Ajuste para throughput {#tune-for-throughput}
+
+- **Write-behind** agrupa as escritas de mensagens/threads/contatos fora do hot path. Ajuste `writeBehind.maxPendingKeys` / `maxWriteConcurrency` / `flushTimeoutMs` ao seu banco. ([config](/pt-br/concepts/configuration#write-behind-persistence))
+- **History sync** (`history.enabled`) adiciona um download inicial grande. Deixe desligado a menos que precise de backfill, e use `requireFullSync` deliberadamente.
+- **Bots que não devem aparecer online**: defina `markOnlineOnConnect: false`.
+- **Timeouts** (`iqTimeoutMs`, `keepAliveIntervalMs`, `deadSocketTimeoutMs`, …) vêm com padrões de produção — sobrescreva só com motivo. ([config](/pt-br/concepts/configuration#timeouts))
+
+## Política de reconexão & erros {#reconnection--error-policy}
+
+O `zapo` **não** reconecta sozinho — assuma a política. Ligue um loop de backoff ([Reconexão](/pt-br/guides/reconnection)) e classifique as falhas ([Erros & desconexões](/pt-br/guides/errors)) para parar em razões fatais (`banned`, `not_authorized`, logout) em vez de martelar o servidor.
+
+## Logging {#logging}
+
+Use um logger estruturado em produção:
+
+```ts
+const logger = await createPinoLogger({ level: 'info', pretty: false })
+```
+
+`pretty: false` emite linhas JSON adequadas a agregadores de log. Caia para `debug` / `trace` só ao investigar.
+
+## Segurança & versionamento {#security--versioning}
+
+- **Credenciais são segredos.** `WaAuthCredentials` contém as chaves do dispositivo — se você as persistir fora da store embutida, criptografe em repouso. ([Autenticação](/pt-br/concepts/authentication#credentials))
+- **Nunca habilite `dangerous.*`** em produção — essas flags desabilitam verificações de segurança. ([config](/pt-br/concepts/configuration#dangerous-options))
+- **Fixe versões exatas.** O `zapo` é pré-1.0; breaking changes são esperadas até o primeiro release maior.

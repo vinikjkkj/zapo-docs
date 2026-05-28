@@ -1,0 +1,142 @@
+---
+title: "Ferramentas de dev (MCP & fake server)"
+sidebarTitle: "Ferramentas de dev"
+description: "Dois pacotes opcionais, apenas para desenvolvimento: um servidor MCP para controlar um WaClient ao vivo a partir de um agente de IA, e um servidor WhatsApp falso in-process para testar sua integração sem tocar no WhatsApp."
+icon: "screwdriver-wrench"
+tag: "Dev"
+---
+
+O `zapo` traz dois pacotes opcionais voltados puramente a **desenvolvimento e testes** — nenhum é para produção:
+
+- [**Servidor MCP**](#mcp-server) (`@zapo-js/mcp-server`) — expõe um `WaClient` ao vivo a um agente de IA (Claude Code, Cursor) para conectar, parear, enviar e inspecionar o estado de forma interativa.
+- [**Fake server**](#fake-server) (`@zapo-js/fake-server`) — um servidor WhatsApp Web falso in-process que dirige o `WaClient` real ponta-a-ponta, para você testar de forma determinística sem tocar nos servidores do WhatsApp.
+
+---
+
+## Servidor MCP {#mcp-server}
+
+<Warning>
+  **Apenas desenvolvimento e testes.** O `@zapo-js/mcp-server` é um auxílio de depuração, **não** um servidor de protocolo de produção. Ele expõe um `WaClient` ao vivo — e todo o módulo `zapo-js` — a um agente de IA que pode enviar mensagens, ler estado e executar chamadas arbitrárias da biblioteca em uma conta real do WhatsApp. Use-o apenas com contas que você controla.
+</Warning>
+
+Ele expõe uma instância de [`WaClient`](/pt-br/reference/client) ao vivo **e** o namespace do módulo `zapo-js` como ferramentas [MCP](https://modelcontextprotocol.io). Um agente LLM pode então conduzir fluxos completos do WhatsApp — conectar, parear, enviar, consultar grupos/newsletters, inspecionar eventos, percorrer o estado SQL — sem você escrever scripts descartáveis.
+
+### Superfície de ferramentas {#tool-surface}
+
+| Ferramenta | O que faz |
+| --- | --- |
+| `call` / `inspect` | Percorre caminhos pontilhados em `client` (o `WaClient`) ou `lib` (o namespace `zapo-js`, incluindo `proto.*` e helpers como `parsePhoneJid`). `call` invoca funções; `inspect` lista membros. |
+| `events` / `events_clear` | Ring buffer limitado de todo evento de [`WaClientEventMap`](/pt-br/concepts/events) — filtre por `types` / `since` / `limit` / `drain`. |
+| `logs` / `logs_clear` | Buffer consultável espelhando cada linha de log do runtime + lib (também stderr; JSONL para `MCP_LOG_FILE` se definido). |
+| `lifecycle` | `status` / `start` / `destroy` para o client. |
+| `restart` | `soft` (descarta o client + limpa buffers) ou `process_exit` (também sai do processo para um supervisor reiniciá-lo). |
+
+Cada ferramenta embute seu próprio schema e exemplos — o agente os lê em tempo de execução, em vez de memorizar flags.
+
+### Instalar e registrar {#install--register}
+
+```bash
+npm install @zapo-js/mcp-server
+# peers: zapo-js, @zapo-js/store-sqlite, @zapo-js/media-utils (better-sqlite3 opcional, para persistência SQLite)
+```
+
+Registre no Claude Code em escopo de usuário (faça o build primeiro), para funcionar de qualquer diretório:
+
+```bash
+npm run build --workspace @zapo-js/mcp-server
+claude mcp add zapo --scope user -- node <abs-path>/packages/mcp-server/dist/bin.js
+```
+
+Para iteração rápida na própria biblioteca, registre o **código-fonte** via `tsx` — sem build, e o `zapo-js` resolve direto de `src/`:
+
+```bash
+claude mcp add zapo --scope user -- node --import tsx <abs-path>/packages/mcp-server/src/bin.ts
+```
+
+<Tip>
+  Um transporte HTTP com `node --watch` dá o loop de dev mais suave: edite um `.ts` → o processo reinicia → a próxima chamada de ferramenta reconecta automaticamente, sem reconexão manual de `/mcp`. Veja o README do pacote para o script `dev` e a configuração HTTP.
+</Tip>
+
+### Detalhe do pareamento {#pairing-gotcha}
+
+`client.connect()` bloqueia até o pareamento terminar, então sempre inicie sem aguardar (await) e depois consulte o buffer de eventos:
+
+```text
+call({ path: 'connect', noAwait: true })
+events({ types: ['auth_qr', 'auth_pairing_code', 'auth_paired', 'connection'] })
+```
+
+Mostre a string de `auth_qr` ao usuário, espere por `auth_paired` e continue.
+
+### Variáveis de ambiente principais {#key-environment-variables}
+
+| Var | Padrão | Propósito |
+| --- | --- | --- |
+| `MCP_AUTH_PATH` | `<cwd>/.auth/state.sqlite` | Caminho da store SQLite de credenciais |
+| `MCP_SESSION_ID` | `default_2` | `sessionId` passado ao `WaClient` |
+| `MCP_LOG_LEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error` |
+| `MCP_TRANSPORT` | `stdio` | `stdio` ou `http` |
+| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | `127.0.0.1` / `3737` / `/mcp` | Configuração do listener HTTP |
+| `MCP_EVENT_BUFFER_SIZE` / `MCP_LOG_BUFFER_SIZE` | `1000` / `500` | Tamanhos dos rings em memória |
+
+Um `WaClient` por processo (multi-sessão exige múltiplos servidores com `MCP_AUTH_PATH` + `MCP_SESSION_ID` distintos); sem reconexão automática (chame `connect` de novo em `connection: close`); o `restart` `soft` **não** aplica mudanças de código, enquanto `process_exit` + um supervisor aplica. Referência completa: `packages/mcp-server/README.md`.
+
+---
+
+## Fake server {#fake-server}
+
+O `@zapo-js/fake-server` é um **servidor WhatsApp Web falso in-process** que dirige o `WaClient` real ponta-a-ponta — handshake Noise XX/IK completo, pareamento por QR, Signal Protocol (X3DH + Double Ratchet), SenderKey de grupo, upload/download de mídia sobre HTTPS auto-assinado e sincronização de app-state — tudo sem tocar nos servidores do WhatsApp. Ele alimenta a própria suíte de testes cross-check e os benchmarks da biblioteca, e você pode usá-lo para testar sua integração de forma determinística.
+
+### Início rápido {#quick-start}
+
+```ts
+import { FakeWaServer } from '@zapo-js/fake-server'
+import { createStore, WaClient } from 'zapo-js'
+
+const server = await FakeWaServer.start()
+
+const client = new WaClient({
+  store: createStore({
+    providers: { auth: 'memory', signal: 'memory', senderKey: 'memory', appState: 'memory' }
+  }),
+  sessionId: 'test',
+  chatSocketUrls: [server.url],
+  testHooks: { noiseRootCa: server.noiseRootCa },
+  proxy: { mediaUpload: server.mediaProxyAgent, mediaDownload: server.mediaProxyAgent }
+})
+
+await client.connect()
+const pipeline = await server.waitForAuthenticatedPipeline()
+// conduza o pareamento, crie peers, envie/receba mensagens, valide os dois lados
+await server.stop()
+```
+
+A ligação usa três [opções do client](/pt-br/concepts/configuration) feitas exatamente para isso: `chatSocketUrls` (aponta para o WebSocket falso), `testHooks.noiseRootCa` (confia no certificado do servidor falso **sem** burlar a verificação — a checagem completa da cadeia ainda roda) e `proxy.mediaUpload` / `proxy.mediaDownload` (roteia a mídia para o servidor HTTPS falso).
+
+### O que ele simula {#what-it-simulates}
+
+- **`FakeWaServer`** — o listener WebSocket, o handshake Noise, um roteador de IQ que responde a cada IQ que a lib emite na operação normal (upload/fetch de prekey, usync, `media-conn`, sincronização de app-state, grupos, privacidade, perfil, blocklist, …), além de registries de estado para peers e grupos.
+- **`FakePeer`** — um contato simulado com cripto Signal real: `peer.sendConversation(text)` / `peer.sendGroupConversation(groupJid, text)` empurram mensagens para o client, e `peer.expectMessage()` captura e descriptografa o que o client envia.
+- **Pareamento** — `server.runPairing(pipeline, { deviceJid }, materialFn)` conduz o handshake completo de pareamento por QR; depois a lib reconecta com o handshake IK (capture-o via `waitForNextAuthenticatedPipeline()`).
+
+### CLI standalone {#standalone-cli}
+
+Rode como um servidor standalone para experimentos manuais:
+
+```bash
+npm --workspace=@zapo-js/fake-server run cli -- --port 5222 --peer 5511888@s.whatsapp.net --log
+```
+
+### Benchmarking {#benchmarking}
+
+O pacote inclui um profiler de mensagens (send/recv × 1:1/grupo) usado para acompanhar a performance da biblioteca:
+
+```bash
+npm --workspace=@zapo-js/fake-server run bench:messaging
+```
+
+Ajuste a carga com variáveis `ZAPO_BENCH_*` (`ZAPO_BENCH_CONTACTS`, `ZAPO_BENCH_GROUP_MEMBERS`, `ZAPO_BENCH_MESSAGES`, `ZAPO_BENCH_SCENARIOS`, …) e adicione `--cpu` / `--heap` / `--separate-process` para profiles. Veja `packages/fake-server/README.md` para a referência completa de flags.
+
+<Note>
+  O fake server é um harness de teste in-process, não um runtime que você faz deploy. Combine-o com a store **memory** para testes rápidos e isolados que resetam a cada execução.
+</Note>

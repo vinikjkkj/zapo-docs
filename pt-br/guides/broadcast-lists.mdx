@@ -1,0 +1,67 @@
+---
+title: "Listas de transmissão"
+description: "Defina uma lista de transmissão e envie uma mensagem para vários destinatários de uma vez."
+icon: "bullhorn"
+---
+
+Uma **lista de transmissão** envia uma única mensagem para vários contatos de uma vez — cada destinatário a recebe como um chat 1:1 normal e não vê quem mais está na lista. As listas de transmissão ficam em `client.broadcastList` ([`WaBroadcastListCoordinator`](/pt-br/reference/client#broadcastlist)).
+
+<Badge color="purple" icon="briefcase">Business-only</Badge>
+
+<Warning>
+  **Apenas business.** As listas de transmissão são baseadas no schema de app-state `BusinessBroadcastList` e só funcionam em contas **WhatsApp Business**. Em uma conta comum, o servidor rejeita as mutações subjacentes.
+</Warning>
+
+## Definindo uma lista {#defining-a-list}
+
+`setList` cria ou atualiza a definição de uma lista — ela então aparece em **Listas de transmissão** no celular, sincronizada via [app-state](/pt-br/concepts/stores). Os participantes são identificados pelo [LID](/pt-br/concepts/identities) (`lidJid`), opcionalmente acompanhado do JID de número de telefone (`pnJid`):
+
+```ts
+await client.broadcastList.setList({
+  id: 'list-1',
+  listName: 'Friends',
+  participants: [
+    { lidJid: 'a@lid', pnJid: 'a@s.whatsapp.net' },
+    { lidJid: 'b@lid' }
+  ],
+  labelIds: ['L1'] // opcional — anexa labels de business
+})
+```
+
+Remova uma lista pelo seu `id`:
+
+```ts
+await client.broadcastList.removeList('list-1')
+```
+
+## Enviando para uma lista {#sending-to-a-list}
+
+`send` recebe a mesma [union de conteúdo](/pt-br/guides/sending-messages#the-content-union) de `client.message.send` — texto, mídia, enquetes e assim por diante — mais o `listJid` da transmissão (o `id` da lista com o sufixo `@broadcast`) e os `recipients` explícitos para os quais fazer o fanout:
+
+```ts
+const result = await client.broadcastList.send({
+  listJid: 'list-1@broadcast',
+  content: 'Weekend sale starts now! 🎉',
+  recipients: ['a@lid', 'b@lid']
+  // options: { ... }  // mesmo formato das options de client.message.send
+})
+
+console.log(result.id) // o id da mensagem publicada
+```
+
+Cada destinatário é criptografado individualmente (um fanout), então um único `send` equivale a N envios diretos por trás de uma requisição. Passe as [opções de envio](/pt-br/guides/sending-messages#send-options-reference) habituais através de `options`.
+
+<Note>
+  Listas de transmissão não são [newsletters/canais](/pt-br/guides/newsletters): uma transmissão chega aos seus contatos existentes como mensagens privadas 1:1, enquanto um canal é um feed público baseado em seguidores.
+</Note>
+
+## Relacionados {#related}
+
+<CardGroup cols={2}>
+  <Card title="Referência do client" icon="code" href="/pt-br/reference/client#broadcastlist" arrow>
+    As assinaturas completas dos métodos de `client.broadcastList`.
+  </Card>
+  <Card title="Identidades (PN vs LID)" icon="id-card" href="/pt-br/concepts/identities" arrow>
+    Por que os participantes são indexados por LID.
+  </Card>
+</CardGroup>

@@ -135,3 +135,42 @@ await client.message.send(jid, {
   conversation: 'Raw protobuf message'
 })
 ```
+
+### Location and contact
+
+Message types without a typed builder are sent as raw `Proto.IMessage` fields — for example **location** and **contact**:
+
+```ts
+// Location
+await client.message.send(jid, {
+  locationMessage: {
+    degreesLatitude: -23.5613,
+    degreesLongitude: -46.6565,
+    name: 'Av. Paulista',
+    address: 'São Paulo, BR'
+  }
+})
+
+// Contact (vCard)
+const vcard = [
+  'BEGIN:VCARD',
+  'VERSION:3.0',
+  'FN:Jeff Singh',
+  'TEL;type=CELL;type=VOICE;waid=5511999999999:+55 11 99999-9999',
+  'END:VCARD'
+].join('\n')
+
+await client.message.send(jid, {
+  contactMessage: { displayName: 'Jeff', vcard }
+})
+
+// Multiple contacts
+await client.message.send(jid, {
+  contactsArrayMessage: {
+    displayName: '2 contacts',
+    contacts: [{ displayName: 'Jeff', vcard }]
+  }
+})
+```
+
+The full set of recognized `Proto.IMessage` fields (location, live location, contacts, group invite, product, order, …) is listed in the [message types reference](/en/reference/message-types).

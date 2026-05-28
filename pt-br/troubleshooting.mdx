@@ -49,8 +49,8 @@ icon: "circle-question"
   Não. As conexões mobile são estáveis, mas o `zapo` intencionalmente **não** fornece API de registro — registrar um número é complexo e exige um celular físico. Você conecta com credenciais já registradas. Veja [Conexões mobile](/pt-br/concepts/mobile).
 </Accordion>
 
-<Accordion title="QR ou código de 8 dígitos — qual usar?" icon="key">
-  Os dois funcionam. O QR é o padrão (evento `auth_qr`). Para um código de 8 dígitos, chame `client.auth.requestPairingCode(phone)` após o evento `auth_pairing_required`. Veja [Autenticação](/pt-br/concepts/authentication).
+<Accordion title="QR ou código de 8 caracteres — qual usar?" icon="key">
+  Os dois funcionam. O QR é o padrão (evento `auth_qr`). Para um código de 8 caracteres, chame `client.auth.requestPairingCode(phone)` após o evento `auth_pairing_required`. Veja [Autenticação](/pt-br/concepts/authentication).
 </Accordion>
 
 <Accordion title="logout() vs disconnect()" icon="power-off">

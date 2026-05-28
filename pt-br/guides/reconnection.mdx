@@ -8,6 +8,19 @@ icon: "arrows-rotate"
   O `WaClient` **não** reconecta automaticamente. Esta é uma escolha de design deliberada: a política de reconexão (backoff, máximo de tentativas, alertas) pertence à sua aplicação. Você escuta o `connection: close` e decide o que fazer.
 </Warning>
 
+## Ciclo de vida da conexão {#connection-lifecycle}
+
+```mermaid
+stateDiagram-v2
+  [*] --> Connecting: connect()
+  Connecting --> Open: opened
+  Connecting --> Closed: failed
+  Open --> Closed: connection close
+  Closed --> Connecting: reconnect (isLogout = false)
+  Open --> [*]: disconnect()
+  Closed --> [*]: isLogout = true (re-pair)
+```
+
 ## O evento connection {#the-connection-event}
 
 `connection` é uma union discriminada por `status`:

@@ -38,6 +38,19 @@ const usernames = await client.profile.getUsernames([jidA, jidB])
 const modes = await client.profile.getDisappearingMode([jidA, jidB])
 ```
 
+### Checar se um número está no WhatsApp {#check-if-a-number-is-on-whatsapp}
+
+Resolva números de telefone para o [LID](/pt-br/concepts/identities) e descubra se cada um está registrado no WhatsApp:
+
+```ts
+const results = await client.profile.getLidsByPhoneNumbers(['+55 11 99999-9999'])
+// → [{ phoneJid: '5511999999999@s.whatsapp.net', lidJid: '…@lid', exists: true }]
+
+for (const r of results) {
+  if (r.exists) console.log(r.phoneJid, 'está no WhatsApp →', r.lidJid)
+}
+```
+
 ### Nomes de usuário {#usernames}
 
 ```ts
@@ -83,6 +96,8 @@ const result = await client.privacy.getDisallowedList(category)
 ## Business {#business}
 
 O `client.business` ([`WaBusinessCoordinator`](/pt-br/reference/client#business)) lê perfis business e nomes verificados, e gerencia o seu próprio perfil business.
+
+<Badge color="purple" icon="briefcase">Conta business</Badge> — necessária para **editar** seu próprio perfil ou foto de capa; os métodos de leitura funcionam para qualquer conta.
 
 ```ts
 // Ler perfis business (em lote)

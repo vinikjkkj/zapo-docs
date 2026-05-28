@@ -148,12 +148,12 @@ await client.chat.remove({ schema: 'QuickReply', id: 'qr-greeting' })
 ```
 
 <Tip>
-  O nome do campo de valor (`contactAction`, `labelEditAction`, …) corresponde ao subcampo `SyncActionValue` do schema. Importe `WA_APPSTATE_SCHEMAS` para inspecionar as partes de índice de um schema e o campo de valor em tempo de execução.
+  O nome do campo de valor (`contactAction`, `labelEditAction`, …) corresponde ao subcampo `SyncActionValue` do schema.
 </Tip>
 
 ## Todos os schemas {#all-schemas}
 
-Cada chave abaixo é um `schema` válido para `set` / `remove` (`WaAppstateActionKey = keyof typeof WA_APPSTATE_SCHEMAS`). Schemas com um ✓ também têm um helper tipado de conveniência.
+Cada chave abaixo é um `schema` válido para `set` / `remove`. Schemas com um ✓ também têm um helper tipado de conveniência.
 
 ### Ações de chat {#chat-actions}
 

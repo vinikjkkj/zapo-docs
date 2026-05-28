@@ -33,7 +33,7 @@ normalizeRecipientJid('5511999999999')
 toUserJid('5511999999999:12@s.whatsapp.net') // '5511999999999@s.whatsapp.net'
 
 // Constrói um JID com escopo de dispositivo
-buildDeviceJid('5511999999999@s.whatsapp.net', 12)
+buildDeviceJid('5511999999999', 's.whatsapp.net', 12)
 ```
 
 ## Parsing e splitting {#parsing--splitting}
@@ -41,7 +41,7 @@ buildDeviceJid('5511999999999@s.whatsapp.net', 12)
 ```ts
 splitJid('5511999999999@s.whatsapp.net')  // { user, server }
 parseJidFull(jid)                         // ParsedJid com a decomposição completa
-parseSignalAddressFromJid(jid)            // { user, device }
+parseSignalAddressFromJid(jid)            // { user, server, device }
 ```
 
 ## Classificando JIDs {#classifying-jids}

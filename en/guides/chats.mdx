@@ -102,6 +102,6 @@ When a chat setting changes on another device, you receive a `mutation` event:
 
 ```ts
 client.on('mutation', (event) => {
-  console.log(event.collection, event.operation, event.index)
+  console.log(event.collection, event.schema, event.operation)
 })
 ```
