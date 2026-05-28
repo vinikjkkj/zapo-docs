@@ -57,6 +57,10 @@ icon: "circle-question"
   `disconnect()` fecha o socket mas **mantém** as credenciais para você retomar depois. `logout()` **desvincula** o dispositivo no servidor e limpa o estado armazenado (conforme `logoutStoreClear`). Veja [Autenticação](/pt-br/concepts/authentication#disconnect-vs-logout).
 </Accordion>
 
+<Accordion title="Handshake falha com HTTP 405 / failure_client_too_old" icon="triangle-exclamation">
+  O WhatsApp rejeitou a versão embarcada do WA Web. Atualize o `zapo` quando possível. Como paliativo, ative `recoverFromClientTooOld: true` para buscar a versão atual e reconectar, ou passe um resolver `version` que retorne uma string fresca por conexão. Veja [Versão do WhatsApp Web](/pt-br/concepts/configuration#whatsapp-web-version).
+</Accordion>
+
 <Accordion title="Uma operação de business/newsletter dá erro" icon="briefcase">
   Algumas operações são restritas: `editBusinessProfile`, operações de foto de capa e broadcast lists são **somente business**; vincular email é **somente mobile**; várias operações de comunidade/newsletter exigem um transporte **MEX** ativo. A [referência de coordinators](/pt-br/reference/client) sinaliza cada uma.
 </Accordion>

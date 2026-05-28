@@ -87,6 +87,15 @@ async function connectWithRetry(client: WaClient) {
 }
 ```
 
+## Recuperando de `client_too_old` (HTTP 405) {#recovering-from-client-too-old}
+
+Se o servidor começar a rejeitar o handshake noise com `failure_client_too_old`, a versão embarcada do WA Web está desatualizada. Duas opções:
+
+- Ative [`recoverFromClientTooOld: true`](/pt-br/concepts/configuration#whatsapp-web-version) no `WaClient` — a cada 405 o client busca a versão atual em `web.whatsapp.com`, troca em memória e reconecta.
+- Passe um [resolver `version`](/pt-br/concepts/configuration#whatsapp-web-version) que retorne uma string fresca por conexão.
+
+Ambos são paliativos — atualize o zapo quando uma release trouxer um default mais novo.
+
 ## Depois de reconectar {#after-reconnecting}
 
 Parte do estado é **escopado à conexão** e precisa ser reestabelecido após uma reconexão bem-sucedida:

@@ -89,6 +89,51 @@ All in milliseconds; defaults are tuned for production.
 | `messageRetryDelayMs` | Delay between message-send retries. |
 | `signalFetchKeyBundlesTimeoutMs` | Timeout for Signal prekey-bundle fetches. |
 
+## WhatsApp Web version
+
+zapo ships with a tested production WA Web version baked in. WhatsApp occasionally rejects older clients during the noise handshake with HTTP `405` / `failure_client_too_old`. You have three options to recover.
+
+<ParamField path="version" type="string | () => string | Promise<string>">
+  Override the version string the client advertises (`'x.y.z'`). Either a literal or a resolver invoked **once per `connect()`** — useful for fetching the current version lazily without rebuilding the client.
+</ParamField>
+
+<ParamField path="recoverFromClientTooOld" type="boolean" default="false">
+  When `true`, on `failure_client_too_old` the client logs a warning, fetches the current WA Web version via [`fetchLatestWaWebVersion()`](#fetchlatestwawebversion), applies it as a one-shot override, and reconnects automatically. Treat it as a stopgap until you upgrade zapo — the bundled default is still the recommended path.
+</ParamField>
+
+```ts
+import { WaClient, fetchLatestWaWebVersion } from 'zapo-js'
+
+// Pin a specific version
+new WaClient({ store, sessionId: 'default', version: '2.3000.1027421623' }, logger)
+
+// Resolve lazily on each connect()
+new WaClient({
+  store,
+  sessionId: 'default',
+  version: async () => (await fetchLatestWaWebVersion()).version
+}, logger)
+
+// Auto-recover from HTTP 405 once
+new WaClient({ store, sessionId: 'default', recoverFromClientTooOld: true }, logger)
+```
+
+### `fetchLatestWaWebVersion()`
+
+Scrapes the current `client_revision` from `web.whatsapp.com/sw.js` and returns a version string in the `2.3000.x` form accepted by `version`.
+
+```ts
+import { fetchLatestWaWebVersion } from 'zapo-js'
+
+const { version, parts } = await fetchLatestWaWebVersion({
+  timeoutMs: 10_000,
+  // Route through the same dispatcher you use for media / link-preview
+  proxy: dispatcher
+})
+```
+
+Options: `timeoutMs` (default 10s), `proxy` (undici dispatcher only — `http.Agent` is not honored by the global `fetch`), `signal`, `userAgent`, `headers`, and a `fetch` override for tests. Network and parse errors throw — wrap in `try`/`catch` if you want to fall back to the bundled default.
+
 ## Presence on connect
 
 <ParamField path="markOnlineOnConnect" type="boolean" default="true">
