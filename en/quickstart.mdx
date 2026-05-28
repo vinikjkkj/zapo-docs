@@ -14,7 +14,7 @@ This guide builds a minimal "ping → pong" bot. It connects, prints a QR code t
   </Step>
 
   <Step title="Create the store and client">
-    The [store](/en/concepts/stores) persists auth and Signal state. Here we use SQLite, writing to `.auth/state.sqlite`.
+    The [store](/en/concepts/stores) persists auth and Signal state. This example uses SQLite, writing to `.auth/state.sqlite`.
 
     ```ts
     import { createPinoLogger, createStore, WaClient } from 'zapo-js'
