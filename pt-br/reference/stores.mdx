@@ -47,7 +47,19 @@ const connection = await openSqliteConnection({
 
 const store = createStore({
   backends: { sqlite: createSqliteStore({ connection }) },
-  providers: { auth: 'sqlite', signal: 'sqlite', senderKey: 'sqlite', appState: 'sqlite' }
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none',
+    threads: 'none',
+    contacts: 'none'
+  }
 })
 
 // ... use a connection em outras partes da sua aplicação ...
@@ -152,11 +164,19 @@ O `createStore` permite que cada domínio escolha um backend por nome, então vo
 createStore({
   backends: { redis, postgres },
   providers: {
-    auth: 'redis', signal: 'redis', senderKey: 'redis',
-    appState: 'redis', privacyToken: 'redis',
-    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+    auth: 'redis',
+    signal: 'redis',
+    preKey: 'redis',
+    session: 'redis',
+    identity: 'redis',
+    senderKey: 'redis',
+    appState: 'redis',
+    privacyToken: 'redis',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
   }
 })
 ```
 
-Veja [Stores](/pt-br/concepts/stores) para a lista completa de domínios.
+Todo domínio de persistência deve ser listado quando `backends` é definido — veja [Stores](/pt-br/concepts/stores#providers-are-required-when-you-set-backends) para a regra e os valores aceitos (`'<backend>'`, `'memory'`, `'none'`).

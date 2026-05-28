@@ -26,7 +26,19 @@ import { createSqliteStore } from '@zapo-js/store-sqlite'
 
 const store = createStore({
   backends: { sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' }) },
-  providers: { auth: 'sqlite', signal: 'sqlite', senderKey: 'sqlite', appState: 'sqlite' }
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none',
+    threads: 'none',
+    contacts: 'none'
+  }
 })
 const client = new WaClient({ store, sessionId: 'default' }, logger)
 await client.connect()

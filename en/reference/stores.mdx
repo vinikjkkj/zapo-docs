@@ -47,7 +47,19 @@ const connection = await openSqliteConnection({
 
 const store = createStore({
   backends: { sqlite: createSqliteStore({ connection }) },
-  providers: { auth: 'sqlite', signal: 'sqlite', senderKey: 'sqlite', appState: 'sqlite' }
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none',
+    threads: 'none',
+    contacts: 'none'
+  }
 })
 
 // ... use connection elsewhere in your app ...
@@ -152,11 +164,19 @@ Requires the `mongodb` peer dependency.
 createStore({
   backends: { redis, postgres },
   providers: {
-    auth: 'redis', signal: 'redis', senderKey: 'redis',
-    appState: 'redis', privacyToken: 'redis',
-    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+    auth: 'redis',
+    signal: 'redis',
+    preKey: 'redis',
+    session: 'redis',
+    identity: 'redis',
+    senderKey: 'redis',
+    appState: 'redis',
+    privacyToken: 'redis',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
   }
 })
 ```
 
-See [Stores](/en/concepts/stores) for the full list of domains.
+Every persistence domain must be listed once `backends` is set — see [Stores](/en/concepts/stores#providers-are-required-when-you-set-backends) for the rule and the accepted values (`'<backend>'`, `'memory'`, `'none'`).

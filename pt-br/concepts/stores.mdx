@@ -17,12 +17,15 @@ const store = createStore({
   providers: {
     auth: 'sqlite',
     signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
     senderKey: 'sqlite',
     appState: 'sqlite',
+    privacyToken: 'sqlite',
     messages: 'sqlite',
     threads: 'sqlite',
-    contacts: 'sqlite',
-    privacyToken: 'sqlite'
+    contacts: 'sqlite'
   }
 })
 ```
@@ -40,6 +43,9 @@ createStore({
   providers: {
     auth: 'redis',
     signal: 'redis',
+    preKey: 'redis',
+    session: 'redis',
+    identity: 'redis',
     senderKey: 'redis',
     appState: 'redis',
     privacyToken: 'redis',
@@ -50,7 +56,38 @@ createStore({
 })
 ```
 
-Qualquer domínio que você omitir usa por padrão o backend **memory** embutido — nenhuma entrada em `backends` é necessária.
+## Providers são obrigatórios quando você define `backends` {#providers-are-required-when-you-set-backends}
+
+Assim que `backends` contém ao menos uma entrada, **todo domínio de persistência precisa ser atribuído explicitamente** em `providers`. Os domínios obrigatórios são `auth`, `signal`, `preKey`, `session`, `identity`, `senderKey`, `appState`, `privacyToken`, `messages`, `threads` e `contacts`. Tanto os tipos TypeScript quanto uma verificação em tempo de execução garantem isso — `createStore` lança um erro listando as chaves `providers.*` faltantes quando alguma é omitida.
+
+Três valores são válidos para cada domínio:
+
+- Um nome de backend de `backends` (por exemplo `'sqlite'`) — persiste esse domínio ali.
+- `'memory'` — mantém esse domínio no provider de memória embutido nesta execução.
+- `'none'` — válido apenas para os domínios de arquivo opcionais (`messages`, `threads`, `contacts`); ignora o domínio por completo.
+
+A verificação existe porque cobertura parcial é quase sempre um bug. Se você persiste apenas `auth` e deixa o estado do Signal, o app-state ou a caixa de mensagens recairem para a memória, o dispositivo pareia uma vez e depois perde o estado de protocolo a cada reinício. Escolha `'memory'` de forma deliberada quando for esse o seu objetivo.
+
+```ts
+createStore({
+  backends: { sqlite: createSqliteStore({ path: '.auth/state.sqlite' }) },
+  providers: {
+    auth: 'sqlite',
+    signal: 'sqlite',
+    preKey: 'sqlite',
+    session: 'sqlite',
+    identity: 'sqlite',
+    senderKey: 'sqlite',
+    appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none',  // pula o arquivo de mensagens
+    threads: 'none',
+    contacts: 'none'
+  }
+})
+```
+
+Quando `backends` está vazio ou ausente, cada domínio recai para a memória (e os domínios de mailbox para `'none'`) — útil para testes, mas o dispositivo se re-pareia a cada reinício.
 
 ## Domínios persistidos {#persisted-domains}
 
