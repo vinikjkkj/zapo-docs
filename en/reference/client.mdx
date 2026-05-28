@@ -126,7 +126,7 @@ See [Configuration](/en/concepts/configuration) for every option.
 | `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Create a group (you're auto-added as admin; don't include your own JID). |
 | `setSubject` | `(groupJid, subject) => Promise<void>` | Rename. |
 | `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Set/clear description. |
-| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Toggle a boolean group flag (`announce`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, community flags). |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Toggle a boolean group flag (`announcement`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, community flags). |
 | `setMemberAddMode` | `(groupJid, 'admin_add' \| 'all_member_add') => Promise<void>` | Restrict member adds to admins (or open to all). Admin op. |
 | `setMemberLinkMode` | `(groupJid, 'admin_link' \| 'all_member_link') => Promise<void>` | Restrict invite-link sharing to admins (or open to all). Admin op. |
 | `setMemberShareGroupHistoryMode` | `(groupJid, 'admin_share' \| 'all_member_share') => Promise<void>` | Hide or expose prior chat history to newly added members. Admin op. |

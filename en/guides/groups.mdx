@@ -44,7 +44,7 @@ await client.group.demoteParticipants(groupJid, jids)  // remove admin
 ```ts
 await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null to clear
-await client.group.setSetting(groupJid, 'announce', true)      // admins-only messages
+await client.group.setSetting(groupJid, 'announcement', true)  // admins-only messages
 await client.group.setSetting(groupJid, 'restrict', true)      // admins-only edit info
 await client.group.setSetting(groupJid, 'ephemeral', true)     // disappearing messages on/off
 ```
@@ -83,7 +83,7 @@ await client.group.setEphemeralDuration(groupJid, 7_776_000)
 await client.group.setSetting(groupJid, 'ephemeral', false)
 ```
 
-Admin-only. `0` is rejected — call `setSetting('ephemeral', false)` to turn it off.
+Admin-only. Passing `0` disables disappearing messages — the same as `setSetting('ephemeral', false)`.
 
 ## Invites
 

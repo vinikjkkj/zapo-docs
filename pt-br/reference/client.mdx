@@ -126,7 +126,7 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Cria um grupo (você é adicionado automaticamente como admin; não inclua seu próprio JID). |
 | `setSubject` | `(groupJid, subject) => Promise<void>` | Renomeia. |
 | `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Define/limpa a descrição. |
-| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Alterna uma flag booleana do grupo (`announce`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, flags de comunidade). |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Alterna uma flag booleana do grupo (`announcement`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, flags de comunidade). |
 | `setMemberAddMode` | `(groupJid, 'admin_add' \| 'all_member_add') => Promise<void>` | Restringe quem pode adicionar membros (só admins ou qualquer um). Op. de admin. |
 | `setMemberLinkMode` | `(groupJid, 'admin_link' \| 'all_member_link') => Promise<void>` | Restringe quem pode compartilhar o link de convite. Op. de admin. |
 | `setMemberShareGroupHistoryMode` | `(groupJid, 'admin_share' \| 'all_member_share') => Promise<void>` | Esconde ou expõe o histórico anterior para novos membros. Op. de admin. |

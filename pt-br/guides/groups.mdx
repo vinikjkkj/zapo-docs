@@ -44,7 +44,7 @@ await client.group.demoteParticipants(groupJid, jids)  // remover admin
 ```ts
 await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null para limpar
-await client.group.setSetting(groupJid, 'announce', true)      // mensagens só de admins
+await client.group.setSetting(groupJid, 'announcement', true)  // mensagens só de admins
 await client.group.setSetting(groupJid, 'restrict', true)      // editar info só por admins
 await client.group.setSetting(groupJid, 'ephemeral', true)     // mensagens temporárias on/off
 ```
@@ -83,7 +83,7 @@ await client.group.setEphemeralDuration(groupJid, 7_776_000)
 await client.group.setSetting(groupJid, 'ephemeral', false)
 ```
 
-Apenas para admins. `0` é rejeitado — chame `setSetting('ephemeral', false)` para desligar.
+Apenas para admins. Passar `0` desliga as mensagens temporárias — o mesmo que `setSetting('ephemeral', false)`.
 
 ## Convites {#invites}
 
