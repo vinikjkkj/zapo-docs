@@ -136,6 +136,74 @@ createStore({
 })
 ```
 
+## Read-through cache layer
+
+When a hot signal domain points at a persistent backend, every send/recv round-trip pays the backend's latency to fetch the same peer's session, identity, or sender key. The `cacheLayer` option wraps the backend store with a bounded-LRU L1 (the in-tree memory provider) so repeated reads of the same peer skip the backend, while writes stay write-through so the backend remains authoritative.
+
+Four hot domains can be cached:
+
+| Domain | Strategy |
+| --- | --- |
+| `session` | Signal Double-Ratchet sessions. Read-through + write-through. |
+| `identity` | Remote identity keys. Read-through + write-through. |
+| `senderKey` | Per-(group, sender) sender keys. Read-through + write-through. |
+| `privacyToken` | Trusted-contact tokens. Read-through + **invalidate-on-write** (the backend merges partial fields on upsert). |
+
+All flags default to `false`. A flag is a no-op unless that domain resolves to a real backend in `providers` — caching `'memory'` or `'none'` in front of itself buys nothing and is skipped.
+
+```ts
+createStore({
+  backends: { postgres, redis },
+  providers: {
+    auth: 'postgres',
+    signal: 'postgres',
+    preKey: 'postgres',
+    session: 'postgres',
+    identity: 'postgres',
+    senderKey: 'postgres',
+    appState: 'postgres',
+    privacyToken: 'postgres',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
+  },
+  cacheLayer: {
+    session: true,
+    identity: true,
+    senderKey: true,
+    privacyToken: true,
+    limits: {
+      session: 10_000,
+      identity: 10_000,
+      senderKey: 5_000,
+      privacyToken: 5_000
+    }
+  }
+})
+```
+
+`limits` caps per-domain entry counts; once exceeded, the L1 evicts LRU. When unset, each domain defaults to the matching memory-provider cap.
+
+### When to enable it
+
+Turn it on when your backend is a network hop (Redis, Postgres, MySQL, MongoDB) and you send or receive at a rate where the same peers repeat — typical for bots, group fan-out, and multi-tenant gateways. With a local SQLite backend the wins are smaller; measure before flipping it on.
+
+### Single-writer assumption
+
+The L1 is per-process and has no cross-process invalidation channel. Enable `cacheLayer` only when a single process owns a given `sessionId`'s backend rows — the library's standard connection model. Different sessions sharing one backend are fine; the same session opened from two processes is not.
+
+<Warning>
+  Do not enable `cacheLayer` when multiple processes share one backend for the **same** `sessionId`. Another process's writes would leave this cache stale and corrupt the Signal ratchet.
+</Warning>
+
+### Why not every domain?
+
+`signal`, `appState`, and `preKey` are deliberately excluded:
+
+- **`signal`** — the per-send registration read is already memoized inside the signal lock; a second cache adds nothing.
+- **`appState`** — the sync client already caches collection state for the sync-context lifetime, the only scope where reads both repeat and stay coherent.
+- **`preKey`** — one-time pre-keys are read exactly once then consumed. Serving a consumed key from a stale cache would reuse it and break forward secrecy.
+
 ## Backends
 
 <CardGroup cols={2}>

@@ -136,6 +136,74 @@ createStore({
 })
 ```
 
+## Camada de cache read-through {#read-through-cache-layer}
+
+Quando um domínio quente do signal aponta para um backend persistente, cada ida e volta de envio/recebimento paga a latência do backend para buscar a sessão, identidade ou sender key do mesmo peer. A opção `cacheLayer` envolve a store do backend com um L1 LRU limitado (o provider de memória nativo) para que leituras repetidas do mesmo peer pulem o backend, enquanto escritas continuam write-through e o backend permanece como fonte de verdade.
+
+Quatro domínios quentes podem ser cacheados:
+
+| Domínio | Estratégia |
+| --- | --- |
+| `session` | Sessões Signal Double-Ratchet. Read-through + write-through. |
+| `identity` | Chaves de identidade remotas. Read-through + write-through. |
+| `senderKey` | Sender keys por (grupo, remetente). Read-through + write-through. |
+| `privacyToken` | Tokens de contato confiável. Read-through + **invalidate-on-write** (o backend mescla campos parciais no upsert). |
+
+Todos os flags têm padrão `false`. Um flag é no-op a menos que aquele domínio resolva para um backend real em `providers` — cachear `'memory'` ou `'none'` na frente de si mesmo não traz ganho e é ignorado.
+
+```ts
+createStore({
+  backends: { postgres, redis },
+  providers: {
+    auth: 'postgres',
+    signal: 'postgres',
+    preKey: 'postgres',
+    session: 'postgres',
+    identity: 'postgres',
+    senderKey: 'postgres',
+    appState: 'postgres',
+    privacyToken: 'postgres',
+    messages: 'postgres',
+    threads: 'postgres',
+    contacts: 'postgres'
+  },
+  cacheLayer: {
+    session: true,
+    identity: true,
+    senderKey: true,
+    privacyToken: true,
+    limits: {
+      session: 10_000,
+      identity: 10_000,
+      senderKey: 5_000,
+      privacyToken: 5_000
+    }
+  }
+})
+```
+
+`limits` define o limite de entradas por domínio; quando excedido, o L1 faz despejo LRU. Sem definir, cada domínio usa o limite padrão do provider de memória correspondente.
+
+### Quando habilitar {#when-to-enable-it}
+
+Habilite quando seu backend é uma chamada de rede (Redis, Postgres, MySQL, MongoDB) e você envia ou recebe a uma taxa em que os mesmos peers se repetem — típico de bots, fan-out em grupos e gateways multi-tenant. Com um backend SQLite local os ganhos são menores; meça antes de ativar.
+
+### Premissa de escritor único {#single-writer-assumption}
+
+O L1 é por processo e não tem canal de invalidação entre processos. Habilite `cacheLayer` apenas quando um único processo é dono das linhas de backend de um dado `sessionId` — o modelo de conexão padrão da biblioteca. Sessões diferentes compartilhando um backend é OK; a mesma sessão aberta em dois processos não é.
+
+<Warning>
+  Não habilite `cacheLayer` quando múltiplos processos compartilham um backend para o **mesmo** `sessionId`. As escritas de outro processo deixariam este cache desatualizado e corromperiam o ratchet do Signal.
+</Warning>
+
+### Por que não todos os domínios? {#why-not-every-domain}
+
+`signal`, `appState` e `preKey` são deliberadamente excluídos:
+
+- **`signal`** — a leitura de registro por envio já é memoizada dentro do lock do signal; um segundo cache não adiciona nada.
+- **`appState`** — o cliente de sync já cacheia o estado das coleções pela vida do contexto de sync, o único escopo em que as leituras se repetem e permanecem coerentes.
+- **`preKey`** — pre-keys de uso único são lidas exatamente uma vez e consumidas. Servir uma chave já consumida a partir de um cache desatualizado a reutilizaria e quebraria a forward secrecy.
+
 ## Backends {#backends}
 
 <CardGroup cols={2}>
