@@ -66,6 +66,7 @@ See [Configuration](/en/concepts/configuration) for every option.
 | --- | --- | --- |
 | `send` | `(to, content: WaSendMessageContent, options?: WaSendMessageOptions) => Promise<WaMessagePublishResult>` | Sends any [content type](/en/reference/message-types); handles device fanout and per-send retries. Returns the stanza id + ack metadata. |
 | `sendReceipt` | `(event\|events, options?)` / `(jid, ids, options?) => Promise<void>` | Sends a delivery/read/played/inactive receipt. Delivery is auto-acked on decrypt; use this for manual read/played. |
+| `requestHistorySync` | `(input: WaRequestHistorySyncInput) => Promise<{ messageId }>` | Asks the server to backfill older messages for a chat. Resolves once dispatched — the backlog arrives later as `history_sync_chunk`. See [Requesting older history](/en/guides/receiving-messages#requesting-older-history). |
 | `download` | `(source, options?) => Promise<Readable>` | Streams decrypted media (MAC + SHA-256 verified as consumed). Cancel via `options.signal`. |
 | `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Streams decrypted media to a file. |
 | `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Buffers decrypted media into memory — small media only; cap with `options.maxBytes`. |
@@ -125,7 +126,11 @@ See [Configuration](/en/concepts/configuration) for every option.
 | `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Create a group (you're auto-added as admin; don't include your own JID). |
 | `setSubject` | `(groupJid, subject) => Promise<void>` | Rename. |
 | `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Set/clear description. |
-| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Toggle announce / restrict / ephemeral / … |
+| `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Toggle a boolean group flag (`announcement`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, community flags). |
+| `setMemberAddMode` | `(groupJid, 'admin_add' \| 'all_member_add') => Promise<void>` | Restrict member adds to admins (or open to all). Admin op. |
+| `setMemberLinkMode` | `(groupJid, 'admin_link' \| 'all_member_link') => Promise<void>` | Restrict invite-link sharing to admins (or open to all). Admin op. |
+| `setMemberShareGroupHistoryMode` | `(groupJid, 'admin_share' \| 'all_member_share') => Promise<void>` | Hide or expose prior chat history to newly added members. Admin op. |
+| `setEphemeralDuration` | `(groupJid, expirationSeconds, trigger?) => Promise<void>` | Turn on disappearing messages with a specific lifetime (`86400` = 24h, `604800` = 7d, `7776000` = 90d). Use `setSetting('ephemeral', false)` to disable. Admin op. |
 | `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Add / remove members. |
 | `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Grant / revoke admin. |
 | `leaveGroup` | `(groupJids) => Promise<BinaryNode>` | Leave one or more groups (batched). |
@@ -229,8 +234,10 @@ See [Configuration](/en/concepts/configuration) for every option.
 | `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` | Set your/a target's picture. `imageBytes` is uploaded **as-is** — pre-encode square JPEG. Returns the picture id. |
 | `deleteProfilePicture` | `(targetJid?) => Promise<void>` | Remove the picture (admin op for groups). |
 | `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` | Get/set the legacy "About". |
+| `setPushName` | `(name) => Promise<void>` | Update the display name broadcast to peers. Routed through an app-state mutation; the new name reaches peers with your next outgoing message. Empty string resets to the device default. |
 | `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` | Batched picture id + status. |
 | `getDisappearingMode` | `(jids) => Promise<readonly WaDisappearingModeResult[]>` | Batched disappearing-mode setting. |
+| `setDisappearingMode` | `(durationSeconds) => Promise<void>` | Set the account-wide default disappearing-mode duration for **new** 1:1 chats (`0`/`86400`/`604800`/`7776000`). Existing chats keep their setting. |
 | `getTextStatuses` | `(jids) => Promise<readonly WaTextStatusResult[]>` | Batched modern text status (emoji + text). |
 | `setTextStatus` | `(input) => Promise<void>` | Set your modern text status; `text: null`/`''` clears it. |
 | `getUsernames` | `(jids) => Promise<readonly WaUsernameResult[]>` | Batched username lookup. |

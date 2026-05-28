@@ -44,10 +44,46 @@ await client.group.demoteParticipants(groupJid, jids)  // remover admin
 ```ts
 await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null para limpar
-await client.group.setSetting(groupJid, 'announce', true)      // mensagens só de admins
+await client.group.setSetting(groupJid, 'announcement', true)  // mensagens só de admins
 await client.group.setSetting(groupJid, 'restrict', true)      // editar info só por admins
 await client.group.setSetting(groupJid, 'ephemeral', true)     // mensagens temporárias on/off
 ```
+
+O `setSetting` também cobre os toggles booleanos `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded` e as flags de comunidade. Use-o para ligar/desligar uma flag; para configurações que precisam de um valor (modo ou duração), use os setters dedicados abaixo.
+
+### Quem pode adicionar, compartilhar link e ver histórico {#member-modes}
+
+```ts
+// Quem pode adicionar novos membros
+await client.group.setMemberAddMode(groupJid, 'admin_add')        // só admins
+await client.group.setMemberAddMode(groupJid, 'all_member_add')   // qualquer um
+
+// Quem pode compartilhar o link de convite
+await client.group.setMemberLinkMode(groupJid, 'admin_link')
+await client.group.setMemberLinkMode(groupJid, 'all_member_link')
+
+// Se novos membros veem o histórico anterior
+await client.group.setMemberShareGroupHistoryMode(groupJid, 'admin_share')      // esconde histórico
+await client.group.setMemberShareGroupHistoryMode(groupJid, 'all_member_share') // expõe backlog
+```
+
+Todos os três são apenas para admins — não-admins recebem o erro `403 not-authorized`.
+
+### Mensagens temporárias {#disappearing-messages}
+
+`setSetting(groupJid, 'ephemeral', false)` é o caminho explícito para desligar. Para ligar com uma duração específica, use `setEphemeralDuration`:
+
+```ts
+// 24h / 7d / 90d em segundos
+await client.group.setEphemeralDuration(groupJid, 86_400)
+await client.group.setEphemeralDuration(groupJid, 604_800)
+await client.group.setEphemeralDuration(groupJid, 7_776_000)
+
+// Desligar
+await client.group.setSetting(groupJid, 'ephemeral', false)
+```
+
+Apenas para admins. Passar `0` desliga as mensagens temporárias — o mesmo que `setSetting('ephemeral', false)`.
 
 ## Convites {#invites}
 

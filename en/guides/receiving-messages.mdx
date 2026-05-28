@@ -155,6 +155,32 @@ client.on('message_protocol', (event) => {
 })
 ```
 
+## Requesting older history
+
+The initial pairing flow streams a bounded window of message history. To pull older messages for a specific chat on demand, call `client.message.requestHistorySync`:
+
+```ts
+const { messageId } = await client.message.requestHistorySync({
+  chatJid,
+  oldestMsgId: topMessage.stanzaId,
+  oldestMsgFromMe: topMessage.isSender,
+  oldestMsgTimestampMs: topMessage.timestampSeconds * 1000,
+  count: 50
+})
+```
+
+The method returns once the request is dispatched — **not** when the chunk arrives. The backfill is delivered later as a `history_sync_chunk` event, same as the bootstrap history. Subscribe before calling if you need to react to it:
+
+```ts
+client.on('history_sync_chunk', (event) => {
+  // event.conversations, event.pushnamesCount, event.progress, ...
+})
+
+await client.message.requestHistorySync({ chatJid })
+```
+
+Pair `oldestMsgId`, `oldestMsgFromMe`, and `oldestMsgTimestampMs` from the topmost message currently visible to page backwards correctly. Omit `count` to let the server apply its own default (~50).
+
 ## Receipts (inbound)
 
 When others read or play your messages, you receive `receipt` events:

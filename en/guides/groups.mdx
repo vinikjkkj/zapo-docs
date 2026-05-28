@@ -44,10 +44,46 @@ await client.group.demoteParticipants(groupJid, jids)  // remove admin
 ```ts
 await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null to clear
-await client.group.setSetting(groupJid, 'announce', true)      // admins-only messages
+await client.group.setSetting(groupJid, 'announcement', true)  // admins-only messages
 await client.group.setSetting(groupJid, 'restrict', true)      // admins-only edit info
 await client.group.setSetting(groupJid, 'ephemeral', true)     // disappearing messages on/off
 ```
+
+`setSetting` also covers the boolean toggles `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, and the community flags. Use it to flip a feature on or off; for settings that need a value (mode or duration), use the dedicated setters below.
+
+### Who can add, link, and share history
+
+```ts
+// Who can add new members
+await client.group.setMemberAddMode(groupJid, 'admin_add')        // admins only
+await client.group.setMemberAddMode(groupJid, 'all_member_add')   // anyone
+
+// Who can share the invite link
+await client.group.setMemberLinkMode(groupJid, 'admin_link')
+await client.group.setMemberLinkMode(groupJid, 'all_member_link')
+
+// Whether new members see prior chat history
+await client.group.setMemberShareGroupHistoryMode(groupJid, 'admin_share')      // hide history
+await client.group.setMemberShareGroupHistoryMode(groupJid, 'all_member_share') // expose backlog
+```
+
+All three are admin-only — non-admins receive a `403 not-authorized` error.
+
+### Disappearing messages
+
+`setSetting(groupJid, 'ephemeral', false)` is the explicit disable path. To turn disappearing messages on with a specific lifetime, use `setEphemeralDuration`:
+
+```ts
+// 24h / 7d / 90d in seconds
+await client.group.setEphemeralDuration(groupJid, 86_400)
+await client.group.setEphemeralDuration(groupJid, 604_800)
+await client.group.setEphemeralDuration(groupJid, 7_776_000)
+
+// Disable
+await client.group.setSetting(groupJid, 'ephemeral', false)
+```
+
+Admin-only. Passing `0` disables disappearing messages — the same as `setSetting('ephemeral', false)`.
 
 ## Invites
 
