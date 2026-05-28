@@ -30,6 +30,23 @@ yarn add zapo-js
 
 The core package has **no mandatory runtime dependencies**. Everything else — storage, logging, and the WebSocket transport — is an opt-in peer dependency, so you only install what you use.
 
+## The package ecosystem
+
+`zapo-js` is the only required install. Everything else is an optional `@zapo-js/*` package you add as needed:
+
+<Tree>
+  <Tree.Folder name="zapo-js — core client, coordinators, store contract" defaultOpen>
+    <Tree.File name="@zapo-js/store-sqlite — SQLite backend" />
+    <Tree.File name="@zapo-js/store-postgres — PostgreSQL backend" />
+    <Tree.File name="@zapo-js/store-mysql — MySQL backend" />
+    <Tree.File name="@zapo-js/store-redis — Redis backend" />
+    <Tree.File name="@zapo-js/store-mongo — MongoDB backend" />
+    <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
+    <Tree.File name="@zapo-js/mcp-server — dev tool: drive from an AI agent" />
+    <Tree.File name="@zapo-js/fake-server — dev tool: in-process test server" />
+  </Tree.Folder>
+</Tree>
+
 ## Add a storage backend
 
 `zapo` persists authentication and Signal state through a pluggable [store](/en/concepts/stores). Pick the backend that matches your deployment and install its package:

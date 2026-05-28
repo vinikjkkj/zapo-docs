@@ -96,6 +96,25 @@ You can also pass an array of events, or address it manually by <Tooltip tip="A 
 await client.message.sendReceipt(chatJid, [id1, id2], { type: 'read' })
 ```
 
+## Calls
+
+<Badge color="gray" icon="eye">Read-only</Badge>
+
+Incoming call signaling surfaces as the read-only `call` event ([`WaIncomingCallEvent`](/en/concepts/events)). zapo **reports** calls — it does not place, accept, or reject them.
+
+```ts
+client.on('call', (event) => {
+  console.log(
+    event.type,          // 'offer' | 'accept' | 'terminate' | … | 'unknown'
+    event.isVideo ? 'video' : 'voice',
+    'from', event.callerPnJid ?? event.callCreatorJid,
+    event.groupJid ? `(group ${event.groupJid})` : ''
+  )
+})
+```
+
+Useful fields: `type` (the signaling stage), `callId`, `callCreatorJid` / `callerPnJid` (who's calling), `isVideo`, `groupJid` (group calls), and `callerPushName`. There is no API to answer a call.
+
 ## Addons
 
 **Addons** are encrypted follow-ups attached to a message: reactions, poll votes, and comments. They surface as the `message_addon` event.

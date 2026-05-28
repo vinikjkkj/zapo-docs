@@ -46,6 +46,7 @@ await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null to clear
 await client.group.setSetting(groupJid, 'announce', true)      // admins-only messages
 await client.group.setSetting(groupJid, 'restrict', true)      // admins-only edit info
+await client.group.setSetting(groupJid, 'ephemeral', true)     // disappearing messages on/off
 ```
 
 ## Invites

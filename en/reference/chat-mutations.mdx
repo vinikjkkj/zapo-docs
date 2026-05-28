@@ -148,12 +148,12 @@ await client.chat.remove({ schema: 'QuickReply', id: 'qr-greeting' })
 ```
 
 <Tip>
-  The value-field name (`contactAction`, `labelEditAction`, …) matches the schema's `SyncActionValue` subfield. Import `WA_APPSTATE_SCHEMAS` to inspect a schema's index parts and value field at runtime.
+  The value-field name (`contactAction`, `labelEditAction`, …) matches the schema's `SyncActionValue` subfield.
 </Tip>
 
 ## All schemas
 
-Every key below is a valid `schema` for `set` / `remove` (`WaAppstateActionKey = keyof typeof WA_APPSTATE_SCHEMAS`). Schemas with a ✓ also have a typed convenience helper.
+Every key below is a valid `schema` for `set` / `remove`. Schemas with a ✓ also have a typed convenience helper.
 
 ### Chat actions
 

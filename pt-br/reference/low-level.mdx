@@ -102,6 +102,10 @@ const unregister = client.lowlevel.registerIncomingStanzaFilter((node) => {
 })
 ```
 
+<Note>
+  Stanzas críticas de auth (`success` e `failure`) **ignoram os filtros** — você não consegue descartá-las, então o fluxo de conexão e pareamento sempre permanece intacto.
+</Note>
+
 | Método | Assinatura |
 | --- | --- |
 | `sendNode` | `(node: BinaryNode) => Promise<void>` |

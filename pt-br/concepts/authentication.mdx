@@ -1,6 +1,6 @@
 ---
 title: "Autenticação"
-description: "Pareie um dispositivo com um QR code ou um código de 8 dígitos, persista credenciais e faça logout."
+description: "Pareie um dispositivo com um QR code ou um código de 8 caracteres, persista credenciais e faça logout."
 icon: "qrcode"
 ---
 
@@ -27,11 +27,15 @@ sequenceDiagram
 | Evento | Payload | Quando |
 | --- | --- | --- |
 | `auth_qr` | `{ qr: string, ttlMs: number }` | Um novo QR está disponível para renderizar. Reemitido conforme ele rotaciona. |
-| `auth_pairing_code` | `{ code: string }` | Um código de pareamento de 8 dígitos foi emitido (fluxo por código). |
+| `auth_pairing_code` | `{ code: string }` | Um código de pareamento de 8 caracteres foi emitido (fluxo por código). |
 | `auth_pairing_required` | `{ forceManual: boolean }` | A sessão precisa de entrada de pareamento. |
 | `auth_paired` | `{ credentials: WaAuthCredentials }` | O pareamento foi bem-sucedido; as credenciais agora estão persistidas. |
 
 Assim que `auth_paired` dispara, as credenciais são gravadas na store e reutilizadas em todo `connect()` subsequente — você não verá `auth_qr` novamente, a menos que a sessão seja desvinculada ou limpa.
+
+<Check>
+  Pareado. As credenciais agora vivem na sua store — reinicie o processo e o `connect()` retoma a sessão sem um novo QR.
+</Check>
 
 ## Pareamento com um QR code {#pairing-with-a-qr-code}
 
@@ -56,7 +60,7 @@ O QR rotaciona automaticamente; `auth_qr` dispara novamente com um valor novo a 
 
 ## Pareamento com um código {#pairing-with-a-code}
 
-Prefere digitar um código de 8 dígitos no telefone em vez de escanear? Solicite um através de `client.auth` depois que a conexão estiver estabelecida. Escute o `auth_pairing_required` e então solicite o código para o número de telefone alvo (apenas dígitos, com código do país):
+Prefere digitar um código de 8 caracteres no telefone em vez de escanear? Solicite um através de `client.auth` depois que a conexão estiver estabelecida. Escute o `auth_pairing_required` e então solicite o código para o número de telefone alvo (apenas dígitos, com código do país):
 
 ```ts
 client.on('auth_pairing_required', async () => {

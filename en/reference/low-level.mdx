@@ -102,6 +102,10 @@ const unregister = client.lowlevel.registerIncomingStanzaFilter((node) => {
 })
 ```
 
+<Note>
+  Auth-critical `success` and `failure` stanzas **bypass filters** — you can't drop them, so the connection and pairing flow always stays intact.
+</Note>
+
 | Method | Signature |
 | --- | --- |
 | `sendNode` | `(node: BinaryNode) => Promise<void>` |

@@ -31,7 +31,7 @@ client.off('receipt', handler) // para de escutar
 | Evento | Payload | Descrição |
 | --- | --- | --- |
 | `auth_qr` | `{ qr, ttlMs }` | Um QR code para renderizar no pareamento. |
-| `auth_pairing_code` | `{ code }` | Um código de pareamento de 8 dígitos foi emitido. |
+| `auth_pairing_code` | `{ code }` | Um código de pareamento de 8 caracteres foi emitido. |
 | `auth_pairing_required` | `{ forceManual }` | A sessão precisa de entrada de pareamento. |
 | `auth_paired` | `{ credentials }` | O pareamento teve sucesso. |
 | `connection` | `WaConnectionEvent` | Socket aberto ou fechado (veja abaixo). |

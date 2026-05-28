@@ -1,0 +1,90 @@
+---
+title: "Migrando do Baileys"
+description: "Vindo do Baileys? Veja como os conceitos e as APIs mapeiam para o zapo."
+icon: "right-left"
+---
+
+O `zapo` é uma implementação **independente** do protocolo do WhatsApp Web — não é um fork do Baileys. Os conceitos se sobrepõem (pareamento companion, sessões Signal, um stream de eventos), mas a API é diferente e **não** é um substituto drop-in. Esta página mapeia os padrões que você já conhece.
+
+<Note>
+  O estado de auth, os formatos de mensagem e os nomes de método diferem. Planeje reescrever a configuração do socket e os handlers — mas o modelo mental (parear → escutar → enviar) se transfere diretamente.
+</Note>
+
+## Criando o socket {#creating-the-socket}
+
+O Baileys te dá um socket a partir de uma factory; o zapo te dá um `WaClient` mais uma [store](/pt-br/concepts/stores) explícita.
+
+```ts
+// Baileys (típico)
+const { state, saveCreds } = await useMultiFileAuthState('auth')
+const sock = makeWASocket({ auth: state })
+sock.ev.on('creds.update', saveCreds)
+
+// zapo
+import { createStore, WaClient } from 'zapo-js'
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+
+const store = createStore({
+  backends: { sqlite: createSqliteStore({ path: '.auth/state.sqlite', driver: 'auto' }) },
+  providers: { auth: 'sqlite', signal: 'sqlite', senderKey: 'sqlite', appState: 'sqlite' }
+})
+const client = new WaClient({ store, sessionId: 'default' }, logger)
+await client.connect()
+```
+
+**Não há `creds.update` para salvar na mão** — a store persiste as credenciais automaticamente. Escolha qualquer backend (SQLite, Postgres, MySQL, Redis, Mongo) na [Instalação](/pt-br/installation#add-a-storage-backend).
+
+## Eventos {#events}
+
+O Baileys multiplexa tudo por `sock.ev`; o zapo expõe um evento tipado por área em `client`.
+
+| Baileys | zapo |
+| --- | --- |
+| `sock.ev.on('connection.update', ({ connection, qr, lastDisconnect }) => …)` | `client.on('connection', …)` + `client.on('auth_qr', …)` + `client.on('auth_paired', …)` |
+| `sock.ev.on('creds.update', saveCreds)` | *(automático — a store persiste as creds)* |
+| `sock.ev.on('messages.upsert', ({ messages }) => …)` | `client.on('message', (event) => …)` |
+| `sock.ev.on('messages.update', …)` (edições/reações/enquetes) | `client.on('message_addon', …)` / `client.on('message_protocol', …)` |
+| `sock.ev.on('message-receipt.update', …)` | `client.on('receipt', …)` |
+| `sock.ev.on('groups.update' / 'group-participants.update', …)` | `client.on('group', …)` |
+| `sock.ev.on('presence.update', …)` | `client.on('presence', …)` / `client.on('chatstate', …)` |
+
+O mapa completo está em [Eventos](/pt-br/concepts/events). Cada evento é fortemente tipado via `WaClientEventMap`.
+
+## Enviando mensagens {#sending-messages}
+
+```ts
+// Baileys
+await sock.sendMessage(jid, { text: 'hello' })
+await sock.sendMessage(jid, { image: { url: './pic.jpg' }, caption: 'hi' })
+
+// zapo
+await client.message.send(jid, 'hello') // atalho de string para texto
+await client.message.send(jid, { type: 'image', media: './pic.jpg', mimetype: 'image/jpeg', caption: 'hi' })
+```
+
+O zapo usa uma [union de conteúdo](/pt-br/guides/sending-messages#the-content-union) discriminada (`{ type: 'image' | 'video' | 'audio' | 'document' | 'poll' | 'reaction' | … }`) em vez do objeto por-chave do Baileys. Citação/menções saem do objeto de conteúdo e vão para o argumento `options` (`{ quote, mentions }`).
+
+## Mapeamento de API {#api-mapping}
+
+| Baileys | zapo |
+| --- | --- |
+| `makeWASocket(...)` | `new WaClient(options, logger)` |
+| `useMultiFileAuthState(...)` | `createStore({ backends, providers })` |
+| `sock.sendMessage(jid, content)` | `client.message.send(jid, content, options?)` |
+| `downloadMediaMessage(...)` | `client.message.download(event)` / `downloadToFile(event, path)` |
+| `sock.groupMetadata(jid)` | `client.group.queryGroupMetadata(jid)` |
+| `sock.groupCreate(...)` / `groupParticipantsUpdate(...)` | `client.group.createGroup(...)` / `addParticipants` / `removeParticipants` / `promoteParticipants` / … |
+| `sock.updateProfilePicture(...)` / `updateProfileStatus(...)` | `client.profile.setProfilePicture(...)` / `setStatus(...)` |
+| `sock.updateBlockStatus(...)` | `client.privacy.blockUser(jid)` / `unblockUser(jid)` |
+| `sock.sendPresenceUpdate(...)` | `client.presence.send(...)` / `sendChatstate(...)` |
+| `sock.logout()` | `client.logout()` |
+| `jidNormalizedUser(...)` / `jidDecode(...)` | `toUserJid(...)` / `splitJid(...)` / `parseJidFull(...)` ([helpers de JID](/pt-br/reference/jid-helpers)) |
+| `proto.Message` | `proto` (exportado da raiz do pacote) |
+
+## Diferenças-chave a ter em mente {#key-differences}
+
+- **LID-first.** O zapo prefere a identidade [LID](/pt-br/concepts/identities), que preserva privacidade, ao JID de número de telefone. Responda para `event.chatJid` e prefira LIDs quando os tiver.
+- **API de coordinators.** As funcionalidades são agrupadas em getters (`client.message`, `client.group`, `client.privacy`, …) em vez de métodos planos no socket — veja [Arquitetura](/pt-br/concepts/architecture).
+- **Stores plugáveis e tipadas.** Persistência é uma camada de primeira classe com backends oficiais, não uma pasta de JSON. Veja [Stores](/pt-br/concepts/stores).
+- **Sem reconexão automática.** Como no Baileys, você conduz a reconexão — mas leia [Erros & desconexões](/pt-br/guides/errors) para os códigos de razão.
+- **Sem registro de número.** O zapo conecta com credenciais já pareadas/registradas; ele não registra números novos.

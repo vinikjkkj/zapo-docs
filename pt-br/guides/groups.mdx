@@ -46,6 +46,7 @@ await client.group.setSubject(groupJid, 'New name')
 await client.group.setDescription(groupJid, 'A description')   // null para limpar
 await client.group.setSetting(groupJid, 'announce', true)      // mensagens só de admins
 await client.group.setSetting(groupJid, 'restrict', true)      // editar info só por admins
+await client.group.setSetting(groupJid, 'ephemeral', true)     // mensagens temporárias on/off
 ```
 
 ## Convites {#invites}

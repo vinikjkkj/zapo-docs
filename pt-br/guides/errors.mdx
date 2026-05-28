@@ -1,0 +1,104 @@
+---
+title: "Erros & desconexões"
+description: "Leia razões de desconexão, trate falhas de stream e stanzas de erro, e decida quando reconectar ou parar."
+icon: "triangle-exclamation"
+---
+
+O `zapo` expõe problemas por três canais de evento:
+
+- **`connection`** com `status: 'close'` — o socket caiu, trazendo um `reason` e um `code` opcional.
+- **`stream_failure`** — uma falha de nível de stream, geralmente *logo antes* de um close.
+- **`stanza_error`** — uma única requisição/stanza foi rejeitada, sem derrubar a conexão.
+
+Para o **loop de reconexão** em si (backoff, `isLogout`, shutdown gracioso), veja [Reconexão](/pt-br/guides/reconnection). Esta página é sobre entender *por que* algo falhou.
+
+## Razões de desconexão {#disconnect-reasons}
+
+O evento `close` é `{ status: 'close', reason, code, isLogout }`. `reason` é uma string [`WaDisconnectReason`](/pt-br/reference/jid-helpers#constants); `code` é um `WaConnectionCode` numérico (ou `null`). Use-os para decidir se deve reconectar:
+
+```ts
+client.on('connection', (event) => {
+  if (event.status !== 'close') return
+  if (event.isLogout || isFatal(event.reason)) {
+    console.error('not reconnecting:', event.reason, event.code)
+    return
+  }
+  void reconnect() // veja o guia de Reconexão
+})
+
+const FATAL = new Set([
+  'stream_error_replaced',          // mesmas credenciais conectadas em outro lugar
+  'stream_error_device_removed',    // dispositivo desvinculado
+  'stream_error_force_logout',      // logout forçado pelo servidor (código 516)
+  'failure_not_authorized',         // 401
+  'failure_banned',                 // 406
+  'failure_locked',                 // 403
+  'failure_client_too_old',         // 405 — atualize a versão anunciada
+  'failure_bad_user_agent',         // 409
+  'primary_identity_key_change'     // identidade da conta mudou — refazer pareamento
+])
+const isFatal = (reason: string) => FATAL.has(reason)
+```
+
+<Note>
+  `stream_error_force_login` (código **515**) **não** é fatal — é um "reconecte agora" de rotina que o servidor envia logo após o pareamento e ocasionalmente durante a sessão. Apenas reconecte com as credenciais armazenadas.
+</Note>
+
+Razões transitórias em que vale reconectar incluem `stream_error_force_login`, `stream_error_ack`, `stream_error_xml_not_well_formed`, `stream_error_other`, `failure_service_unavailable` e `comms_stopped`. `client_disconnected` significa que *você* chamou `disconnect()` — esperado, não reconecte.
+
+## Referência de códigos {#code-reference}
+
+Quando presente, o `code` (no evento close e em `stream_failure.failureCode`) é um de:
+
+| Código | Significado | Ação |
+| --- | --- | --- |
+| `401` | Não autorizado | Refazer pareamento |
+| `402` | Banido temporariamente | Backoff agressivo |
+| `403` | Bloqueado (locked) | Parar |
+| `405` | Cliente muito antigo | Atualizar `version` |
+| `406` | Banido | Parar |
+| `409` | User agent inválido | Corrigir fingerprint do dispositivo |
+| `500` | Erro interno do servidor | Tentar depois |
+| `503` | Serviço indisponível | Backoff e tentar de novo |
+| `515` | Reconexão necessária | Reconectar agora |
+| `516` | Logout forçado | Refazer pareamento (`isLogout: true`) |
+
+As strings de razão vivem em `WA_DISCONNECT_REASONS` e os códigos de stream `515`/`516` em `WA_STREAM_SIGNALING`, ambos exportados da raiz do pacote. Os valores numéricos de `code` são tipados como `WaConnectionCode` (também exportado).
+
+## Falhas de stream {#stream-failures}
+
+`stream_failure` (`WaIncomingFailureEvent`) carrega o detalhe bruto da falha e geralmente precede uma desconexão — registre para contexto:
+
+```ts
+client.on('stream_failure', (event) => {
+  console.warn('stream failure', {
+    reason: event.failureReason,
+    code: event.failureCode,
+    message: event.failureMessage,
+    url: event.failureUrl
+  })
+})
+```
+
+## Stanzas de erro {#error-stanzas}
+
+`stanza_error` (`WaIncomingErrorStanzaEvent`) reporta que uma única stanza foi rejeitada — por exemplo uma query malformada ou uma requisição limitada (throttle). A conexão continua de pé:
+
+```ts
+client.on('stanza_error', (event) => {
+  console.warn('stanza error', event.code, event.text)
+})
+```
+
+Um `client.message.send` ou `client.lowlevel.query` rejeitado normalmente também rejeita a própria promise, então envolva chamadas individuais em `try/catch` para tratamento por operação; use `stanza_error` para visibilidade de erros que não estão atrelados a uma chamada que você deu `await`.
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Reconexão" icon="arrows-rotate" href="/pt-br/guides/reconnection" arrow>
+    O loop de backoff e o tratamento de `isLogout`.
+  </Card>
+  <Card title="Troubleshooting" icon="circle-question" href="/pt-br/troubleshooting" arrow>
+    Armadilhas comuns e respostas rápidas.
+  </Card>
+</CardGroup>

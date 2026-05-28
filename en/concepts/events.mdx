@@ -31,7 +31,7 @@ client.off('receipt', handler) // stop listening
 | Event | Payload | Description |
 | --- | --- | --- |
 | `auth_qr` | `{ qr, ttlMs }` | A QR code to render for pairing. |
-| `auth_pairing_code` | `{ code }` | An 8-digit pairing code was issued. |
+| `auth_pairing_code` | `{ code }` | An 8-character pairing code was issued. |
 | `auth_pairing_required` | `{ forceManual }` | The session needs pairing input. |
 | `auth_paired` | `{ credentials }` | Pairing succeeded. |
 | `connection` | `WaConnectionEvent` | Socket opened or closed (see below). |

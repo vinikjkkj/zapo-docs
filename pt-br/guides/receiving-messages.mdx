@@ -96,6 +96,25 @@ Você também pode passar um array de eventos, ou endereçá-lo manualmente por 
 await client.message.sendReceipt(chatJid, [id1, id2], { type: 'read' })
 ```
 
+## Chamadas {#calls}
+
+<Badge color="gray" icon="eye">Read-only</Badge>
+
+A sinalização de chamadas recebidas aparece como o evento read-only `call` ([`WaIncomingCallEvent`](/pt-br/concepts/events)). O zapo **reporta** chamadas — ele não inicia, aceita nem rejeita.
+
+```ts
+client.on('call', (event) => {
+  console.log(
+    event.type,          // 'offer' | 'accept' | 'terminate' | … | 'unknown'
+    event.isVideo ? 'video' : 'voice',
+    'from', event.callerPnJid ?? event.callCreatorJid,
+    event.groupJid ? `(group ${event.groupJid})` : ''
+  )
+})
+```
+
+Campos úteis: `type` (a etapa da sinalização), `callId`, `callCreatorJid` / `callerPnJid` (quem está ligando), `isVideo`, `groupJid` (chamadas de grupo) e `callerPushName`. Não há API para atender uma chamada.
+
 ## Addons {#addons}
 
 **Addons** são complementos criptografados anexados a uma mensagem: reações, votos em enquetes e comentários. Eles aparecem como o evento `message_addon`.

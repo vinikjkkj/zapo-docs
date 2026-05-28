@@ -87,6 +87,7 @@ Todos em milissegundos; os padrões são ajustados para produção.
 | `messageAckTimeoutMs` | Quanto tempo `message.send` espera pelo `<ack>` do servidor por tentativa. |
 | `messageMaxAttempts` | Máximo de tentativas para um único `message.send`. |
 | `messageRetryDelayMs` | Atraso entre as retentativas de envio de mensagem. |
+| `signalFetchKeyBundlesTimeoutMs` | Timeout para buscas de key bundles (prekeys) do Signal. |
 
 ## Presença ao conectar {#presence-on-connect}
 
@@ -99,6 +100,40 @@ Todos em milissegundos; os padrões são ajustados para produção.
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean }">
   Defina `autoDecrypt: true` para descriptografar automaticamente [addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, …) e emiti-los como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Caso contrário, chame `client.message.tryDecryptAddon(event)` você mesmo.
+</ParamField>
+
+## Mídia {#media}
+
+<ParamField path="media" type="WaMediaOptions">
+  Processamento de mídia. Passe um `processor` (de [`@zapo-js/media-utils`](/pt-br/installation#sending-media)) para gerar thumbnails/previews, medir dimensões e durações e construir waveforms de notas de voz antes do upload — e ligue/desligue cada etapa. Sem um processor a mídia ainda é enviada, só sem esse processamento. Veja o [guia de mídia](/pt-br/guides/media#media-processing) para a configuração completa.
+
+  - `processor?: WaMediaProcessor` — a instância do processor
+  - `generateThumbnail?: boolean` — thumbnails de preview de imagem/vídeo
+  - `generateProbe?: boolean` — mede largura/altura/duração
+  - `generateWaveform?: boolean` — waveform de nota de voz (PTT)
+  - `generateStickerThumbnail?: boolean`
+  - `normalizeVoiceNote?: boolean` — recodifica o áudio PTT para o formato que o WhatsApp espera
+</ParamField>
+
+## Previews de link {#link-previews}
+
+<ParamField path="linkPreview" type="WaLinkPreviewOptions">
+  Configuração global do fetcher embutido de preview de link, usado ao enviar texto que contém uma URL. Sobrescreva por mensagem com a [opção de envio](/pt-br/guides/sending-messages#send-options-reference) `linkPreview`.
+
+  - `enabled?: boolean` — liga ou desliga globalmente a busca automática de preview de link
+  - `fetchTimeoutMs?: number` — quanto esperar pela página de destino
+  - `uploadHqThumbnail?: boolean` — envia uma thumbnail de preview em alta resolução
+  - `allowPrivateHosts?: boolean` — permite buscar endereços privados/loopback (desligado por padrão, como proteção contra SSRF)
+  - `maxHtmlBytes?: number` / `maxThumbnailBytes?: number` — limites de tamanho para o HTML e a imagem buscados
+  - `userAgent?: string` — User-Agent enviado na busca
+  - `proxy?: WaProxyTransport` — aplica proxy só a este fetcher (igual a [`proxy.linkPreview`](#proxy))
+  - `fetcher?: WaLinkPreviewFetcher` — substitui o fetcher padrão por completo (ex.: seu próprio pipeline de scraping)
+</ParamField>
+
+## Eventos de chat {#chat-events}
+
+<ParamField path="chatEvents" type="{ emitSnapshotMutations?: boolean }">
+  Defina `emitSnapshotMutations: true` para reemitir eventos [`mutation`](/pt-br/concepts/events) para cada mudança vista durante uma sincronização de **snapshot** de app-state. Desligado por padrão, já que mutações de snapshot representam estado histórico, não mudanças ao vivo.
 </ParamField>
 
 ## Persistência write-behind {#write-behind-persistence}
@@ -222,8 +257,16 @@ const client2 = new WaClient(options, logger)
 
 Se você omitir o logger, um `ConsoleLogger` padrão é usado. Níveis de log: `trace`, `debug`, `info`, `warn`, `error`.
 
+## Opções avançadas {#advanced-options}
+
+Raramente necessárias — listadas para completude.
+
+- `chatSocketUrls?: readonly string[]` — sobrescreve a lista de endpoints WebSocket de chat do WhatsApp (ex.: rotear por um servidor falso em testes, ou fixar um edge específico).
+- `privacyToken?: WaPrivacyTokenOptions` — ajusta a emissão de trusted-contact-token (TC token): durações e número de buckets.
+- `testHooks?: WaClientTestHooks` — fixtures só para testes (ex.: um root CA Noise customizado). Eles **não** burlam nenhuma verificação de segurança; para realmente pular uma checagem, use as opções `dangerous` abaixo.
+
 ## Opções perigosas {#dangerous-options}
 
-<Warning>
+<Danger>
   As flags `dangerous` desabilitam, cada uma, uma verificação de segurança que o caminho de produção aplica (verificação de assinatura, checagens de MAC do app-state, …). Elas existem para testes contra um servidor falso. **Nunca as habilite em produção.**
-</Warning>
+</Danger>

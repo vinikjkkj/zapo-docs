@@ -49,8 +49,8 @@ icon: "circle-question"
   No. Mobile connections are stable, but `zapo` intentionally does **not** provide a registration API — registering a number is complex and requires a physical phone. You connect with already-registered credentials. See [Mobile connections](/en/concepts/mobile).
 </Accordion>
 
-<Accordion title="QR or 8-digit code — which should I use?" icon="key">
-  Both work. QR is the default (`auth_qr` event). For an 8-digit code, call `client.auth.requestPairingCode(phone)` after the `auth_pairing_required` event. See [Authentication](/en/concepts/authentication).
+<Accordion title="QR or 8-character code — which should I use?" icon="key">
+  Both work. QR is the default (`auth_qr` event). For an 8-character code, call `client.auth.requestPairingCode(phone)` after the `auth_pairing_required` event. See [Authentication](/en/concepts/authentication).
 </Accordion>
 
 <Accordion title="logout() vs disconnect()" icon="power-off">
