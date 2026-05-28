@@ -89,6 +89,7 @@ const postgres = createPostgresStore({
 | `tablePrefix` | `string` | Prefixo para as tabelas criadas. |
 | `cacheTtlMs` | object | TTLs de cache (mesmo formato do SQLite). |
 | `cleanup` | `{ intervalMs?, onError? }` | Poller de limpeza em segundo plano. |
+| `batchInsertChunkSize` | `number` | Limite superior de linhas por `INSERT` multi-linha em escritas em lote. Padrão `500`. Veja [Chunking de inserts em lote](#batch-insert-chunking). |
 
 Também exporta `createPgPool` e `ensurePgMigrations`. Requer a peer dependency `pg`.
 
@@ -111,8 +112,24 @@ const mysql = createMysqlStore({
 | `tablePrefix` | `string` | Prefixo para as tabelas criadas. |
 | `cacheTtlMs` | object | TTLs de cache. |
 | `cleanup` | `{ enabled?, intervalMs?, onError? }` | Poller de limpeza em segundo plano. |
+| `batchInsertChunkSize` | `number` | Limite superior de linhas por `INSERT` multi-linha em escritas em lote. Padrão `500`. Veja [Chunking de inserts em lote](#batch-insert-chunking). |
 
 Também exporta `createMysqlPool` e `ensureMysqlMigrations`. Requer a peer dependency `mysql2`.
+
+### Chunking de inserts em lote {#batch-insert-chunking}
+
+`batchInsertChunkSize` limita quantas linhas os backends PostgreSQL e MySQL agrupam em um único `INSERT` multi-linha em escritas em lote — sessões do Signal, identidades remotas, distribuições de sender key, geração de prekeys e os caminhos `upsertBatch` de message/thread/contact usados pela [write-behind persistence](/pt-br/concepts/configuration#write-behind-persistence).
+
+O valor é arredondado **para baixo até a potência de dois mais próxima** internamente (`500 → 256`, `1000 → 512`, …), e cada lote é decomposto em sub-chunks de potência de dois. Isso mantém o conjunto de prepared statements distintos por conexão limitado a `log2(chunkSize) + 1` independentemente de como `N` varia entre chamadas — importante para ficar abaixo do cache do cliente mysql2 e da quota `max_prepared_stmt_count` do MySQL, e para manter o cache de statements nomeados do `pg` estável.
+
+Mantenha o padrão a menos que benchmarks do seu workload mostrem benefício. Aumente para envios em grupo de alto fanout sustentados; reduza se os limites do seu banco forem apertados.
+
+```ts
+createPostgresStore({
+  pool: { connectionString: process.env.DATABASE_URL },
+  batchInsertChunkSize: 1024 // → efetivo 512
+})
+```
 
 ## Redis {#redis}
 
