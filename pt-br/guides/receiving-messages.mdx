@@ -121,14 +121,10 @@ Campos úteis: `type` (a etapa da sinalização), `callId`, `callCreatorJid` / `
 
 ### Descriptografia automática {#automatic-decryption}
 
-Defina `addons.autoDecrypt` no client e os addons são descriptografados e emitidos para você:
+Os addons são descriptografados e emitidos para você por padrão — basta se inscrever em `message_addon`:
 
 ```ts
-const client = new WaClient({
-  store,
-  sessionId: 'default',
-  addons: { autoDecrypt: true }
-}, logger)
+const client = new WaClient({ store, sessionId: 'default' }, logger)
 
 client.on('message_addon', (event) => {
   console.log('addon:', event)
@@ -137,9 +133,15 @@ client.on('message_addon', (event) => {
 
 ### Descriptografia manual {#manual-decryption}
 
-Se você deixar o `autoDecrypt` desligado, descriptografe sob demanda a partir do evento da mensagem de origem:
+Passe `addons: { autoDecrypt: false }` para receber o payload criptografado e descriptografar sob demanda a partir do evento da mensagem de origem:
 
 ```ts
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  addons: { autoDecrypt: false }
+}, logger)
+
 client.on('message', async (event) => {
   await client.message.tryDecryptAddon(event)
 })

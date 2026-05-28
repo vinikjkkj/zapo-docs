@@ -85,7 +85,7 @@ See [Receiving messages](/en/guides/receiving-messages) for payload details and 
 | Event | Payload | Description |
 | --- | --- | --- |
 | `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) synced from another device. |
-| `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history. |
+| `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. |
 | `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
 | `mex_notification` | `WaMexNotificationEvent` | MEX (GraphQL) notifications: username, status, LID changes, capping. |
 

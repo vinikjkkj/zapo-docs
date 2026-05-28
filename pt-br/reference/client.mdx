@@ -70,7 +70,7 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `download` | `(source, options?) => Promise<Readable>` | Faz streaming de mídia descriptografada (MAC + SHA-256 verificados conforme consumida). Cancele via `options.signal`. |
 | `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Faz streaming de mídia descriptografada para um arquivo. |
 | `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Bufferiza mídia descriptografada na memória — apenas mídia pequena; limite com `options.maxBytes`. |
-| `tryDecryptAddon` | `(event) => Promise<void>` | Descriptografa um addon (voto em enquete, reação, …) e emite `message_addon`. Chamado automaticamente quando `addons.autoDecrypt` está ligado. |
+| `tryDecryptAddon` | `(event) => Promise<void>` | Descriptografa um addon (voto em enquete, reação, …) e emite `message_addon`. Chamado automaticamente por padrão; opt-out com `addons: { autoDecrypt: false }` para chamar você mesmo. |
 | `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` | Força a atualização da(s) sessão(ões) Signal de um JID; `reasonIdentity` também reemite o token de contato confiável. |
 | `getReachoutTimelock` | `() => Promise<WaReachoutTimelock>` | Timelock do lado do servidor que limita o cold outreach a não-contatos. |
 | `getNewChatMessageCapping` | `(type?) => Promise<WaMessageCappingInfo>` | Cota de mensagens por ciclo aplicada a threads de chats novos (cota, usado, ciclo, status). |
@@ -116,14 +116,14 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 
 ## group {#group}
 
-`WaGroupCoordinator` — veja [Grupos & comunidades](/pt-br/guides/groups). Métodos que retornam `BinaryNode` dão o resultado bruto do IQ; operações sobre participantes codificam resultados **por participante** como filhos `<participant jid error>` (o IQ tem sucesso mesmo que alguns falhem).
+`WaGroupCoordinator` — veja [Grupos & comunidades](/pt-br/guides/groups). Operações sobre participantes retornam um [`WaParticipantActionResult`](/pt-br/guides/groups#managing-participants) por jid — o IQ tem sucesso como um todo mesmo quando alguns falham, então verifique o `status` / `code` de cada resultado.
 
 | Method | Signature | Description |
 | --- | --- | --- |
 | `queryGroupMetadata` | `(groupJid) => Promise<WaGroupMetadata>` | Metadados completos do grupo. |
 | `queryAllGroups` | `() => Promise<readonly WaGroupMetadata[]>` | Todos os grupos dos quais a conta participa. |
-| `queryGroupInviteInfo` | `(code) => Promise<BinaryNode>` | Resolve um código de convite. |
-| `createGroup` | `(subject, participants, options?) => Promise<BinaryNode>` | Cria um grupo (você é adicionado automaticamente como admin; não inclua seu próprio JID). |
+| `queryGroupInviteInfo` | `(code) => Promise<WaGroupInviteInfo>` | Preview de um código de convite (assunto, tamanho, ephemeral, descrição, amostra reduzida de participantes). |
+| `createGroup` | `(subject, participants, options?) => Promise<WaGroupMetadata>` | Cria um grupo (você é adicionado automaticamente como admin; não inclua seu próprio JID). Retorna o metadata do novo grupo. |
 | `setSubject` | `(groupJid, subject) => Promise<void>` | Renomeia. |
 | `setDescription` | `(groupJid, description\|null, prevDescId?) => Promise<void>` | Define/limpa a descrição. |
 | `setSetting` | `(groupJid, setting, enabled) => Promise<void>` | Alterna uma flag booleana do grupo (`announcement`, `restrict`, `ephemeral`, `group_history`, `allow_admin_reports`, `no_frequently_forwarded`, flags de comunidade). |
@@ -131,17 +131,17 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `setMemberLinkMode` | `(groupJid, 'admin_link' \| 'all_member_link') => Promise<void>` | Restringe quem pode compartilhar o link de convite. Op. de admin. |
 | `setMemberShareGroupHistoryMode` | `(groupJid, 'admin_share' \| 'all_member_share') => Promise<void>` | Esconde ou expõe o histórico anterior para novos membros. Op. de admin. |
 | `setEphemeralDuration` | `(groupJid, expirationSeconds, trigger?) => Promise<void>` | Liga as mensagens temporárias com uma duração específica (`86400` = 24h, `604800` = 7d, `7776000` = 90d). Use `setSetting('ephemeral', false)` para desligar. Op. de admin. |
-| `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Adiciona / remove membros. |
-| `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<BinaryNode>` | Concede / revoga admin. |
-| `leaveGroup` | `(groupJids) => Promise<BinaryNode>` | Sai de um ou mais grupos (em lote). |
-| `revokeInvite` | `(groupJid) => Promise<BinaryNode>` | Rotaciona o código de convite — todo link `chat.whatsapp.com/<code>` antigo para de funcionar. |
-| `joinGroupViaInvite` | `(code) => Promise<BinaryNode>` | Entra via código. Lança se expirado/revogado/lotado/já for membro. |
+| `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<readonly WaParticipantActionResult[]>` | Adiciona / remove membros. Um resultado por jid; verifique `status` / `code` para falhas parciais. |
+| `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<readonly WaParticipantActionResult[]>` | Concede / revoga admin. Mesmo formato por jid. |
+| `leaveGroup` | `(groupJids) => Promise<void>` | Sai de um ou mais grupos (em lote). |
+| `revokeInvite` | `(groupJid) => Promise<WaRevokeInviteResult>` | Rotaciona o código de convite — todo link `chat.whatsapp.com/<code>` antigo para de funcionar. Retorna o novo `code` mais `affectedParticipants`. |
+| `joinGroupViaInvite` | `(code) => Promise<WaGroupMetadata>` | Entra via código. Lança se expirado/revogado/lotado/já for membro. Retorna o metadata do grupo. |
 | `createCommunity` | `(subject, options?) => Promise<WaGroupMetadata>` | Cria uma comunidade (requer solicitação a menos que `membershipApprovalMode: 'open'`). |
 | `deactivateCommunity` | `(communityJid) => Promise<void>` | Exclui uma comunidade. |
 | `linkSubGroups` / `unlinkSubGroups` | `(communityJid, jids, options?) => Promise<…>` | Vincula / desvincula sub-grupos (`removeOrphanedMembers` remove membros órfãos). |
 | `queryLinkedGroupsParticipants` | `(communityJid) => Promise<readonly WaGroupParticipant[]>` | Participantes mesclados de uma comunidade. |
 | `fetchSubGroups` | `(communityJid) => Promise<WaCommunitySubGroupsResult>` | Lista os sub-grupos (MEX). |
-| `joinLinkedGroup` | `(communityJid, subGroupJid, options?) => Promise<BinaryNode>` | Entra em um sub-grupo vinculado. |
+| `joinLinkedGroup` | `(communityJid, subGroupJid, options?) => Promise<void>` | Entra em um sub-grupo vinculado. Chame `queryGroupMetadata` depois para obter o metadata completo. |
 | `queryMembershipApprovalRequests` | `(groupJid) => Promise<readonly WaMembershipRequest[]>` | Solicitações de entrada pendentes. |
 | `approveMembershipRequests` / `rejectMembershipRequests` | `(groupJid, jids) => Promise<void>` | Aprova / rejeita solicitações. |
 | `cancelMembershipRequests` | `(groupJid, jids) => Promise<void>` | Cancela suas próprias solicitações pendentes. |

@@ -56,9 +56,9 @@ new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
 ## Sincronização de histórico {#history-sync}
 
 <ParamField path="history" type="WaHistorySyncOptions">
-  Controla o download inicial do histórico de mensagens.
+  Controla o processamento dos chunks de `historySyncNotification` — tanto o bootstrap inicial que o WhatsApp envia após o pareamento quanto o backfill sob demanda disparado por [`message.requestHistorySync`](/pt-br/guides/receiving-messages#requesting-older-history).
 
-  - `enabled?: boolean` — baixa o histórico na primeira sincronização.
+  - `enabled?: boolean` — processa os chunks de histórico recebidos. **Padrão `true`.** Defina como `false` para descartá-los silenciosamente (útil quando você não persiste mailbox/threads/contacts e o download da conversa só gastaria banda).
   - `requireFullSync?: boolean` — solicita o arquivo completo em vez de apenas os chats recentes.
 </ParamField>
 
@@ -136,15 +136,17 @@ Opções: `timeoutMs` (padrão 10s), `proxy` (apenas dispatcher do undici — o 
 
 ## Presença ao conectar {#presence-on-connect}
 
-<ParamField path="markOnlineOnConnect" type="boolean" default="true">
-  - `true` — anuncia o client como **online** (igual ao WhatsApp Web com a aba em foco).
-  - `false` — anuncia como **indisponível**. Útil para bots que não devem aparecer como online. Com isso desligado, você também continua recebendo notificações de mensagens enquanto está "offline".
+<ParamField path="markOnlineOnConnect" type="boolean" default="false">
+  - `false` (padrão) — anuncia como **indisponível**. Igual ao WhatsApp Web quando a aba não está em foco e mantém bots headless invisíveis por padrão. Com isso desligado, você continua recebendo notificações de mensagens enquanto está "offline".
+  - `true` — anuncia o client como **online** (igual ao WhatsApp Web com a aba em foco no momento do login).
 </ParamField>
 
 ## Addons (reações, votos em enquetes) {#addons-reactions-poll-votes}
 
-<ParamField path="addons" type="{ autoDecrypt?: boolean }">
-  Defina `autoDecrypt: true` para descriptografar automaticamente [addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, …) e emiti-los como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Caso contrário, chame `client.message.tryDecryptAddon(event)` você mesmo.
+<ParamField path="addons" type="{ autoDecrypt?: boolean }" default="{ autoDecrypt: true }">
+  [Addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, edições de mensagem, …) são descriptografados automaticamente e emitidos como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Defina `autoDecrypt: false` para recebê-los criptografados e descriptografar você mesmo via `client.message.tryDecryptAddon(event)`.
+
+  Com auto-decrypt ligado, o cache `messageSecret` precisa ser um store real — o provider de memória embutido é o padrão, enquanto `'none'` desliga o cache e o client emite um warning na inicialização.
 </ParamField>
 
 ## Mídia {#media}
@@ -277,11 +279,16 @@ new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
 ## Limpeza da store no logout {#logout-store-clearing}
 
 <ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
-  Controle por domínio do que o [`logout()`](/pt-br/concepts/authentication#logging-out) apaga. O padrão é limpar tudo; defina um domínio como `false` para preservá-lo.
+  Controle por domínio do que o [`logout()`](/pt-br/concepts/authentication#logging-out) apaga.
+
+  Por padrão, o **arquivo da mailbox** (`messages`, `threads`, `contacts`) é **preservado** para que o usuário mantenha seu histórico ao reparear. Todos os outros domínios (credenciais, estado Signal, app-state, caches, privacy tokens) são **limpos** para começar o próximo pareamento do zero. `true` / `false` explícitos sempre vencem o padrão.
 
   ```ts
-  // Mantém mensagens arquivadas e contatos após o logout
-  logoutStoreClear: { messages: false, contacts: false }
+  // Preserva tudo exceto auth (re-pareia sem mexer no estado)
+  logoutStoreClear: { signal: false, appState: false }
+
+  // Apaga também a mailbox (reset completo)
+  logoutStoreClear: { messages: true, threads: true, contacts: true }
   ```
 </ParamField>
 

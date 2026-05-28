@@ -21,23 +21,42 @@ console.log(meta.subject, meta.participants.length)
 
 ## Criando um grupo {#creating-a-group}
 
+`createGroup` retorna o `WaGroupMetadata` completo do novo grupo — não é preciso chamar `queryGroupMetadata` depois:
+
 ```ts
-await client.group.createGroup('My group', [
+const group = await client.group.createGroup('My group', [
   '5511999999999@s.whatsapp.net',
   '5511888888888@s.whatsapp.net'
 ])
+
+console.log(group.jid, group.participants.length)
 ```
 
 ## Gerenciando participantes {#managing-participants}
 
+Os quatro métodos de participantes (`addParticipants`, `removeParticipants`, `promoteParticipants`, `demoteParticipants`) retornam um `WaParticipantActionResult[]` tipado — uma entrada por jid que você passou. O IQ como um todo tem sucesso mesmo quando alguns participantes falham (te bloquearam, configurações de privacidade impedem o add, já é membro, …), então inspecione o `code` por jid para identificar falhas parciais.
+
 ```ts
 const jids = ['5511999999999@s.whatsapp.net']
 
-await client.group.addParticipants(groupJid, jids)
+const results = await client.group.addParticipants(groupJid, jids)
+
+for (const r of results) {
+  if (r.status === 'ok') {
+    console.log('adicionado', r.jid)
+  } else {
+    // Código no estilo HTTP: 403 = bloqueio de privacidade, 408 = não permitido,
+    // 409 = já está no grupo, 404 = não está no WhatsApp, ...
+    console.warn('falhou', r.jid, r.code)
+  }
+}
+
 await client.group.removeParticipants(groupJid, jids)
 await client.group.promoteParticipants(groupJid, jids) // tornar admin
 await client.group.demoteParticipants(groupJid, jids)  // remover admin
 ```
+
+Cada resultado também traz `phoneNumber` e `username` quando o servidor os resolveu, mais o `BinaryNode` cru em `raw` para quaisquer tags extras que o servidor anexou (algumas falhas parciais `409`/`408` dão dicas de como recuperar).
 
 ## Configurações do grupo {#group-settings}
 
@@ -88,14 +107,21 @@ Apenas para admins. Passar `0` desliga as mensagens temporárias — o mesmo que
 ## Convites {#invites}
 
 ```ts
-// Resolver as informações de um código de convite
+// Preview de um código de convite (o segmento de chat.whatsapp.com/<code>)
 const info = await client.group.queryGroupInviteInfo('AbCdEf...')
+console.log(info.subject, info.size, info.desc)
+// info.participants é uma amostra reduzida — não é o roster completo.
+// Chame queryGroupMetadata depois de entrar para ver todos.
 
-// Entrar via código de convite
-await client.group.joinGroupViaInvite('AbCdEf...')
+// Entrar via código de convite — retorna o metadata do grupo
+const joined = await client.group.joinGroupViaInvite('AbCdEf...')
+console.log(joined.jid, joined.participants.length)
 
-// Revogar o link de convite atual
-await client.group.revokeInvite(groupJid)
+// Rotacionar o convite — retorna o código recém-emitido
+const { code, affectedParticipants } = await client.group.revokeInvite(groupJid)
+console.log('novo convite:', `https://chat.whatsapp.com/${code}`)
+// affectedParticipants lista quem entrou via o código revogado e que o
+// servidor surfou na resposta (tipicamente com code: 404).
 ```
 
 ## Saindo {#leaving}
@@ -103,6 +129,8 @@ await client.group.revokeInvite(groupJid)
 ```ts
 await client.group.leaveGroup([groupJid]) // em lote — aceita múltiplos
 ```
+
+`leaveGroup` resolve para `void` assim que o servidor confirma a requisição.
 
 ## Aprovação de entrada {#membership-approval}
 
@@ -135,8 +163,11 @@ await client.group.unlinkSubGroups(community.jid, [subGroupJidA], {
 // Listar subgrupos (e o grupo de avisos)
 const subs = await client.group.fetchSubGroups(community.jid)
 
-// Entrar em um subgrupo vinculado ao qual você ainda não pertence
+// Entrar em um subgrupo vinculado ao qual você ainda não pertence.
+// O resultado do IQ não carrega payload do grupo — chame
+// queryGroupMetadata no subgrupo depois para obter o metadata completo.
 await client.group.joinLinkedGroup(community.jid, subGroupJid)
+const subMeta = await client.group.queryGroupMetadata(subGroupJid)
 
 // Participantes mesclados de toda a comunidade
 const everyone = await client.group.queryLinkedGroupsParticipants(community.jid)

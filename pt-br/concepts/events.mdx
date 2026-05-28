@@ -85,7 +85,7 @@ Veja [Recebendo mensagens](/pt-br/guides/receiving-messages) para detalhes do pa
 | Evento | Payload | Descrição |
 | --- | --- | --- |
 | `mutation` | `WaAppStateMutationEvent` | Mutation de app-state (silenciar, fixar, arquivar, …) sincronizada de outro dispositivo. |
-| `history_sync_chunk` | `WaHistorySyncChunkEvent` | Um chunk de histórico de mensagens sincronizado. |
+| `history_sync_chunk` | `WaHistorySyncChunkEvent` | Um chunk de histórico de mensagens sincronizado (bootstrap inicial ou backfill via `message.requestHistorySync`). Pulado apenas quando `history.enabled` é explicitamente `false`. |
 | `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. |
 | `mex_notification` | `WaMexNotificationEvent` | Notificações MEX (GraphQL): nome de usuário, status, mudanças de LID, capping. |
 

@@ -56,9 +56,9 @@ new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
 ## History sync
 
 <ParamField path="history" type="WaHistorySyncOptions">
-  Controls the initial message-history download.
+  Controls processing of `historySyncNotification` chunks — both the initial bootstrap WhatsApp pushes after pairing and the on-demand backfill triggered by [`message.requestHistorySync`](/en/guides/receiving-messages#requesting-older-history).
 
-  - `enabled?: boolean` — download history on first sync.
+  - `enabled?: boolean` — process incoming history chunks. **Default `true`.** Set to `false` to drop them silently (useful when you don't persist mailbox/threads/contacts and the conversation download would just burn bandwidth).
   - `requireFullSync?: boolean` — request the full archive instead of just recent chats.
 </ParamField>
 
@@ -136,15 +136,17 @@ Options: `timeoutMs` (default 10s), `proxy` (undici dispatcher only — `http.Ag
 
 ## Presence on connect
 
-<ParamField path="markOnlineOnConnect" type="boolean" default="true">
-  - `true` — announce the client as **online** (matches WhatsApp Web with the tab focused).
-  - `false` — announce as **unavailable**. Useful for bots that should not appear online. With this off, you also keep receiving notifications for messages while "offline".
+<ParamField path="markOnlineOnConnect" type="boolean" default="false">
+  - `false` (default) — announce as **unavailable**. Matches WhatsApp Web when the tab is not focused, and keeps headless bots invisible by default. With this off, you keep receiving notifications for messages while "offline".
+  - `true` — announce the client as **online** (matches WhatsApp Web with the tab focused at login time).
 </ParamField>
 
 ## Addons (reactions, poll votes)
 
-<ParamField path="addons" type="{ autoDecrypt?: boolean }">
-  Set `autoDecrypt: true` to automatically decrypt encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, …) and emit them as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Otherwise call `client.message.tryDecryptAddon(event)` yourself.
+<ParamField path="addons" type="{ autoDecrypt?: boolean }" default="{ autoDecrypt: true }">
+  Encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, message edits, …) are decrypted automatically and emitted as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Set `autoDecrypt: false` to receive them encrypted and decrypt yourself via `client.message.tryDecryptAddon(event)`.
+
+  When auto-decrypt is on, the `messageSecret` cache must be a real store — the in-tree memory provider is the default, while `'none'` defeats the cache and the client logs a warning at startup.
 </ParamField>
 
 ## Media
@@ -277,11 +279,16 @@ new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
 ## Logout store clearing
 
 <ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
-  Per-domain control over what [`logout()`](/en/concepts/authentication#logging-out) wipes. Defaults to clearing everything; set a domain to `false` to preserve it.
+  Per-domain control over what [`logout()`](/en/concepts/authentication#logging-out) wipes.
+
+  By default, the **mailbox archive** (`messages`, `threads`, `contacts`) is **preserved** so the user keeps their history when re-pairing. Every other domain (credentials, Signal state, app-state, caches, privacy tokens) is **cleared** to start the next pair clean. Explicit `true` / `false` always wins over the default.
 
   ```ts
-  // Keep archived messages and contacts after logout
-  logoutStoreClear: { messages: false, contacts: false }
+  // Preserve everything except auth (re-pair without touching state)
+  logoutStoreClear: { signal: false, appState: false }
+
+  // Wipe the mailbox too (full reset)
+  logoutStoreClear: { messages: true, threads: true, contacts: true }
   ```
 </ParamField>
 
