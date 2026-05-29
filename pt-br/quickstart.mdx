@@ -89,10 +89,7 @@ Este guia constrói um bot mínimo de "ping → pong". Ele se conecta, imprime u
       const text = extractText(event.message)
       if (text?.trim().toLowerCase() !== 'ping') return
 
-      const to = event.chatJid ?? event.senderJid
-      if (!to) return
-
-      await client.message.send(to, 'pong')
+      await client.message.send(event.key.remoteJid, 'pong')
     })
     ```
   </Step>
@@ -142,8 +139,7 @@ client.on('message', async (event) => {
   const text =
     event.message?.conversation ?? event.message?.extendedTextMessage?.text
   if (text?.trim().toLowerCase() !== 'ping') return
-  const to = event.chatJid ?? event.senderJid
-  if (to) await client.message.send(to, 'pong')
+  await client.message.send(event.key.remoteJid, 'pong')
 })
 
 await client.connect()

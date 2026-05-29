@@ -41,15 +41,17 @@ Cada builder é discriminado pelo seu campo `type`. Campos em negrito são obrig
 | `type` | Tipo | Campos obrigatórios | Guia |
 | --- | --- | --- | --- |
 | `text` | `WaSendTextMessage` | **`text`** | [Enviando mensagens](/pt-br/guides/sending-messages#plain-text) |
-| `image` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#images) |
-| `video` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#video) |
-| `ptv` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#video) |
-| `audio` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#audio--voice-notes) |
-| `document` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Mídia](/pt-br/guides/media#documents) |
-| `sticker` | `WaSendMediaMessage` | **`media`** (mimetype opcional) | [Mídia](/pt-br/guides/media#stickers) |
+| `image` | `WaSendMediaMessage` | **`media`** (mimetype opcional com um processor `detectMimetype`) | [Mídia](/pt-br/guides/media#images) |
+| `video` | `WaSendMediaMessage` | **`media`** (mimetype opcional com um processor `detectMimetype`) | [Mídia](/pt-br/guides/media#video) |
+| `ptv` | `WaSendMediaMessage` | **`media`** (mimetype opcional com um processor `detectMimetype`) | [Mídia](/pt-br/guides/media#video) |
+| `audio` | `WaSendMediaMessage` | **`media`** (mimetype opcional com um processor `detectMimetype`) | [Mídia](/pt-br/guides/media#audio--voice-notes) |
+| `document` | `WaSendMediaMessage` | **`media`** (mimetype opcional com um processor `detectMimetype`) | [Mídia](/pt-br/guides/media#documents) |
+| `sticker` | `WaSendMediaMessage` | **`media`** (mimetype padrão é `image/webp`) | [Mídia](/pt-br/guides/media#stickers) |
 | `sticker-pack` | `WaSendStickerPackMessage` | **`stickerPackId`**, **`name`**, **`publisher`**, **`stickers`**, **`trayIcon`** | [Mídia](/pt-br/guides/media#stickers) |
 
 Os builders de mídia também aceitam qualquer campo não-gerenciado da mensagem protobuf subjacente (por exemplo `caption`, `gifPlayback`, `ptt`, `fileName`) via o mapeamento `UserMediaFields`. Campos gerenciados pelo protocolo (`url`, `mediaKey`, `fileSha256`, `directPath`, …) são preenchidos pelo builder.
+
+`mimetype` é opcional. A ordem de resolução é: um `mimetype` explícito que você passa vence; senão o builder chama `media.processor.detectMimetype` (fornecido por `@zapo-js/media-utils` quando `file-type` está instalado); senão lança erro para `image`/`video`/`audio`/`document`/`ptv`. Stickers usam `image/webp` por padrão.
 
 ### Interativos {#interactive}
 
@@ -62,9 +64,11 @@ Os builders de mídia também aceitam qualquer campo não-gerenciado da mensagem
 | `event-response` | `WaSendEventResponseMessage` | **`event`**, **`response`** | [Resposta a evento](/pt-br/guides/interactive-messages#responding-to-an-event) |
 | `pin` / `unpin` | `WaSendPinMessage` | **`target`** | [Fixar](/pt-br/guides/interactive-messages#pinning) |
 | `keep` / `unkeep` | `WaSendKeepMessage` | **`target`** | [Manter no chat](/pt-br/guides/interactive-messages#keep-in-chat) |
-| `revoke` | `WaSendRevokeMessage` | **`stanzaId`** | [Revogar](/pt-br/guides/interactive-messages#revoking-delete-for-everyone) |
+| `revoke` | `WaSendRevokeMessage` | **`target`** | [Revogar](/pt-br/guides/interactive-messages#revoking-delete-for-everyone) |
 
-`target` é um [`WaSendMessageTarget`](/pt-br/guides/interactive-messages#targeting-a-message) (`{ stanzaId, fromMe, participant? }`). Os pais de `poll`/`event` exigem adicionalmente `authorJid` e o `messageSecret` de 32 bytes.
+`target` é um `WaMessageTargetInput` — uma [`WaMessageKey`](/pt-br/guides/interactive-messages#targeting-a-message) (`{ remoteJid, id, fromMe, participant? }`) **ou** um evento `message` recebido passado literalmente (sua `key` é usada). Os pais de `poll`/`event` exigem adicionalmente `authorJid` e o `messageSecret` de 32 bytes.
+
+Para `revoke`, sender vs admin é auto-detectado por `target.fromMe` (`false` dispara um admin revoke). Não há opção `subtype`.
 
 ## `Proto.IMessage` bruto {#raw-protoimessage}
 

@@ -173,6 +173,8 @@ const mongo = createMongoStore({
 
 Requer a peer dependency `mongodb`.
 
+Escritas em lote usam `{ ordered: false }` para que upserts independentes rodem em paralelo — uma falha por documento não aborta o resto do lote.
+
 ## Misturando backends {#mixing-backends}
 
 O `createStore` permite que cada domínio escolha um backend por nome, então você pode combiná-los:

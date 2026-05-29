@@ -95,7 +95,7 @@ O zapo usa uma [union de conteúdo](/pt-br/guides/sending-messages#the-content-u
 
 ## Diferenças-chave a ter em mente {#key-differences}
 
-- **LID-first.** O zapo prefere a identidade [LID](/pt-br/concepts/identities), que preserva privacidade, ao JID de número de telefone. Responda para `event.chatJid` e prefira LIDs quando os tiver.
+- **LID-first.** O zapo prefere a identidade [LID](/pt-br/concepts/identities), que preserva privacidade, ao JID de número de telefone. Responda para `event.key.remoteJid` e prefira LIDs quando os tiver.
 - **API de coordinators.** As funcionalidades são agrupadas em getters (`client.message`, `client.group`, `client.privacy`, …) em vez de métodos planos no socket — veja [Arquitetura](/pt-br/concepts/architecture).
 - **Stores plugáveis e tipadas.** Persistência é uma camada de primeira classe com backends oficiais, não uma pasta de JSON. Veja [Stores](/pt-br/concepts/stores).
 - **Sem reconexão automática.** Como no Baileys, você conduz a reconexão — mas leia [Erros & desconexões](/pt-br/guides/errors) para os códigos de razão.

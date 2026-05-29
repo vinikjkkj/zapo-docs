@@ -4,11 +4,21 @@ description: "Send images, video, audio voice notes, documents, and stickers —
 icon: "image"
 ---
 
-Media is sent through the same `client.message.send` method, using a typed media content object. The builder fills in the protocol-managed fields (encryption keys, SHA-256 digests, direct path, upload) for you — you provide the source and the `mimetype`.
+Media is sent through the same `client.message.send` method, using a typed media content object. The builder fills in the protocol-managed fields (encryption keys, SHA-256 digests, direct path, upload) for you — you provide the source and, optionally, a `mimetype`.
 
 <Warning>
   For **usable** media, install [`@zapo-js/media-utils`](/en/installation#sending-media) and wire a processor through the [`media`](#media-processing) client option. Media still uploads without it, but without a processor it has **no thumbnail/preview, dimensions, or waveform** — so it may arrive as a plain attachment.
 </Warning>
+
+## Mimetype resolution
+
+`mimetype` is optional. The builder resolves it in this order:
+
+1. The `mimetype` you pass on the content object wins.
+2. If a `WaMediaProcessor` with `detectMimetype` is configured, the builder calls it (sniffing magic bytes). `@zapo-js/media-utils` implements this on top of [`file-type`](https://github.com/sindresorhus/file-type) ^19 — install `file-type` to enable detection.
+3. Otherwise the builder throws for `image`/`video`/`audio`/`document`/`ptv` messages.
+
+Stickers default to `image/webp` when no `mimetype` is set. `Readable` stream inputs with no mimetype are staged to a temp file before detection runs.
 
 ## Media input
 

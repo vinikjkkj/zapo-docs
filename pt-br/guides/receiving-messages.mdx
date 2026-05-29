@@ -16,24 +16,33 @@ client.on('message', (event: WaIncomingMessageEvent) => {
 
 ## O payload do evento {#the-event-payload}
 
-Campos principais em `WaIncomingMessageEvent`:
+`WaIncomingMessageEvent` carrega uma `key` rica (um superset de `Proto.IMessageKey`) e alguns campos no topo do objeto. Passe o evento (ou apenas sua `key`) literalmente para responder / editar / reagir / revogar / fixar / manter.
 
 | Campo | Tipo | Descrição |
 | --- | --- | --- |
+| `key.remoteJid` | `string` | O JID da conversa (grupo ou 1:1). |
+| `key.id` | `string` | O id (stanza) da mensagem. |
+| `key.fromMe` | `boolean` | Verdadeiro quando a mensagem foi enviada por esta conta. |
+| `key.participant` | `string?` | O autor em grupos / broadcasts (omitido em 1:1). |
+| `key.isGroup` / `key.isBroadcast` / `key.isNewsletter` | `boolean` | Flags de tipo de chat derivadas de `remoteJid`. |
+| `key.remoteJidAlt` | `string?` | O endereçamento alternativo de `remoteJid` (PN se endereçado por LID, ou vice-versa) em chats 1:1. |
+| `key.participantAlt` | `string?` | O endereçamento alternativo de `participant` em chats em grupo. |
+| `key.senderDevice` | `number` | Id do device do remetente; `0` quando o JID de origem não tem segmento `:device`. |
+| `key.senderUsername` | `string?` | Username do remetente quando o servidor o anexa. |
+| `key.recipientJid` / `key.recipientAlt` | `string?` | Seu JID receptor e sua forma alternativa. |
+| `key.serverId` | `number?` | Id da mensagem atribuído pelo servidor para mensagens de newsletter / canal. |
 | `message` | `Proto.IMessage` | O conteúdo descriptografado da mensagem. |
-| `chatJid` | `string` | O JID da conversa (grupo ou 1:1). |
-| `senderJid` | `string` | Quem enviou. |
-| `stanzaId` | `string` | O id da mensagem. |
-| `timestampSeconds` | `number` | Timestamp do servidor (segundos unix). |
-| `pushName` | `string` | O nome de exibição do remetente. |
-| `isGroupChat` | `boolean` | Verdadeiro para mensagens de grupo. |
-| `isBroadcastChat` | `boolean` | Verdadeiro para broadcast/status. |
-| `isNewsletterChat` | `boolean` | Verdadeiro para mensagens de newsletter. |
-| `isSender` | `boolean` | Verdadeiro quando a mensagem foi enviada por esta conta. |
+| `timestampSeconds` | `number?` | Timestamp do servidor (segundos unix). |
+| `expirationSeconds` | `number?` | TTL de disappearing-message que o remetente anexou a esta mensagem, quando presente. |
+| `pushName` | `string?` | O nome de exibição do remetente. |
 
 <Note>
-  Você também recebe aqui suas **próprias** mensagens enviadas (sincronização multi-dispositivo), marcadas com `isSender: true`. Filtre-as se quiser apenas tráfego de entrada.
+  Você também recebe aqui suas **próprias** mensagens enviadas (sincronização multi-dispositivo), marcadas com `key.fromMe === true`. Filtre-as se quiser apenas tráfego de entrada.
 </Note>
+
+<Tip>
+  O evento inteiro (ou `event.key`) é aceito como `target` para replies/reactions/revokes/pins/keeps e como `editKey` para edições — sem precisar remontá-lo.
+</Tip>
 
 ## Extraindo texto {#extracting-text}
 
@@ -164,8 +173,8 @@ O fluxo inicial de pareamento sincroniza uma janela limitada do histórico de me
 ```ts
 const { messageId } = await client.message.requestHistorySync({
   chatJid,
-  oldestMsgId: topMessage.stanzaId,
-  oldestMsgFromMe: topMessage.isSender,
+  oldestMsgId: topMessage.key.id,
+  oldestMsgFromMe: topMessage.key.fromMe,
   oldestMsgTimestampMs: topMessage.timestampSeconds * 1000,
   count: 50
 })
@@ -193,3 +202,7 @@ client.on('receipt', (event) => {
   console.log(event.status, 'for', event.stanzaId)
 })
 ```
+
+<Note>
+  Eventos `receipt` ainda expõem `stanzaId` / `chatJid` diretamente (eles estendem `WaIncomingBaseEvent`); a renomeação se aplica somente aos payloads de `message`, `message_addon` e `message_bot_chunk`, que agora usam `event.key`.
+</Note>

@@ -41,15 +41,17 @@ Each builder is discriminated by its `type` field. Bold fields are required.
 | `type` | Type | Required fields | Guide |
 | --- | --- | --- | --- |
 | `text` | `WaSendTextMessage` | **`text`** | [Sending messages](/en/guides/sending-messages#plain-text) |
-| `image` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Media](/en/guides/media#images) |
-| `video` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Media](/en/guides/media#video) |
-| `ptv` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Media](/en/guides/media#video) |
-| `audio` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Media](/en/guides/media#audio--voice-notes) |
-| `document` | `WaSendMediaMessage` | **`media`**, **`mimetype`** | [Media](/en/guides/media#documents) |
-| `sticker` | `WaSendMediaMessage` | **`media`** (mimetype optional) | [Media](/en/guides/media#stickers) |
+| `image` | `WaSendMediaMessage` | **`media`** (mimetype optional with a `detectMimetype` processor) | [Media](/en/guides/media#images) |
+| `video` | `WaSendMediaMessage` | **`media`** (mimetype optional with a `detectMimetype` processor) | [Media](/en/guides/media#video) |
+| `ptv` | `WaSendMediaMessage` | **`media`** (mimetype optional with a `detectMimetype` processor) | [Media](/en/guides/media#video) |
+| `audio` | `WaSendMediaMessage` | **`media`** (mimetype optional with a `detectMimetype` processor) | [Media](/en/guides/media#audio--voice-notes) |
+| `document` | `WaSendMediaMessage` | **`media`** (mimetype optional with a `detectMimetype` processor) | [Media](/en/guides/media#documents) |
+| `sticker` | `WaSendMediaMessage` | **`media`** (mimetype defaults to `image/webp`) | [Media](/en/guides/media#stickers) |
 | `sticker-pack` | `WaSendStickerPackMessage` | **`stickerPackId`**, **`name`**, **`publisher`**, **`stickers`**, **`trayIcon`** | [Media](/en/guides/media#stickers) |
 
 Media builders also accept any non-managed field of the underlying protobuf message (e.g. `caption`, `gifPlayback`, `ptt`, `fileName`) via the `UserMediaFields` mapping. Protocol-managed fields (`url`, `mediaKey`, `fileSha256`, `directPath`, …) are filled by the builder.
+
+`mimetype` is optional. The resolution order is: an explicit `mimetype` you pass wins; otherwise the builder calls `media.processor.detectMimetype` (provided by `@zapo-js/media-utils` when `file-type` is installed); otherwise it throws for `image`/`video`/`audio`/`document`/`ptv`. Stickers default to `image/webp`.
 
 ### Interactive
 
@@ -62,9 +64,11 @@ Media builders also accept any non-managed field of the underlying protobuf mess
 | `event-response` | `WaSendEventResponseMessage` | **`event`**, **`response`** | [Event response](/en/guides/interactive-messages#responding-to-an-event) |
 | `pin` / `unpin` | `WaSendPinMessage` | **`target`** | [Pinning](/en/guides/interactive-messages#pinning) |
 | `keep` / `unkeep` | `WaSendKeepMessage` | **`target`** | [Keep-in-chat](/en/guides/interactive-messages#keep-in-chat) |
-| `revoke` | `WaSendRevokeMessage` | **`stanzaId`** | [Revoking](/en/guides/interactive-messages#revoking-delete-for-everyone) |
+| `revoke` | `WaSendRevokeMessage` | **`target`** | [Revoking](/en/guides/interactive-messages#revoking-delete-for-everyone) |
 
-`target` is a [`WaSendMessageTarget`](/en/guides/interactive-messages#targeting-a-message) (`{ stanzaId, fromMe, participant? }`). `poll`/`event` parents additionally require `authorJid` and the 32-byte `messageSecret`.
+`target` is a `WaMessageTargetInput` — a [`WaMessageKey`](/en/guides/interactive-messages#targeting-a-message) (`{ remoteJid, id, fromMe, participant? }`) **or** a received `message` event passed verbatim (its `key` is used). `poll`/`event` parents additionally require `authorJid` and the 32-byte `messageSecret`.
+
+For `revoke`, sender-vs-admin is auto-detected from `target.fromMe` (`false` triggers an admin revoke). There is no `subtype` option.
 
 ## Raw `Proto.IMessage`
 

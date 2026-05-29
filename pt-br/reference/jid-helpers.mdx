@@ -61,7 +61,7 @@ Predicados booleanos para a lógica de roteamento:
 
 ```ts
 client.on('message', (event) => {
-  if (isGroupJid(event.chatJid!)) {
+  if (isGroupJid(event.key.remoteJid)) {
     console.log('a group message')
   }
 })

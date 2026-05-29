@@ -16,24 +16,33 @@ client.on('message', (event: WaIncomingMessageEvent) => {
 
 ## The event payload
 
-Key fields on `WaIncomingMessageEvent`:
+`WaIncomingMessageEvent` carries a rich `key` (a superset of `Proto.IMessageKey`) plus a few top-level fields. Pass the event (or just its `key`) verbatim to reply / edit / react / revoke / pin / keep.
 
 | Field | Type | Description |
 | --- | --- | --- |
+| `key.remoteJid` | `string` | The conversation JID (group or 1:1). |
+| `key.id` | `string` | The message (stanza) id. |
+| `key.fromMe` | `boolean` | True when the message was sent by this account. |
+| `key.participant` | `string?` | The author in groups / broadcasts (omitted in 1:1). |
+| `key.isGroup` / `key.isBroadcast` / `key.isNewsletter` | `boolean` | Chat-kind flags derived from `remoteJid`. |
+| `key.remoteJidAlt` | `string?` | The `remoteJid`'s alternate addressing (PN if addressed by LID, or vice-versa) in 1:1 chats. |
+| `key.participantAlt` | `string?` | The `participant`'s alternate addressing in group chats. |
+| `key.senderDevice` | `number` | Sender's device id; `0` when the source JID has no `:device` segment. |
+| `key.senderUsername` | `string?` | Sender's username when the server attached it. |
+| `key.recipientJid` / `key.recipientAlt` | `string?` | Your receiving JID and its alternate form. |
+| `key.serverId` | `number?` | Server-assigned message id for newsletter / channel messages. |
 | `message` | `Proto.IMessage` | The decrypted message content. |
-| `chatJid` | `string` | The conversation JID (group or 1:1). |
-| `senderJid` | `string` | Who sent it. |
-| `stanzaId` | `string` | The message id. |
-| `timestampSeconds` | `number` | Server timestamp (unix seconds). |
-| `pushName` | `string` | The sender's display name. |
-| `isGroupChat` | `boolean` | True for group messages. |
-| `isBroadcastChat` | `boolean` | True for broadcast/status. |
-| `isNewsletterChat` | `boolean` | True for newsletter messages. |
-| `isSender` | `boolean` | True when the message was sent by this account. |
+| `timestampSeconds` | `number?` | Server timestamp (unix seconds). |
+| `expirationSeconds` | `number?` | Disappearing-message TTL the sender attached to this message, when present. |
+| `pushName` | `string?` | The sender's display name. |
 
 <Note>
-  You also receive your **own** outgoing messages here (multi-device sync), flagged with `isSender: true`. Filter them out if you only want inbound traffic.
+  You also receive your **own** outgoing messages here (multi-device sync), flagged with `key.fromMe === true`. Filter them out if you only want inbound traffic.
 </Note>
+
+<Tip>
+  The whole event (or `event.key`) is accepted as the `target` for replies/reactions/revokes/pins/keeps and as `editKey` for edits — no need to reshape it.
+</Tip>
 
 ## Extracting text
 
@@ -164,8 +173,8 @@ The initial pairing flow streams a bounded window of message history. To pull ol
 ```ts
 const { messageId } = await client.message.requestHistorySync({
   chatJid,
-  oldestMsgId: topMessage.stanzaId,
-  oldestMsgFromMe: topMessage.isSender,
+  oldestMsgId: topMessage.key.id,
+  oldestMsgFromMe: topMessage.key.fromMe,
   oldestMsgTimestampMs: topMessage.timestampSeconds * 1000,
   count: 50
 })
@@ -193,3 +202,7 @@ client.on('receipt', (event) => {
   console.log(event.status, 'for', event.stanzaId)
 })
 ```
+
+<Note>
+  `receipt` events still expose `stanzaId` / `chatJid` directly (they extend `WaIncomingBaseEvent`); the rename only applies to `message`, `message_addon`, and `message_bot_chunk` payloads, which now use `event.key`.
+</Note>

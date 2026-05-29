@@ -45,7 +45,7 @@ Pass the original message event (or a reference) as `options.quote`:
 
 ```ts
 client.on('message', async (event) => {
-  await client.message.send(event.chatJid!, 'Replying to you', {
+  await client.message.send(event.key.remoteJid, 'Replying to you', {
     quote: event
   })
 })
@@ -104,14 +104,20 @@ await client.message.send(jid, content, { forward: { score: 4 } })
 
 | Option | Type | Purpose |
 | --- | --- | --- |
-| `quote` | `WaIncomingMessageEvent \| WaQuoteRef` | Reply to a message. |
+| `quote` | `WaIncomingMessageEvent \| WaQuoteRef \| WaMessageKey` | Reply to a message — pass the event verbatim, its `key`, or a `WaQuoteRef`. |
 | `mentions` | `string[]` | JIDs to mention. |
 | `forward` | `boolean \| { score }` | Mark as forwarded. |
 | `viewOnce` | `boolean` | Wrap image/video/audio as view-once. |
-| `editKey` | `WaSendEditKey` | Edit a previously sent message (see [interactive](/en/guides/interactive-messages#editing-a-message)). |
+| `editKey` | `WaMessageKey \| WaSendEditKey \| WaMessageRef` | Edit a previously sent message (see [interactive](/en/guides/interactive-messages#editing-a-message)). |
+| `expirationSeconds` | `number` | Disappearing-message TTL for this message. **Wins over** `contextInfo.expirationSeconds` and over the automatic group-ephemeral inject (the latter is short-circuited as soon as this is defined — even `0`). |
+| `disableGroupEphemeralAutoInject` | `boolean` | Skip the automatic ephemeral-setting injection when sending into a group with disappearing-mode on. Redundant when `expirationSeconds` is set. |
 | `contextInfo` | `WaSendContextInfo` | Raw context info (advanced). |
 | `id` | `string` | Use a specific message id. |
 | `ackTimeoutMs` / `maxAttempts` / `retryDelayMs` | `number` | Per-send retry tuning. |
+
+<Tip>
+  To send a single message with **no** expiration into a group with disappearing-mode on, prefer `disableGroupEphemeralAutoInject: true` over `expirationSeconds: 0` — the latter still writes `expiration=0` into the outgoing `contextInfo`.
+</Tip>
 
 ## The content union
 

@@ -87,7 +87,7 @@ Os campos do evento de chunk:
 
 | Campo | Significado |
 | --- | --- |
-| `senderJid` | O bot. |
+| `key.participant` / `key.remoteJid` | O bot (sender = `key.participant ?? key.remoteJid`). |
 | `targetMessageId` | O id do prompt que esta resposta responde — sua chave de stream. |
 | `editType` | Posição do chunk: `first` → `inner` → `last`, ou um único `full`. |
 | `message` | O conteúdo do chunk descriptografado (`Proto.IMessage`). |

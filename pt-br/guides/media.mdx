@@ -4,11 +4,21 @@ description: "Envie imagens, vídeo, áudio de voz, documentos e figurinhas — 
 icon: "image"
 ---
 
-A mídia é enviada pelo mesmo método `client.message.send`, usando um objeto de conteúdo de mídia tipado. O builder preenche para você os campos gerenciados pelo protocolo (chaves de criptografia, digests SHA-256, direct path, upload) — você fornece a fonte e o `mimetype`.
+A mídia é enviada pelo mesmo método `client.message.send`, usando um objeto de conteúdo de mídia tipado. O builder preenche para você os campos gerenciados pelo protocolo (chaves de criptografia, digests SHA-256, direct path, upload) — você fornece a fonte e, opcionalmente, um `mimetype`.
 
 <Warning>
   Para mídia **utilizável**, instale [`@zapo-js/media-utils`](/pt-br/installation#sending-media) e conecte um processor via opção de client [`media`](#media-processing). A mídia ainda faz upload sem ele, mas sem um processor ela fica **sem thumbnail/preview, dimensões ou waveform** — então pode chegar como anexo simples.
 </Warning>
+
+## Resolução de mimetype {#mimetype-resolution}
+
+`mimetype` é opcional. O builder resolve nesta ordem:
+
+1. O `mimetype` que você passa no objeto de conteúdo vence.
+2. Se um `WaMediaProcessor` com `detectMimetype` está configurado, o builder o chama (sniffing de magic bytes). `@zapo-js/media-utils` implementa isso em cima de [`file-type`](https://github.com/sindresorhus/file-type) ^19 — instale `file-type` para habilitar a detecção.
+3. Caso contrário, o builder lança erro para mensagens `image`/`video`/`audio`/`document`/`ptv`.
+
+Stickers usam `image/webp` por padrão quando nenhum `mimetype` é definido. Entradas de stream `Readable` sem mimetype são staged para um arquivo temporário antes da detecção rodar.
 
 ## Entrada de mídia {#media-input}
 

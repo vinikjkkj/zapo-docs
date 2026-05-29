@@ -37,23 +37,27 @@ You normally don't set this yourself — it's derived from the group's membershi
 
 ## What you get on an incoming message
 
-A `WaIncomingMessageEvent` carries both identifiers when the server provides them:
+`WaIncomingMessageEvent.key` carries both identifiers when the server provides them. In groups the **sender** is `key.participant`; in 1:1 chats it is `key.remoteJid`. Each gets a parallel `*Alt` field with the alternate addressing.
 
 | Field | Meaning |
 | --- | --- |
-| `senderJid` | The sender's **primary** JID for this message (PN or LID, matching the addressing mode). |
-| `senderAlt` | The **alternate** form — if `senderJid` is a PN, this is the LID, and vice versa (when available). |
-| `recipientJid` | Your receiving JID. |
-| `recipientAlt` | The alternate form of the recipient (when available). |
+| `key.remoteJid` | The chat JID (group, 1:1 peer, broadcast, newsletter). In 1:1 chats this is also the sender. |
+| `key.remoteJidAlt` | The alternate form of `remoteJid` (PN ↔ LID) in 1:1 chats, when the server shares it. |
+| `key.participant` | The sender's JID in groups / broadcasts (the addressing mode matches the chat). |
+| `key.participantAlt` | The alternate form of `participant` in groups, when the server shares it. |
+| `key.recipientJid` | Your receiving JID. |
+| `key.recipientAlt` | The alternate form of the recipient (when available). |
 
 ```ts
 client.on('message', (event) => {
-  console.log('primary:', event.senderJid)   // e.g. 1999...@lid in a LID group
-  console.log('alt:    ', event.senderAlt)    // e.g. 5511...@s.whatsapp.net
+  const sender = event.key.participant ?? event.key.remoteJid
+  const senderAlt = event.key.participantAlt ?? event.key.remoteJidAlt
+  console.log('primary:', sender)    // e.g. 1999...@lid in a LID group
+  console.log('alt:    ', senderAlt) // e.g. 5511...@s.whatsapp.net
 })
 ```
 
-So in a LID-addressed group you'll typically see `senderJid` as a `@lid` and `senderAlt` as the phone JID (if the server shares it).
+So in a LID-addressed group you'll typically see `key.participant` as a `@lid` and `key.participantAlt` as the phone JID (if the server shares it).
 
 ## Replying — which JID to use
 
@@ -69,11 +73,11 @@ await client.message.send('199998888777@lid', 'hi')               // LID JID
 <Warning>
   **Always prefer sending by LID when you have one.** The LID is the privacy-preserving, forward-compatible identity WhatsApp is migrating to — addressing a peer by LID is the future-proof choice and avoids leaking/relying on phone numbers. Fall back to the PN only when no LID is available.
 
-  Get the LID from the incoming event's `senderAlt` (when `senderJid` is a PN) or resolve it with [`getLidsByPhoneNumbers`](#mapping-a-phone-number-to-its-lid).
+  Get the LID from the incoming event's `key.participantAlt` / `key.remoteJidAlt` (when the primary is a PN) or resolve it with [`getLidsByPhoneNumbers`](#mapping-a-phone-number-to-its-lid).
 </Warning>
 
 <Tip>
-  **In a group, always reply to `event.chatJid`** (the group JID), not to a participant's JID. For 1:1 chats, prefer the peer's LID; `event.chatJid` / `event.senderJid` also work whether they are a PN or a LID.
+  **In a group, always reply to `event.key.remoteJid`** (the group JID), not to a participant's JID. For 1:1 chats, prefer the peer's LID; `event.key.remoteJid` also works whether it is a PN or a LID.
 </Tip>
 
 ## Mapping a phone number to its LID

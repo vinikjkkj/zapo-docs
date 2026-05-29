@@ -87,7 +87,7 @@ The chunk event fields:
 
 | Field | Meaning |
 | --- | --- |
-| `senderJid` | The bot. |
+| `key.participant` / `key.remoteJid` | The bot (sender = `key.participant ?? key.remoteJid`). |
 | `targetMessageId` | The id of the prompt this reply answers — your stream key. |
 | `editType` | Chunk position: `first` → `inner` → `last`, or a single `full`. |
 | `message` | The decrypted chunk content (`Proto.IMessage`). |

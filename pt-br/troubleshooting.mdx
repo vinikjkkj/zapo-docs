@@ -27,11 +27,11 @@ icon: "circle-question"
 </Accordion>
 
 <Accordion title="Para qual JID eu respondo num grupo?" icon="at">
-  Sempre responda para o **`event.chatJid`** (o JID do grupo), nunca para o JID de um participante. Quando você tiver o LID de um contato, **prefira o LID** — é a identidade preservadora de privacidade e compatível com o futuro. Veja [Identidades (PN vs LID)](/pt-br/concepts/identities).
+  Sempre responda para o **`event.key.remoteJid`** (o JID do grupo), nunca para o JID de um participante. Quando você tiver o LID de um contato, **prefira o LID** — é a identidade preservadora de privacidade e compatível com o futuro. Veja [Identidades (PN vs LID)](/pt-br/concepts/identities).
 </Accordion>
 
 <Accordion title="Recebo minhas próprias mensagens enviadas" icon="inbox">
-  Isso é a sincronização multi-dispositivo — seus próprios envios voltam no evento `message` com `isSender: true`. Filtre-os se você só quer tráfego de entrada. Veja [Recebendo mensagens](/pt-br/guides/receiving-messages).
+  Isso é a sincronização multi-dispositivo — seus próprios envios voltam no evento `message` marcados com `key.fromMe === true`. Filtre-os se você só quer tráfego de entrada. Veja [Recebendo mensagens](/pt-br/guides/receiving-messages).
 </Accordion>
 
 <Accordion title="Como tipar o handler de mensagem no TypeScript?" icon="code">

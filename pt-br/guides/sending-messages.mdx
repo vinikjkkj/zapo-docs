@@ -45,7 +45,7 @@ Passe o evento da mensagem original (ou uma referência) como `options.quote`:
 
 ```ts
 client.on('message', async (event) => {
-  await client.message.send(event.chatJid!, 'Replying to you', {
+  await client.message.send(event.key.remoteJid, 'Replying to you', {
     quote: event
   })
 })
@@ -104,14 +104,20 @@ await client.message.send(jid, content, { forward: { score: 4 } })
 
 | Opção | Tipo | Propósito |
 | --- | --- | --- |
-| `quote` | `WaIncomingMessageEvent \| WaQuoteRef` | Responder a uma mensagem. |
+| `quote` | `WaIncomingMessageEvent \| WaQuoteRef \| WaMessageKey` | Responder a uma mensagem — passe o evento literalmente, sua `key`, ou um `WaQuoteRef`. |
 | `mentions` | `string[]` | JIDs para mencionar. |
 | `forward` | `boolean \| { score }` | Marcar como encaminhada. |
 | `viewOnce` | `boolean` | Empacotar imagem/vídeo/áudio como visualização única. |
-| `editKey` | `WaSendEditKey` | Editar uma mensagem enviada anteriormente (veja [interativas](/pt-br/guides/interactive-messages#editing-a-message)). |
+| `editKey` | `WaMessageKey \| WaSendEditKey \| WaMessageRef` | Editar uma mensagem enviada anteriormente (veja [interativas](/pt-br/guides/interactive-messages#editing-a-message)). |
+| `expirationSeconds` | `number` | TTL de disappearing-message para esta mensagem. **Vence** sobre `contextInfo.expirationSeconds` e sobre o injeção automática de group-ephemeral (a última é curto-circuitada assim que este campo é definido — mesmo `0`). |
+| `disableGroupEphemeralAutoInject` | `boolean` | Pula a injeção automática do ephemeral-setting ao enviar para um grupo com disappearing-mode ligado. Redundante quando `expirationSeconds` está definido. |
 | `contextInfo` | `WaSendContextInfo` | Context info bruto (avançado). |
 | `id` | `string` | Usar um id de mensagem específico. |
 | `ackTimeoutMs` / `maxAttempts` / `retryDelayMs` | `number` | Ajuste de retentativa por envio. |
+
+<Tip>
+  Para enviar uma única mensagem **sem** expiração para um grupo com disappearing-mode ligado, prefira `disableGroupEphemeralAutoInject: true` em vez de `expirationSeconds: 0` — o último ainda grava `expiration=0` no `contextInfo` de saída.
+</Tip>
 
 ## A union de conteúdo {#the-content-union}
 

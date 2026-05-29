@@ -134,6 +134,7 @@ See [Configuration](/en/concepts/configuration) for every option.
 | `addParticipants` / `removeParticipants` | `(groupJid, jids) => Promise<readonly WaParticipantActionResult[]>` | Add / remove members. One result per jid; inspect `status` / `code` for partial failures. |
 | `promoteParticipants` / `demoteParticipants` | `(groupJid, jids) => Promise<readonly WaParticipantActionResult[]>` | Grant / revoke admin. Same per-jid result shape. |
 | `leaveGroup` | `(groupJids) => Promise<void>` | Leave one or more groups (batched). |
+| `queryInviteCode` | `(groupJid) => Promise<string>` | Fetch the current invite code (the path segment of `chat.whatsapp.com/<code>`) **without** rotating it. Admin op — non-admins get `403 not-authorized`. |
 | `revokeInvite` | `(groupJid) => Promise<WaRevokeInviteResult>` | Rotate the invite code — every old `chat.whatsapp.com/<code>` link stops working. Returns the new `code` plus any `affectedParticipants`. |
 | `joinGroupViaInvite` | `(code) => Promise<WaGroupMetadata>` | Join via code. Throws if expired/revoked/full/already a member. Returns the joined group's metadata. |
 | `createCommunity` | `(subject, options?) => Promise<WaGroupMetadata>` | Create a community (request-required unless `membershipApprovalMode: 'open'`). |
@@ -324,3 +325,25 @@ See [Configuration](/en/concepts/configuration) for every option.
 ## lowlevel
 
 `WaLowLevelCoordinator` — full reference in [Low-level API](/en/reference/low-level): `sendNode`, `query`, `registerIncomingHandler`, `unregisterIncomingHandler`, `registerIncomingStanzaFilter`.
+
+---
+
+## Top-level helpers
+
+A handful of helpers are exported from the package root so you can call them outside any coordinator:
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `getContentType` | `(content?: Proto.IMessage) => keyof Proto.IMessage \| undefined` | Returns the populated content-type key (`'conversation'`, `'imageMessage'`, `'extendedTextMessage'`, …) of a message, or `undefined` for an empty message. Skips `senderKeyDistributionMessage` so group messages report their real payload kind. |
+| `resolveMessageTarget` | `(ref: WaMessageTargetInput) => WaMessageKey` | Normalizes a reply/edit/reaction/revoke/pin target into a bare `WaMessageKey`. Accepts an explicit `WaMessageKey` (returned as-is) or a received `message` event (`rawNode`-bearing reference — its `key` is returned). Throws when an event is passed without a valid `key.id`. |
+
+```ts
+import { getContentType, resolveMessageTarget } from 'zapo-js'
+
+client.on('message', (event) => {
+  console.log(getContentType(event.message)) // e.g. 'extendedTextMessage'
+  const key = resolveMessageTarget(event)    // identical to event.key for real events
+})
+```
+
+For typed business hours (`WaBusinessHoursDay` / `WaBusinessHoursMode` and the frozen `WA_BUSINESS_HOURS_DAYS` / `WA_BUSINESS_HOURS_MODES` constants), see [Profile, privacy & business](/en/guides/profile-privacy#typed-business-hours).

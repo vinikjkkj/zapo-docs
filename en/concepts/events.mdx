@@ -12,7 +12,7 @@ icon: "bell"
 import type { WaIncomingMessageEvent } from 'zapo-js'
 
 client.on('message', (event: WaIncomingMessageEvent) => {
-  console.log(event.chatJid, event.message)
+  console.log(event.key.remoteJid, event.message)
 })
 
 client.once('auth_paired', ({ credentials }) => {

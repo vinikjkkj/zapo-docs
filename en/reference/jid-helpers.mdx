@@ -61,7 +61,7 @@ Boolean predicates for routing logic:
 
 ```ts
 client.on('message', (event) => {
-  if (isGroupJid(event.chatJid!)) {
+  if (isGroupJid(event.key.remoteJid)) {
     console.log('a group message')
   }
 })

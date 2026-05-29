@@ -95,7 +95,7 @@ zapo uses a discriminated [content union](/en/guides/sending-messages#the-conten
 
 ## Key differences to keep in mind
 
-- **LID-first.** zapo prefers the privacy-preserving [LID](/en/concepts/identities) identity over the phone-number JID. Reply to `event.chatJid`, and prefer LIDs when you have them.
+- **LID-first.** zapo prefers the privacy-preserving [LID](/en/concepts/identities) identity over the phone-number JID. Reply to `event.key.remoteJid`, and prefer LIDs when you have them.
 - **Coordinator API.** Features are grouped on getters (`client.message`, `client.group`, `client.privacy`, …) instead of flat socket methods — see [Architecture](/en/concepts/architecture).
 - **Pluggable, typed stores.** Persistence is a first-class layer with official backends, not a JSON folder. See [Stores](/en/concepts/stores).
 - **No auto-reconnect.** Like Baileys, you drive reconnection — but read [Errors & disconnects](/en/guides/errors) for the reason codes.

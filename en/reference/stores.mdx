@@ -173,6 +173,8 @@ const mongo = createMongoStore({
 
 Requires the `mongodb` peer dependency.
 
+Bulk writes use `{ ordered: false }` so independent upserts run in parallel — a per-document failure does not abort the rest of the batch.
+
 ## Mixing backends
 
 `createStore` lets each domain choose a backend by name, so you can combine them:

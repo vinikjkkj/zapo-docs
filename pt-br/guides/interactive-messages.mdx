@@ -8,40 +8,45 @@ Além de texto e mídia, o `client.message.send` aceita uma família de objetos 
 
 ## Apontando para uma mensagem {#targeting-a-message}
 
-Vários desses referenciam uma mensagem existente através de um `WaSendMessageTarget`:
+Reply / reaction / revoke / pin / keep / event-response aceitam um `WaMessageTargetInput`: um evento `message` recebido passado **literalmente** (sua `key` é usada) ou uma `WaMessageKey` explícita:
 
 ```ts
-interface WaSendMessageTarget {
-  stanzaId: string      // o id da mensagem que você está mirando
+interface WaMessageKey {
+  remoteJid: string     // o chat onde o alvo está
+  id: string            // o id (stanza) do alvo
   fromMe: boolean       // o alvo foi enviado por você?
-  participant?: string  // obrigatório em grupos ao mirar a mensagem de outra pessoa
+  participant?: string  // o autor — obrigatório em grupos ao mirar a mensagem de outra pessoa
 }
 ```
 
-Você normalmente o constrói a partir de um evento recebido:
+O caminho mais fácil é passar o próprio evento — `event.key` já é uma `WaMessageKey`:
 
 ```ts
-const target = {
-  stanzaId: event.stanzaId!,
-  fromMe: event.isSender ?? false,
-  participant: event.senderJid
-}
+client.on('message', async (event) => {
+  // Usa o próprio evento como target — sua key é lida para você.
+  await client.message.send(event.key.remoteJid, {
+    type: 'reaction',
+    emoji: '👍',
+    target: event
+  })
+})
 ```
 
 ## Reações {#reactions}
 
 ```ts
+// Passe o evento literalmente, ou uma WaMessageKey explícita
 await client.message.send(jid, {
   type: 'reaction',
   emoji: '👍',
-  target
+  target: event
 })
 ```
 
 Passe uma **string vazia** como `emoji` para remover uma reação anterior:
 
 ```ts
-await client.message.send(jid, { type: 'reaction', emoji: '', target })
+await client.message.send(jid, { type: 'reaction', emoji: '', target: event })
 ```
 
 ## Enquetes {#polls}
@@ -66,13 +71,13 @@ Votar requer a identidade da enquete original e seu `messageSecret` (32 bytes do
 await client.message.send(jid, {
   type: 'poll-vote',
   poll: {
-    stanzaId: pollStanzaId,
+    id: pollStanzaId,                  // o id (stanza) da enquete
     fromMe: false,
     authorJid: pollAuthorJid,
-    messageSecret: pollMessageSecret, // Uint8Array, 32 bytes
-    participant: pollAuthorJid        // obrigatório fora de conversas 1:1
+    messageSecret: pollMessageSecret,  // Uint8Array, 32 bytes
+    participant: pollAuthorJid         // obrigatório fora de conversas 1:1
   },
-  selectedOptionNames: ['Pizza']      // exatamente como apareceram na enquete
+  selectedOptionNames: ['Pizza']       // exatamente como apareceram na enquete
 })
 ```
 
@@ -82,37 +87,50 @@ await client.message.send(jid, {
 
 ## Editando uma mensagem {#editing-a-message}
 
-Para editar, envie o conteúdo **novo** e passe `editKey` nas opções. A original deve ser `fromMe`:
+Para editar, envie o conteúdo **novo** e passe `editKey` nas opções. A original deve ser `fromMe`. Você pode passar o evento `message` recebido literalmente, sua `key`, ou uma `WaSendEditKey` explícita (`{ id, participant?, timestampMs? }`):
 
 ```ts
+// Mais fácil: encaminhe o evento original
+await client.message.send(jid, 'Corrected text', { editKey: originalEvent })
+
+// Ou monte um explicitamente
 await client.message.send(jid, 'Corrected text', {
   editKey: {
-    stanzaId: originalStanzaId,
+    id: originalStanzaId,
     // participant obrigatório em grupos para originais endereçadas via lid/pn
     participant: undefined
   }
 })
 ```
 
-O novo payload é empacotado em uma mensagem de protocolo `MESSAGE_EDIT` que mira o `editKey.stanzaId`.
+O novo payload é empacotado em uma mensagem de protocolo `MESSAGE_EDIT` que mira o `editKey.id`.
 
 ## Revogando (apagar para todos) {#revoking-delete-for-everyone}
 
 ```ts
+// Mais fácil: passe o evento que você quer revogar
+await client.message.send(jid, { type: 'revoke', target: event })
+
+// Ou construa o target explicitamente
 await client.message.send(jid, {
   type: 'revoke',
-  stanzaId: targetStanzaId,
-  fromMe: true,
-  // participant obrigatório quando um admin revoga a mensagem de outra pessoa em um grupo
-  participant: undefined
+  target: {
+    remoteJid: jid,
+    id: targetStanzaId,
+    fromMe: true,
+    // participant obrigatório quando um admin revoga a mensagem de outra pessoa em um grupo
+    participant: undefined
+  }
 })
 ```
+
+Sender vs admin revoke é auto-detectado a partir de `target.fromMe`: `false` dispara um admin revoke. Não há opção `subtype` para passar.
 
 ## Fixando {#pinning}
 
 ```ts
-await client.message.send(jid, { type: 'pin', target })   // fixar
-await client.message.send(jid, { type: 'unpin', target }) // desafixar
+await client.message.send(jid, { type: 'pin', target: event })   // fixar
+await client.message.send(jid, { type: 'unpin', target: event }) // desafixar
 ```
 
 ## Manter no chat {#keep-in-chat}
@@ -120,8 +138,8 @@ await client.message.send(jid, { type: 'unpin', target }) // desafixar
 Para chats com mensagens temporárias, mantenha (ou desfaça a manutenção de) uma mensagem específica:
 
 ```ts
-await client.message.send(jid, { type: 'keep', target })
-await client.message.send(jid, { type: 'unkeep', target })
+await client.message.send(jid, { type: 'keep', target: event })
+await client.message.send(jid, { type: 'unkeep', target: event })
 ```
 
 ## Eventos {#events}
@@ -147,10 +165,10 @@ await client.message.send(groupJid, {
 await client.message.send(jid, {
   type: 'event-response',
   event: {
-    stanzaId: eventStanzaId,
+    id: eventStanzaId,                 // o id (stanza) do evento
     fromMe: false,
     authorJid: eventAuthorJid,
-    messageSecret: eventMessageSecret // 32 bytes
+    messageSecret: eventMessageSecret  // 32 bytes
   },
   response: 'going' // 'going' | 'not_going' | 'maybe'
 })

@@ -18,13 +18,13 @@ function getText(message: { conversation?: string | null; extendedTextMessage?: 
 
 ## Roteador de comandos {#command-router}
 
-Faça o parse de um `/comando` inicial e despache. Ignore suas próprias mensagens enviadas com `event.isSender`:
+Faça o parse de um `/comando` inicial e despache. Ignore suas próprias mensagens enviadas com `event.key.fromMe`:
 
 ```ts
 client.on('message', async (event) => {
-  if (event.isSender) return // ignora nossos próprios envios (echo multi-device)
+  if (event.key.fromMe) return // ignora nossos próprios envios (echo multi-device)
   const text = getText(event.message)?.trim()
-  const to = event.chatJid ?? event.senderJid
+  const to = event.key.remoteJid
   if (!text || !text.startsWith('/') || !to) return
 
   const [command, ...args] = text.slice(1).split(/\s+/)
@@ -45,13 +45,14 @@ client.on('message', async (event) => {
 
 ```ts
 client.on('message', async (event) => {
-  const to = event.chatJid
-  if (!to || event.isSender) return
+  if (event.key.fromMe) return
+  const to = event.key.remoteJid
+  const sender = event.key.participant ?? event.key.remoteJid
 
   await client.message.send(
     to,
     { type: 'text', text: 'got it 👍' },
-    { quote: event, mentions: event.senderJid ? [event.senderJid] : [] }
+    { quote: event, mentions: sender ? [sender] : [] }
   )
 })
 ```
@@ -105,11 +106,12 @@ await client.message.send(chatJid, {
 
 ```ts
 client.on('message', async (event) => {
-  if (event.isSender || !event.chatJid) return
-  await client.message.send(event.chatJid, {
+  if (event.key.fromMe) return
+  // Passe o evento literalmente — sua key é lida para você.
+  await client.message.send(event.key.remoteJid, {
     type: 'reaction',
     emoji: '❤️',
-    target: { stanzaId: event.stanzaId!, fromMe: false, participant: event.senderJid }
+    target: event
   })
 })
 ```

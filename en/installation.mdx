@@ -123,6 +123,10 @@ npm install @zapo-js/media-utils
 
 It shells out to `ffmpeg`/`ffprobe` and uses `sharp`, so make sure those binaries are available. See the [media guide](/en/guides/media#media-processing) for how to wire the processor into the client.
 
+<Note>
+  `@zapo-js/media-utils` also lists [`file-type`](https://github.com/sindresorhus/file-type) (`^19`) as an **optional** peer dependency. Install it (`npm install file-type`) to enable automatic mimetype detection — without it, the [media guide's mimetype resolution](/en/guides/media#mimetype-resolution) falls back to requiring an explicit `mimetype` on each send.
+</Note>
+
 ## Verify your setup
 
 ```ts

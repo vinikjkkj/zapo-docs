@@ -113,16 +113,24 @@ console.log(info.subject, info.size, info.desc)
 // info.participants is a trimmed sample — not the full roster.
 // Call queryGroupMetadata after joining for everyone.
 
+// Fetch the current invite code for a group you admin — does NOT rotate it.
+const code = await client.group.queryInviteCode(groupJid)
+console.log('current invite:', `https://chat.whatsapp.com/${code}`)
+
 // Join via invite code — returns the joined group's metadata
 const joined = await client.group.joinGroupViaInvite('AbCdEf...')
 console.log(joined.jid, joined.participants.length)
 
 // Rotate the invite — returns the freshly-issued code
-const { code, affectedParticipants } = await client.group.revokeInvite(groupJid)
-console.log('new invite:', `https://chat.whatsapp.com/${code}`)
+const { code: rotated, affectedParticipants } = await client.group.revokeInvite(groupJid)
+console.log('new invite:', `https://chat.whatsapp.com/${rotated}`)
 // affectedParticipants lists anyone who joined via the now-revoked code
 // that the server surfaced in the response (typically with code: 404).
 ```
+
+<Note>
+  `queryInviteCode` and `revokeInvite` are admin-only — non-admins receive a `403 not-authorized`.
+</Note>
 
 ## Leaving
 

@@ -139,6 +139,30 @@ await client.business.updateCoverPhoto(mediaSource)
 await client.business.deleteCoverPhoto(coverId)
 ```
 
+### Business hours tipados {#typed-business-hours}
+
+`WaBusinessHoursDay` e `WaBusinessHoursMode` são aliases de union (`'sun' | 'mon' | …`, `'open_24h' | 'specific_hours' | 'appointment_only'`). Os valores também estão congelados em `WA_BUSINESS_HOURS_DAYS` e `WA_BUSINESS_HOURS_MODES`. Passar um `mode` desconhecido para `editBusinessProfile` agora lança um erro local claro em vez de o servidor responder `406 not-acceptable` — dias fechados continuam sendo expressos **omitindo-os** da `config`, não por um mode dedicado.
+
+```ts
+import { WA_BUSINESS_HOURS_DAYS, WA_BUSINESS_HOURS_MODES } from 'zapo-js'
+
+await client.business.editBusinessProfile({
+  businessHours: {
+    timezone: 'America/Sao_Paulo',
+    config: [
+      {
+        dayOfWeek: WA_BUSINESS_HOURS_DAYS.MON,
+        mode: WA_BUSINESS_HOURS_MODES.SPECIFIC_HOURS,
+        openTime: 540,  // minutos desde meia-noite; 540 = 09:00
+        closeTime: 1080 // 18:00
+      },
+      { dayOfWeek: WA_BUSINESS_HOURS_DAYS.SAT, mode: WA_BUSINESS_HOURS_MODES.OPEN_24H }
+      // dom é fechado — omitir
+    ]
+  }
+})
+```
+
 ## Configurações de chat {#chat-settings}
 
 As configurações por chat — silenciar, fixar, arquivar, lido, lock, favoritar, limpar, excluir — ficam em `client.chat` e sincronizam entre seus dispositivos. Elas têm um guia próprio:

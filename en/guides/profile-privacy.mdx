@@ -139,6 +139,30 @@ await client.business.updateCoverPhoto(mediaSource)
 await client.business.deleteCoverPhoto(coverId)
 ```
 
+### Typed business hours
+
+`WaBusinessHoursDay` and `WaBusinessHoursMode` are union aliases (`'sun' | 'mon' | …`, `'open_24h' | 'specific_hours' | 'appointment_only'`). The values are also frozen on `WA_BUSINESS_HOURS_DAYS` and `WA_BUSINESS_HOURS_MODES`. Passing an unknown `mode` to `editBusinessProfile` now throws a clear local error instead of the server replying with `406 not-acceptable` — closed days are still expressed by **omitting** them from `config`, not by a dedicated mode.
+
+```ts
+import { WA_BUSINESS_HOURS_DAYS, WA_BUSINESS_HOURS_MODES } from 'zapo-js'
+
+await client.business.editBusinessProfile({
+  businessHours: {
+    timezone: 'America/Sao_Paulo',
+    config: [
+      {
+        dayOfWeek: WA_BUSINESS_HOURS_DAYS.MON,
+        mode: WA_BUSINESS_HOURS_MODES.SPECIFIC_HOURS,
+        openTime: 540,  // minutes from midnight; 540 = 09:00
+        closeTime: 1080 // 18:00
+      },
+      { dayOfWeek: WA_BUSINESS_HOURS_DAYS.SAT, mode: WA_BUSINESS_HOURS_MODES.OPEN_24H }
+      // sun is closed — omit it
+    ]
+  }
+})
+```
+
 ## Chat settings
 
 Per-chat settings — mute, pin, archive, read, lock, star, clear, delete — live on `client.chat` and sync across your devices. They have their own guide:
