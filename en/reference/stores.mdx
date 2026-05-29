@@ -89,6 +89,7 @@ const postgres = createPostgresStore({
 | `tablePrefix` | `string` | Prefix for created tables. |
 | `cacheTtlMs` | object | Cache TTLs (same shape as SQLite). |
 | `cleanup` | `{ intervalMs?, onError? }` | Background cleanup poller. |
+| `batchInsertChunkSize` | `number` | Upper bound on rows per multi-row `INSERT` in batch writes. Default `500`. See [Batch insert chunking](#batch-insert-chunking). |
 
 Also exports `createPgPool` and `ensurePgMigrations`. Requires the `pg` peer dependency.
 
@@ -111,8 +112,24 @@ const mysql = createMysqlStore({
 | `tablePrefix` | `string` | Prefix for created tables. |
 | `cacheTtlMs` | object | Cache TTLs. |
 | `cleanup` | `{ enabled?, intervalMs?, onError? }` | Background cleanup poller. |
+| `batchInsertChunkSize` | `number` | Upper bound on rows per multi-row `INSERT` in batch writes. Default `500`. See [Batch insert chunking](#batch-insert-chunking). |
 
 Also exports `createMysqlPool` and `ensureMysqlMigrations`. Requires the `mysql2` peer dependency.
+
+### Batch insert chunking
+
+`batchInsertChunkSize` caps how many rows the PostgreSQL and MySQL backends fold into a single multi-row `INSERT` for batch writes — Signal sessions, remote identities, sender-key distributions, prekey generation, and the message/thread/contact `upsertBatch` paths used by [write-behind persistence](/en/concepts/configuration#write-behind-persistence).
+
+The value is rounded **down to the nearest power of two** internally (`500 → 256`, `1000 → 512`, …), and each batch is decomposed into power-of-two sub-chunks. That keeps the set of distinct prepared statements per connection bounded at `log2(chunkSize) + 1` regardless of how `N` varies between calls — important for staying under the mysql2 client-side cache and MySQL's `max_prepared_stmt_count` quota, and for keeping `pg`'s named statement cache stable.
+
+Leave the default unless benchmarks for your workload show it helps. Raise it for steady high-fanout group sends; lower it if your database limits are tight.
+
+```ts
+createPostgresStore({
+  pool: { connectionString: process.env.DATABASE_URL },
+  batchInsertChunkSize: 2000 // → effective 1024
+})
+```
 
 ## Redis
 
