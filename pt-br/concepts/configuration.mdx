@@ -294,20 +294,55 @@ new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
 
 ## Logging {#logging}
 
-Passe um logger como o segundo argumento do construtor. Duas implementações vêm com o pacote:
+O `WaClient` aceita um `Logger` como segundo argumento do construtor. Se você omitir, um `ConsoleLogger('info')` padrão é usado. Níveis, do mais baixo ao mais alto: `trace`, `debug`, `info`, `warn`, `error`.
+
+Duas implementações vêm com o pacote.
+
+### ConsoleLogger
+
+Sem dependências. Escreve registros estruturados em `console.log` / `console.warn` / `console.error`. Bom para desenvolvimento, testes e funções serverless onde você não consegue adicionar um transport de logger.
 
 ```ts
-import { ConsoleLogger, createPinoLogger } from 'zapo-js'
+import { ConsoleLogger } from 'zapo-js'
 
-// Leve, sem dependências
 const client = new WaClient(options, new ConsoleLogger('info'))
-
-// Estruturado (requer `pino` + `pino-pretty`)
-const logger = await createPinoLogger({ level: 'debug', pretty: true })
-const client2 = new WaClient(options, logger)
 ```
 
-Se você omitir o logger, um `ConsoleLogger` padrão é usado. Níveis de log: `trace`, `debug`, `info`, `warn`, `error`.
+### createPinoLogger
+
+Factory async que carrega dinamicamente o [`pino`](https://github.com/pinojs/pino) (e o `pino-pretty` quando `pretty: true`), configura e envolve no adapter `PinoLogger`. Lança `optional dependency "pino" is not installed` quando o pino não está presente — instale com `npm i pino pino-pretty`.
+
+```ts
+import { createPinoLogger } from 'zapo-js'
+
+const logger = await createPinoLogger({ level: 'info', pretty: true })
+const client = new WaClient(options, logger)
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `level` | `LogLevel` | Nível mínimo a emitir. Default `'info'`. |
+| `name` | `string` | Nome da instância pino anexado a cada registro. |
+| `base` | `Record<string, unknown> \| null` | Bindings base mesclados em cada registro. Passe `null` para descartar `pid`/`hostname` padrões do pino. |
+| `pinoOptions` | `Record<string, unknown>` | Passthrough para `pino()` para qualquer coisa que não esteja exposta acima (redação, serializers customizados, …). |
+| `pretty` | `boolean` | Quando `true`, conecta o `pino-pretty` como transport. Mantenha `false` (default) em produção para emitir linhas JSON. |
+| `prettyOptions` | `PinoPrettyOptions` | Encaminhado pro transport `pino-pretty` — veja as [opções do `pino-pretty`](https://github.com/pinojs/pino-pretty#options). |
+
+### PinoLogger (traga o seu Pino)
+
+Se você já configura Pino centralmente — child loggers, transports customizados, destinos em arquivo — construa `PinoLogger` diretamente para envolver sua instância existente. A factory é uma conveniência; a classe é o adapter de fato, e usá-la evita o import dinâmico do `pino`.
+
+```ts
+import pino from 'pino'
+import { PinoLogger } from 'zapo-js'
+
+const root = pino({ name: 'my-app', transport: { /* ... */ } })
+const child = root.child({ component: 'whatsapp' })
+
+const client = new WaClient(options, new PinoLogger(child, 'info'))
+```
+
+A assinatura é `new PinoLogger(logger, level = 'info')`. O nível é encaminhado pra `logger.level` e usado como o `level` reportado pelo adapter.
 
 ## Opções avançadas {#advanced-options}
 
