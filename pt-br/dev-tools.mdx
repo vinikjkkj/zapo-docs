@@ -129,13 +129,24 @@ npm --workspace=@zapo-js/fake-server run cli -- --port 5222 --peer 5511888@s.wha
 
 ### Benchmarking {#benchmarking}
 
-O pacote inclui um profiler de mensagens (send/recv × 1:1/grupo) usado para acompanhar a performance da biblioteca:
+O pacote inclui um profiler de mensagens (send/recv × 1:1/grupo) usado para acompanhar a performance da biblioteca, além de suítes focadas para connect lifecycle, history sync, bulk usync, provisionamento de grupo, upload de mídia, receipts flood, reconnect/resume e app-state:
 
 ```bash
 npm --workspace=@zapo-js/fake-server run bench:messaging
+# ou: bench:connect, bench:history, bench:usync, bench:group,
+#     bench:media, bench:receipts, bench:reconnect, bench:appstate
 ```
 
-Ajuste a carga com variáveis `ZAPO_BENCH_*` (`ZAPO_BENCH_CONTACTS`, `ZAPO_BENCH_GROUP_MEMBERS`, `ZAPO_BENCH_MESSAGES`, `ZAPO_BENCH_SCENARIOS`, …) e adicione `--cpu` / `--heap` / `--separate-process` para profiles. Veja `packages/fake-server/README.md` para a referência completa de flags.
+Ajuste a carga com variáveis `ZAPO_BENCH_*` (`ZAPO_BENCH_CONTACTS`, `ZAPO_BENCH_GROUP_MEMBERS`, `ZAPO_BENCH_MESSAGES`, `ZAPO_BENCH_SCENARIOS`, …) e adicione `--cpu` / `--heap` / `--separate-process` para profiles. Com `--separate-process`, o bench roda o fake server em um processo filho através de uma ponte RPC e emite um CPU profile e um heap snapshot do lado do servidor junto com os do lado da lib.
+
+Escolha o backend de store com `ZAPO_BENCH_STORE` (`memory`, `sqlite`, `postgres`, `mysql`, `redis` ou `mongo`) — valem as mesmas variáveis `ZAPO_TEST_*` de conexão usadas pelo harness cross-store. Para varrer todos os benches em vários stores de uma vez:
+
+```bash
+npm --workspace=@zapo-js/fake-server run bench:all-stores -- \
+  --stores=memory,sqlite --benches=connect-lifecycle,history-sync
+```
+
+Adicione `--start-docker` para subir os serviços Postgres/MySQL/Redis/Mongo empacotados em portas efêmeras e derrubá-los ao final. Veja `packages/fake-server/README.md` para a referência completa de flags.
 
 <Note>
   O fake server é um harness de teste in-process, não um runtime que você faz deploy. Combine-o com a store **memory** para testes rápidos e isolados que resetam a cada execução.
