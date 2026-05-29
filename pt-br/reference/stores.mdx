@@ -175,6 +175,44 @@ Requer a peer dependency `mongodb`.
 
 Escritas em lote usam `{ ordered: false }` para que upserts independentes rodem em paralelo — uma falha por documento não aborta o resto do lote.
 
+## Expiração e limpeza de cache {#cache-expiry-and-cleanup}
+
+Os quatro domínios de cache (`retry`, `groupMetadata`, `deviceList`, `messageSecret`) usam um TTL definido em `cacheTtlMs`. A forma como entradas expiradas são *removidas* varia por backend:
+
+| Backend | Mecanismo | Ação necessária |
+| --- | --- | --- |
+| `memory` | Sweep periódico in-process (intervalo `min(60s, ttl/2)`, timer com `unref()`) | Nenhuma — automático |
+| `sqlite` | Filtro na leitura; linhas expiradas são ignoradas e sobrescritas no próximo upsert | Nenhuma |
+| `postgres` | Filtro na leitura **+** poller de fundo apaga linhas expiradas | **Chamar `startCleanup(sessionId)`** |
+| `mysql` | Filtro na leitura **+** poller de fundo apaga linhas expiradas | **Chamar `startCleanup(sessionId)`** |
+| `redis` | `EXPIRE` nativo de chave | Nenhuma |
+| `mongo` | TTL index (monitor server-side, latência de ~60s) | Nenhuma |
+
+<Warning>
+  No PostgreSQL e MySQL, sem `startCleanup` suas tabelas de cache crescem monotonicamente. Leituras continuam ignorando linhas expiradas (dado obsoleto nunca é servido), mas o uso de disco cresce sem limite. Inicie um poller **por session id**.
+</Warning>
+
+```ts
+const result = createPostgresStore({
+  pool: { connectionString: process.env.DATABASE_URL },
+  cleanup: { intervalMs: 60_000, onError: (e) => log.warn('cache cleanup failed', e) }
+})
+
+const store = createStore({ backends: { pg: result }, providers: { /* ... */ } })
+const client = new WaClient({ store, sessionId: 'default' }, logger)
+
+const poller = result.startCleanup('default')
+
+process.on('SIGTERM', async () => {
+  await client.disconnect()
+  await result.destroy() // também para todos os pollers que ele rastreia
+})
+```
+
+`cleanup.intervalMs` tem default `60_000` (60s). `result.destroy()` para todos os pollers iniciados por ele, então chamar `poller.stop()` manualmente só é útil se você quiser interromper a limpeza antes de derrubar o backend.
+
+No MongoDB, a latência de ~60s do TTL monitor faz entradas de cache poderem persistir um pouco além do TTL configurado. Aceitável para `groupMetadata`/`deviceList`; troque pelo Redis se precisar de eviction mais agressivo.
+
 ## Misturando backends {#mixing-backends}
 
 O `createStore` permite que cada domínio escolha um backend por nome, então você pode combiná-los:

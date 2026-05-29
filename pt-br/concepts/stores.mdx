@@ -136,6 +136,8 @@ createStore({
 })
 ```
 
+Cada backend remove entradas expiradas de um jeito: `memory` faz sweep in-process, Redis e MongoDB usam TTL nativo, SQLite filtra na leitura, e **PostgreSQL/MySQL exigem um poller opt-in** (`result.startCleanup(sessionId)`) ou as tabelas de cache crescem sem parar. Veja [Expiração e limpeza de cache](/pt-br/reference/stores#cache-expiry-and-cleanup) para a matriz por backend.
+
 ## Camada de cache read-through {#read-through-cache-layer}
 
 Quando um domínio quente do signal aponta para um backend persistente, cada ida e volta de envio/recebimento paga a latência do backend para buscar a sessão, identidade ou sender key do mesmo peer. A opção `cacheLayer` envolve a store do backend com um L1 LRU limitado (o provider de memória nativo) para que leituras repetidas do mesmo peer pulem o backend, enquanto escritas continuam write-through e o backend permanece como fonte de verdade.

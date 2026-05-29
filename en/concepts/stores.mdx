@@ -136,6 +136,8 @@ createStore({
 })
 ```
 
+Each backend evicts expired entries differently: `memory` runs an in-process sweep, Redis and MongoDB use native TTL, SQLite filters on read, and **PostgreSQL/MySQL require an opt-in poller** (`result.startCleanup(sessionId)`) or cache tables grow forever. See [Cache expiry and cleanup](/en/reference/stores#cache-expiry-and-cleanup) for the per-backend matrix.
+
 ## Read-through cache layer
 
 When a hot signal domain points at a persistent backend, every send/recv round-trip pays the backend's latency to fetch the same peer's session, identity, or sender key. The `cacheLayer` option wraps the backend store with a bounded-LRU L1 (the in-tree memory provider) so repeated reads of the same peer skip the backend, while writes stay write-through so the backend remains authoritative.
