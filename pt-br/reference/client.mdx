@@ -328,22 +328,4 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 
 ---
 
-## Helpers de topo {#top-level-helpers}
-
-Alguns helpers são exportados da raiz do pacote para que você possa chamá-los fora de qualquer coordinator:
-
-| Export | Assinatura | Descrição |
-| --- | --- | --- |
-| `getContentType` | `(content?: Proto.IMessage) => keyof Proto.IMessage \| undefined` | Retorna a chave do tipo de conteúdo (`'conversation'`, `'imageMessage'`, `'extendedTextMessage'`, …) de uma mensagem, ou `undefined` para uma mensagem vazia. Pula `senderKeyDistributionMessage` para que mensagens de grupo reportem o payload real e não a piggyback da sender-key. |
-| `resolveMessageTarget` | `(ref: WaMessageTargetInput) => WaMessageKey` | Normaliza um target de reply/edit/reaction/revoke/pin para uma `WaMessageKey` simples. Aceita uma `WaMessageKey` explícita (retornada como está) ou um evento `message` recebido (referência com `rawNode` — sua `key` é retornada). Lança quando um evento é passado sem `key.id` válida. |
-
-```ts
-import { getContentType, resolveMessageTarget } from 'zapo-js'
-
-client.on('message', (event) => {
-  console.log(getContentType(event.message)) // ex.: 'extendedTextMessage'
-  const key = resolveMessageTarget(event)    // idêntico a event.key para eventos reais
-})
-```
-
-Para business hours tipados (`WaBusinessHoursDay` / `WaBusinessHoursMode` e as constantes congeladas `WA_BUSINESS_HOURS_DAYS` / `WA_BUSINESS_HOURS_MODES`), veja [Perfil, privacidade & business](/pt-br/guides/profile-privacy#typed-business-hours).
+Para helpers de topo exportados da raiz do pacote — inspeção de mensagem (`getContentType`), normalização de target (`resolveMessageTarget`), predicados de JID e constantes — veja [JIDs, helpers & constantes](/pt-br/reference/jid-helpers). Para business hours tipados, veja [Perfil, privacidade & business](/pt-br/guides/profile-privacy#typed-business-hours).

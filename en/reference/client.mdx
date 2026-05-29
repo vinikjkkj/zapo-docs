@@ -328,22 +328,4 @@ See [Configuration](/en/concepts/configuration) for every option.
 
 ---
 
-## Top-level helpers
-
-A handful of helpers are exported from the package root so you can call them outside any coordinator:
-
-| Export | Signature | Description |
-| --- | --- | --- |
-| `getContentType` | `(content?: Proto.IMessage) => keyof Proto.IMessage \| undefined` | Returns the populated content-type key (`'conversation'`, `'imageMessage'`, `'extendedTextMessage'`, …) of a message, or `undefined` for an empty message. Skips `senderKeyDistributionMessage` so group messages report their real payload kind. |
-| `resolveMessageTarget` | `(ref: WaMessageTargetInput) => WaMessageKey` | Normalizes a reply/edit/reaction/revoke/pin target into a bare `WaMessageKey`. Accepts an explicit `WaMessageKey` (returned as-is) or a received `message` event (`rawNode`-bearing reference — its `key` is returned). Throws when an event is passed without a valid `key.id`. |
-
-```ts
-import { getContentType, resolveMessageTarget } from 'zapo-js'
-
-client.on('message', (event) => {
-  console.log(getContentType(event.message)) // e.g. 'extendedTextMessage'
-  const key = resolveMessageTarget(event)    // identical to event.key for real events
-})
-```
-
-For typed business hours (`WaBusinessHoursDay` / `WaBusinessHoursMode` and the frozen `WA_BUSINESS_HOURS_DAYS` / `WA_BUSINESS_HOURS_MODES` constants), see [Profile, privacy & business](/en/guides/profile-privacy#typed-business-hours).
+For top-level helpers exported from the package root — message inspection (`getContentType`), target normalization (`resolveMessageTarget`), JID predicates and constants — see [JIDs, helpers & constants](/en/reference/jid-helpers). For typed business hours, see [Profile, privacy & business](/en/guides/profile-privacy#typed-business-hours).

@@ -89,6 +89,24 @@ await client.logout(WA_LOGOUT_REASONS.USER_INITIATED)
 
 **Tipos** literais de string associados também são exportados para anotação: `WaPrivacyCategory`, `WaPrivacySettingName`, `WaPrivacyValue`, `WaDisconnectReason`, `WaLogoutReason`, `WaConnectionCode`, `WaStreamErrorCode`, `WaFailureReasonCode` e `ParsedJid`.
 
+## Helpers de mensagem {#message-helpers}
+
+Dois helpers para inspecionar e referenciar mensagens, exportados da raiz do pacote:
+
+| Export | Assinatura | Descrição |
+| --- | --- | --- |
+| `getContentType` | `(content?: Proto.IMessage) => keyof Proto.IMessage \| undefined` | Retorna a chave do tipo de conteúdo (`'conversation'`, `'imageMessage'`, `'extendedTextMessage'`, …) de uma mensagem, ou `undefined` para uma mensagem vazia. Pula `senderKeyDistributionMessage` para que mensagens de grupo reportem o payload real e não a piggyback da sender-key. |
+| `resolveMessageTarget` | `(ref: WaMessageTargetInput) => WaMessageKey` | Normaliza um target de reply/edit/reaction/revoke/pin para uma `WaMessageKey` simples. Aceita uma `WaMessageKey` explícita (retornada como está) ou um evento `message` recebido (referência com `rawNode` — sua `key` é retornada). Lança quando um evento é passado sem `key.id` válida. |
+
+```ts
+import { getContentType, resolveMessageTarget } from 'zapo-js'
+
+client.on('message', (event) => {
+  console.log(getContentType(event.message)) // ex.: 'extendedTextMessage'
+  const key = resolveMessageTarget(event)    // idêntico a event.key para eventos reais
+})
+```
+
 ## Outros utilitários {#other-utilities}
 
 | Export | Propósito |
