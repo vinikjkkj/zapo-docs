@@ -127,7 +127,7 @@ Leave the default unless benchmarks for your workload show it helps. Raise it fo
 ```ts
 createPostgresStore({
   pool: { connectionString: process.env.DATABASE_URL },
-  batchInsertChunkSize: 1024 // → effective 512
+  batchInsertChunkSize: 2000 // → effective 1024
 })
 ```
 

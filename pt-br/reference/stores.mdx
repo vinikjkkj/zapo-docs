@@ -127,7 +127,7 @@ Mantenha o padrão a menos que benchmarks do seu workload mostrem benefício. Au
 ```ts
 createPostgresStore({
   pool: { connectionString: process.env.DATABASE_URL },
-  batchInsertChunkSize: 1024 // → efetivo 512
+  batchInsertChunkSize: 2000 // → efetivo 1024
 })
 ```
 
