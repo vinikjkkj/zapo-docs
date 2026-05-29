@@ -8,6 +8,15 @@ icon: "arrows-rotate"
   O `WaClient` **não** reconecta automaticamente. Esta é uma escolha de design deliberada: a política de reconexão (backoff, máximo de tentativas, alertas) pertence à sua aplicação. Você escuta o `connection: close` e decide o que fazer.
 </Warning>
 
+## Camadas internas de recuperação {#internal-recovery-layers}
+
+A regra "sem auto-reconnect" vale para o **ciclo de vida da sessão**: assim que um `connection: close` é emitido, o client não reabre sozinho. Mas dois retries de baixo nível existem dentro da stack – você os verá em log e não precisa tratá-los.
+
+- **Transport WebSocket.** Se o socket cair *antes* de um handshake noise bem-sucedido, o `WaComms` faz retry interno a cada `reconnectIntervalMs` (default `2000`) até `maxReconnectAttempts`. Quando o handshake completa, o contador zera e qualquer queda posterior vira um evento `connection` pra sua app tratar.
+- **Transição de pairing.** Logo após um pair via QR/código, o client reinicia o socket como sessão já registrada. Nenhum `connection: close` é emitido – é invisível de fora.
+
+A recuperação `client_too_old` (HTTP 405) coberta abaixo é uma terceira camada, opt-in.
+
 ## Ciclo de vida da conexão {#connection-lifecycle}
 
 ```mermaid
