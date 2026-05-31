@@ -1,0 +1,157 @@
+---
+title: "Multi-session deployments"
+description: "Run many WhatsApp accounts in one process with a shared store — what's per-session vs shared, the single-writer rule, memory budget, sharding, and graceful shutdown."
+icon: "users"
+---
+
+`zapo` is designed so a single process can drive many accounts off one shared [store](/en/concepts/stores). Each account lives behind a stable `sessionId`; everything that's safe to share (the backend connection pool, the WebSocket factory, the logger) is shared, and everything that's account-specific (Signal sessions, identities, app-state, mailbox) is partitioned by `sessionId`.
+
+## The pattern
+
+```ts
+import { createStore, WaClient, createPinoLogger } from 'zapo-js'
+import { createPostgresStore } from '@zapo-js/store-postgres'
+
+const store = createStore({
+  backends: { postgres: createPostgresStore({ pool: { connectionString: process.env.DATABASE_URL } }) },
+  providers: {
+    auth: 'postgres', signal: 'postgres', preKey: 'postgres',
+    session: 'postgres', identity: 'postgres', senderKey: 'postgres',
+    appState: 'postgres', privacyToken: 'postgres',
+    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+  }
+})
+
+const logger = await createPinoLogger({ level: 'info' })
+
+const clients = ['account-a', 'account-b', 'account-c'].map(
+  (id) => new WaClient({ store, sessionId: id }, logger)
+)
+
+await Promise.all(clients.map((c) => c.connect()))
+```
+
+`sessionId` is the durable key for an account — same id across restarts resumes the same paired device. Changing it orphans the previous credentials.
+
+## What's per-session vs shared
+
+| Layer | Scope |
+| --- | --- |
+| Backend connection pool / file handle | **Shared** across all sessions |
+| Per-domain stores (`auth` / `signal` / `preKey` / `session` / `identity` / `senderKey` / `appState` / `privacyToken` / `messages` / `threads` / `contacts`) | **Per `sessionId`** |
+| Cache domains (`retry` / `groupMetadata` / `deviceList` / `messageSecret`) | **Per `sessionId`** |
+| L1 [`cacheLayer`](/en/concepts/stores#read-through-cache-layer) (when enabled) | **Per `sessionId`, per process** |
+| `memory.limits` caps | Applied **per session** (multiply by N for total RAM) |
+| `WaClient` state (handlers, retry queue, coordinators) | **Per `WaClient` instance** |
+
+Switching to a multi-tenant setup is a matter of (1) instantiating N `WaClient`s on the same `store`, and (2) sizing your backend pool + memory budget for N concurrent sessions.
+
+## Session lifecycle
+
+`store.session(sessionId)` is **memoized**. The first call materializes the per-domain bundle (per-session locks, optional cache wrappers, …) and caches it inside the store; later calls with the same id return the same bundle.
+
+```ts
+const a1 = store.session('account-a')
+const a2 = store.session('account-a')
+a1 === a2 // true
+```
+
+`WaClient` calls `store.session(sessionId)` on demand; you do not usually call it yourself.
+
+### Adding tenants on the fly
+
+There is no preregistration step — just construct a new `WaClient` with a new `sessionId`:
+
+```ts
+function spawn(sessionId: string): WaClient {
+  const client = new WaClient({ store, sessionId }, logger)
+  // hook your event listeners, then connect()
+  return client
+}
+```
+
+### Removing tenants
+
+There is **no** `store.removeSession(id)` API. The in-store session map is only cleared by `store.destroy()`. For long-running multi-tenant processes:
+
+- **Logout, keep the entry.** `await client.logout()` wipes the persistent state for that `sessionId` (subject to [`logoutStoreClear`](/en/concepts/configuration#logoutStoreClear)). The `WaStoreSession` bundle stays in the in-store map — inert, but holding the per-domain stores until the process restarts. Acceptable when tenant churn is low relative to total memory.
+- **Restart the process** when you need to reclaim every byte (e.g. after deprovisioning many tenants at once). Destroy the store and rebuild.
+
+<Warning>
+  Avoid calling `await storeSession.destroy()` on a live process. It tears down that session's per-domain stores, but the entry **stays in the store's session map** — a later `store.session(id)` call returns the destroyed bundle, and subsequent reads/writes throw. Use `client.logout()` (logical removal) or `store.destroy()` (process shutdown) instead.
+</Warning>
+
+## Process ownership
+
+In multi-process deployments, decide how `sessionId`s map to processes:
+
+- **One process per `sessionId`** via consistent hashing / sticky routing on the load balancer or queue (simplest).
+- **Leader election** before opening the client (a Postgres advisory lock, Redis `SET NX`, etcd lease) — useful for HA failover.
+
+The opt-in [`cacheLayer`](/en/concepts/stores#read-through-cache-layer) tightens this: its L1 has no cross-process invalidation channel, so a `sessionId`'s backend rows should be owned by one process across its lifecycle. A takeover process's L1 starts cold and may serve stale reads before catching up to writes the previous owner made.
+
+## Sharing a media processor
+
+`WaMediaProcessor` is a stateless wrapper around your media binaries (`sharp`, `ffmpeg`/`ffprobe`, `file-type`). The same instance can serve every `WaClient` — there is no per-session state inside the processor, so reusing it avoids paying the binary-lookup / lazy-import cost N times.
+
+```ts
+import { createMediaProcessor } from '@zapo-js/media-utils'
+
+const processor = createMediaProcessor()
+
+const clients = tenants.map((id) => new WaClient(
+  { store, sessionId: id, media: { processor } }, // same instance, every session
+  logger
+))
+```
+
+<Tip>
+  Each processor method receives an optional `ctx: WaMediaProcessorCallContext` argument carrying that call's `Logger`. The runtime fills it with the calling session's logger, so warnings (missing binary, failed `detectMimetype`, ...) land with the right per-session bindings automatically — no setup needed. Custom processors should consume `ctx.logger` per call and **not cache it**, since the same instance is shared across sessions.
+</Tip>
+
+## Memory budget
+
+`WaCreateStoreOptions.memory.limits` caps apply **per session**. With N concurrent sessions, the worst-case in-process RAM scales linearly:
+
+| Cap | Per session | With N = 50 sessions |
+| --- | --- | --- |
+| `signalSessions: 5_000` | up to 5 000 Double-Ratchet entries | up to 250 000 |
+| `signalRemoteIdentities: 5_000` | up to 5 000 identity rows | up to 250 000 |
+| `groupMetadataGroups: 1_000` | up to 1 000 cached groups | up to 50 000 |
+| `messages: 10_000` (when `providers.messages: 'memory'`) | up to 10 000 messages | up to 500 000 |
+
+Tune the per-session caps downward as N grows, or move the mailbox/large-cardinality domains to a persistent backend (the in-memory provider exists for tests and small accounts). TTLs in `memory.cacheTtlMs` are independent of N — they only cap how long an entry survives in each cache.
+
+## Sharding strategies
+
+| Layout | Use when |
+| --- | --- |
+| **One process · N sessions · one store** | A few tenants, all light traffic. Simplest setup; the process is a shared point of failure for all tenants. |
+| **N processes · one session each · shared backend** | High per-tenant load, or you want blast-radius isolation per tenant. The most robust at scale. Requires a network backend (`@zapo-js/store-postgres` / `mysql` / `redis` / `mongo`). |
+| **K processes · M/K sessions each · shared backend** | The middle ground at scale. Pack tenants per process until CPU saturates, then add a process. Pair with consistent hashing on `sessionId` so the same account always lands on the same process. |
+
+`@zapo-js/store-sqlite` is single-host only and the SQLite file is held by one process — pick one of the network backends for any layout with more than one process.
+
+## Graceful shutdown
+
+```ts
+async function shutdown() {
+  await Promise.all(clients.map((c) => c.disconnect()))
+  await store.destroy()
+}
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, shutdown)
+}
+```
+
+`client.disconnect()` flushes the per-session [write-behind](/en/concepts/configuration#write-behind-persistence) queue and closes the socket **without** unlinking the device, so the next boot resumes from the store. `store.destroy()` then releases the shared backend (pool, file handle, …). Calling `disconnect()` on every client before `store.destroy()` ensures each session's pending writes flush; `store.destroy()` does not do that for you.
+
+<Warning>
+  Don't substitute `logout()` for `disconnect()` here — `logout()` unlinks the device server-side and clears stored state. Use it only when you intentionally want the account removed.
+</Warning>
+
+## See also
+
+- [Stores](/en/concepts/stores) — the per-`sessionId` persistence model and the optional read-through cache layer.
+- [Production & deployment](/en/guides/production) — broader operational checklist (logging, timeouts, security).
+- [Reconnection](/en/guides/reconnection) — reconnection policy applies per session; there is no shared reconnection loop.

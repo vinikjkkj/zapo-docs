@@ -147,6 +147,263 @@ await client.chat.remove({ schema: 'LabelJid', labelId: 'label-1', chatJid })
 await client.chat.remove({ schema: 'QuickReply', id: 'qr-greeting' })
 ```
 
+### More schema examples
+
+One concrete `set` (and `remove` where applicable) per remaining user-facing schema. Index fields and value fields match the schema's `indexParts` and `valueField` in `@vinikjkkj/wa-spec/appstate`.
+
+#### Chat actions
+
+```ts
+// Toggle the global "unarchive chats when a new message arrives" setting
+await client.chat.set({
+  schema: 'UnarchiveChatsSetting',
+  unarchiveChatsSetting: { unarchiveChats: true }
+})
+```
+
+```ts
+// Replace the favourite-chats list (account-wide singleton)
+await client.chat.set({
+  schema: 'Favorites',
+  favoritesAction: {
+    favorites: [
+      { id: '5511999999999@s.whatsapp.net' },
+      { id: '120363000000000000@g.us' }
+    ]
+  }
+})
+```
+
+#### Contacts
+
+```ts
+// Add a LID-keyed contact record (mirrors Contact, keyed by LID)
+await client.chat.set({
+  schema: 'LidContact',
+  id: '111111111111111@lid',
+  lidContactAction: { fullName: 'Maria Silva', firstName: 'Maria', username: 'maria' }
+})
+
+await client.chat.remove({ schema: 'LidContact', id: '111111111111111@lid' })
+```
+
+```ts
+// Track a contact you've messaged but haven't saved
+await client.chat.set({
+  schema: 'OutContact',
+  id: '5511999999999@s.whatsapp.net',
+  outContactAction: { fullName: 'Maria Silva', firstName: 'Maria' }
+})
+
+await client.chat.remove({ schema: 'OutContact', id: '5511999999999@s.whatsapp.net' })
+```
+
+```ts
+// Link a LID-only chat to its underlying phone-number JID
+await client.chat.set({
+  schema: 'PnForLidChat',
+  lid: '111111111111111@lid',
+  pnForLidChatAction: { pnJid: '5511999999999@s.whatsapp.net' }
+})
+
+await client.chat.remove({ schema: 'PnForLidChat', lid: '111111111111111@lid' })
+```
+
+```ts
+// Withdraw your phone number exposure for a LID-keyed contact (remove-only — valueField is null)
+await client.chat.remove({ schema: 'ShareOwnPn', lid: '111111111111111@lid' })
+```
+
+#### Labels
+
+```ts
+// Reorder the label list (account-wide singleton; sortedLabelIds are server-side label ids)
+await client.chat.set({
+  schema: 'LabelReordering',
+  labelReorderingAction: { sortedLabelIds: [3, 1, 2, 4] }
+})
+```
+
+#### Status & calls
+
+```ts
+// Privacy: relay all VoIP calls through Meta servers (account-wide singleton)
+await client.chat.set({
+  schema: 'VoipRelayAllCalls',
+  privacySettingRelayAllCalls: { isEnabled: true }
+})
+```
+
+```ts
+// Append a call-log entry (account-wide collection of records; CallResult/CallType are enum string keys)
+await client.chat.set({
+  schema: 'CallLog',
+  callLogAction: {
+    callLogRecord: {
+      callId: '3EB0XYZ123',
+      callCreatorJid: '5511999999999@s.whatsapp.net',
+      callResult: 'CONNECTED',
+      callType: 'REGULAR',
+      isIncoming: true,
+      isVideo: false,
+      startTime: Math.floor(Date.now() / 1000),
+      duration: 42
+    }
+  }
+})
+```
+
+#### Stickers
+
+```ts
+// Favourite a sticker (keyed by its sha256 fileEncSha256 hex string)
+await client.chat.set({
+  schema: 'FavoriteSticker',
+  filehash: '7d8f…hex…',
+  stickerAction: {
+    url: 'https://mmg.whatsapp.net/…',
+    mimetype: 'image/webp',
+    isFavorite: true,
+    width: 512,
+    height: 512
+  }
+})
+
+await client.chat.remove({ schema: 'FavoriteSticker', filehash: '7d8f…hex…' })
+```
+
+```ts
+// Remove a sticker from the recents tray (still a "set" — the action is the removal)
+await client.chat.set({
+  schema: 'RemoveRecentSticker',
+  filehash: '7d8f…hex…',
+  removeRecentStickerAction: { lastStickerSentTs: Date.now() }
+})
+```
+
+#### Business & marketing
+
+```ts
+// Record that you sent the bot welcome message to a chat
+await client.chat.set({
+  schema: 'BotWelcomeRequest',
+  chatJid: '5511999999999@s.whatsapp.net',
+  botWelcomeRequestAction: { isSent: true }
+})
+
+await client.chat.remove({
+  schema: 'BotWelcomeRequest',
+  chatJid: '5511999999999@s.whatsapp.net'
+})
+```
+
+#### AI threads
+
+```ts
+// Pin a Meta AI thread
+await client.chat.set({
+  schema: 'AiThreadPin',
+  chatJid: '13135550002@bot',
+  id: 'thread-1',
+  threadPinAction: { pinned: true }
+})
+
+await client.chat.remove({
+  schema: 'AiThreadPin',
+  chatJid: '13135550002@bot',
+  id: 'thread-1'
+})
+```
+
+```ts
+// Rename a Meta AI thread
+await client.chat.set({
+  schema: 'AiThreadRename',
+  chatJid: '13135550002@bot',
+  id: 'thread-1',
+  aiThreadRenameAction: { newTitle: 'Trip planning' }
+})
+```
+
+```ts
+// Delete a Meta AI thread (remove-only — valueField is null)
+await client.chat.remove({
+  schema: 'AiThreadDelete',
+  chatJid: '13135550002@bot',
+  id: 'thread-1'
+})
+```
+
+#### Settings & system
+
+```ts
+// Update your push name across linked devices
+await client.chat.set({
+  schema: 'SettingPushName',
+  pushNameSetting: { name: 'Maria Silva' }
+})
+```
+
+```ts
+// Switch the desktop UI to 24-hour clock
+await client.chat.set({
+  schema: 'TimeFormat',
+  timeFormatAction: { isTwentyFourHourFormatEnabled: true }
+})
+```
+
+```ts
+// Override the synced locale (BCP-47 tag)
+await client.chat.set({
+  schema: 'LocaleSetting',
+  localeSetting: { locale: 'pt-BR' }
+})
+```
+
+```ts
+// Privacy: disable link previews account-wide
+await client.chat.set({
+  schema: 'DisableLinkPreviews',
+  privacySettingDisableLinkPreviewsAction: { isPreviewsDisabled: true }
+})
+```
+
+```ts
+// Create or update an unstructured note attached to a chat (NoteType is an enum string key)
+await client.chat.set({
+  schema: 'NoteEdit',
+  id: 'note-1',
+  noteEditAction: {
+    type: 'UNSTRUCTURED',
+    chatJid: '5511999999999@s.whatsapp.net',
+    createdAt: Date.now(),
+    unstructuredContent: 'Follow up about invoice next week.'
+  }
+})
+
+await client.chat.remove({ schema: 'NoteEdit', id: 'note-1' })
+```
+
+```ts
+// Acknowledge a new-user-experience tip — typically managed by official clients,
+// but exposed here so custom UIs can dismiss the same tooltips
+await client.chat.set({
+  schema: 'Nux',
+  nuxKey: 'chat_filters_intro',
+  nuxAction: { acknowledged: true }
+})
+```
+
+```ts
+// Mark that the profile avatar was updated (AvatarEventType is an enum string key)
+await client.chat.set({
+  schema: 'AvatarUpdated',
+  avatarUpdatedAction: { eventType: 'UPDATED' }
+})
+```
+
+The schemas not covered above (`ChatAssignment` / `ChatAssignmentOpenedStatus`, the marketing and broadcast surfaces, the payment schemas, and the internal sync schemas like `Sentinel` and `NctSaltSync`) are either niche, deprecated on the wire, or managed by the sync engine itself — see the [warning](#all-schemas) below before reaching for them.
+
 <Tip>
   The value-field name (`contactAction`, `labelEditAction`, …) matches the schema's `SyncActionValue` subfield.
 </Tip>

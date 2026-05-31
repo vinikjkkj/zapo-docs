@@ -147,6 +147,263 @@ await client.chat.remove({ schema: 'LabelJid', labelId: 'label-1', chatJid })
 await client.chat.remove({ schema: 'QuickReply', id: 'qr-greeting' })
 ```
 
+### Mais exemplos de schema {#more-schema-examples}
+
+Um `set` concreto (e `remove` quando aplicável) por schema voltado ao usuário restante. Os campos de índice e os campos de valor correspondem a `indexParts` e `valueField` do schema em `@vinikjkkj/wa-spec/appstate`.
+
+#### Ações de chat {#chat-actions-1}
+
+```ts
+// Alterna a configuração global "desarquivar chats ao receber nova mensagem"
+await client.chat.set({
+  schema: 'UnarchiveChatsSetting',
+  unarchiveChatsSetting: { unarchiveChats: true }
+})
+```
+
+```ts
+// Substitui a lista de chats favoritos (singleton da conta)
+await client.chat.set({
+  schema: 'Favorites',
+  favoritesAction: {
+    favorites: [
+      { id: '5511999999999@s.whatsapp.net' },
+      { id: '120363000000000000@g.us' }
+    ]
+  }
+})
+```
+
+#### Contatos {#contacts-1}
+
+```ts
+// Adiciona um registro de contato chaveado por LID (espelha Contact, chaveado pelo LID)
+await client.chat.set({
+  schema: 'LidContact',
+  id: '111111111111111@lid',
+  lidContactAction: { fullName: 'Maria Silva', firstName: 'Maria', username: 'maria' }
+})
+
+await client.chat.remove({ schema: 'LidContact', id: '111111111111111@lid' })
+```
+
+```ts
+// Registra um contato com quem você trocou mensagens mas não salvou
+await client.chat.set({
+  schema: 'OutContact',
+  id: '5511999999999@s.whatsapp.net',
+  outContactAction: { fullName: 'Maria Silva', firstName: 'Maria' }
+})
+
+await client.chat.remove({ schema: 'OutContact', id: '5511999999999@s.whatsapp.net' })
+```
+
+```ts
+// Liga um chat só-LID ao seu JID com número de telefone subjacente
+await client.chat.set({
+  schema: 'PnForLidChat',
+  lid: '111111111111111@lid',
+  pnForLidChatAction: { pnJid: '5511999999999@s.whatsapp.net' }
+})
+
+await client.chat.remove({ schema: 'PnForLidChat', lid: '111111111111111@lid' })
+```
+
+```ts
+// Retira a exposição do seu número para um contato chaveado por LID (somente remove — valueField é null)
+await client.chat.remove({ schema: 'ShareOwnPn', lid: '111111111111111@lid' })
+```
+
+#### Labels {#labels-1}
+
+```ts
+// Reordena a lista de labels (singleton da conta; sortedLabelIds são ids de label do servidor)
+await client.chat.set({
+  schema: 'LabelReordering',
+  labelReorderingAction: { sortedLabelIds: [3, 1, 2, 4] }
+})
+```
+
+#### Status e chamadas {#status--calls-1}
+
+```ts
+// Privacidade: encaminhar todas as chamadas VoIP pelos servidores da Meta (singleton da conta)
+await client.chat.set({
+  schema: 'VoipRelayAllCalls',
+  privacySettingRelayAllCalls: { isEnabled: true }
+})
+```
+
+```ts
+// Acrescenta uma entrada ao log de chamadas (coleção de registros da conta; CallResult/CallType são chaves de enum como string)
+await client.chat.set({
+  schema: 'CallLog',
+  callLogAction: {
+    callLogRecord: {
+      callId: '3EB0XYZ123',
+      callCreatorJid: '5511999999999@s.whatsapp.net',
+      callResult: 'CONNECTED',
+      callType: 'REGULAR',
+      isIncoming: true,
+      isVideo: false,
+      startTime: Math.floor(Date.now() / 1000),
+      duration: 42
+    }
+  }
+})
+```
+
+#### Stickers {#stickers-1}
+
+```ts
+// Favorita um sticker (chaveado pela string hex sha256 do fileEncSha256)
+await client.chat.set({
+  schema: 'FavoriteSticker',
+  filehash: '7d8f…hex…',
+  stickerAction: {
+    url: 'https://mmg.whatsapp.net/…',
+    mimetype: 'image/webp',
+    isFavorite: true,
+    width: 512,
+    height: 512
+  }
+})
+
+await client.chat.remove({ schema: 'FavoriteSticker', filehash: '7d8f…hex…' })
+```
+
+```ts
+// Remove um sticker da bandeja de recentes (ainda é um "set" — a ação é a remoção)
+await client.chat.set({
+  schema: 'RemoveRecentSticker',
+  filehash: '7d8f…hex…',
+  removeRecentStickerAction: { lastStickerSentTs: Date.now() }
+})
+```
+
+#### Business e marketing {#business--marketing-1}
+
+```ts
+// Registra que você enviou a mensagem de boas-vindas do bot para um chat
+await client.chat.set({
+  schema: 'BotWelcomeRequest',
+  chatJid: '5511999999999@s.whatsapp.net',
+  botWelcomeRequestAction: { isSent: true }
+})
+
+await client.chat.remove({
+  schema: 'BotWelcomeRequest',
+  chatJid: '5511999999999@s.whatsapp.net'
+})
+```
+
+#### Threads de IA {#ai-threads-1}
+
+```ts
+// Fixa uma thread do Meta AI
+await client.chat.set({
+  schema: 'AiThreadPin',
+  chatJid: '13135550002@bot',
+  id: 'thread-1',
+  threadPinAction: { pinned: true }
+})
+
+await client.chat.remove({
+  schema: 'AiThreadPin',
+  chatJid: '13135550002@bot',
+  id: 'thread-1'
+})
+```
+
+```ts
+// Renomeia uma thread do Meta AI
+await client.chat.set({
+  schema: 'AiThreadRename',
+  chatJid: '13135550002@bot',
+  id: 'thread-1',
+  aiThreadRenameAction: { newTitle: 'Planejamento de viagem' }
+})
+```
+
+```ts
+// Exclui uma thread do Meta AI (somente remove — valueField é null)
+await client.chat.remove({
+  schema: 'AiThreadDelete',
+  chatJid: '13135550002@bot',
+  id: 'thread-1'
+})
+```
+
+#### Configurações e sistema {#settings--system-1}
+
+```ts
+// Atualiza seu push name entre dispositivos vinculados
+await client.chat.set({
+  schema: 'SettingPushName',
+  pushNameSetting: { name: 'Maria Silva' }
+})
+```
+
+```ts
+// Alterna a UI do desktop para formato de 24 horas
+await client.chat.set({
+  schema: 'TimeFormat',
+  timeFormatAction: { isTwentyFourHourFormatEnabled: true }
+})
+```
+
+```ts
+// Sobrescreve o locale sincronizado (tag BCP-47)
+await client.chat.set({
+  schema: 'LocaleSetting',
+  localeSetting: { locale: 'pt-BR' }
+})
+```
+
+```ts
+// Privacidade: desativa pré-visualizações de link em toda a conta
+await client.chat.set({
+  schema: 'DisableLinkPreviews',
+  privacySettingDisableLinkPreviewsAction: { isPreviewsDisabled: true }
+})
+```
+
+```ts
+// Cria ou atualiza uma nota não-estruturada anexada a um chat (NoteType é uma chave de enum como string)
+await client.chat.set({
+  schema: 'NoteEdit',
+  id: 'note-1',
+  noteEditAction: {
+    type: 'UNSTRUCTURED',
+    chatJid: '5511999999999@s.whatsapp.net',
+    createdAt: Date.now(),
+    unstructuredContent: 'Acompanhar a fatura na próxima semana.'
+  }
+})
+
+await client.chat.remove({ schema: 'NoteEdit', id: 'note-1' })
+```
+
+```ts
+// Confirma uma dica da experiência de novo usuário — normalmente gerenciado pelos clientes oficiais,
+// mas exposto aqui para UIs customizadas poderem dispensar os mesmos tooltips
+await client.chat.set({
+  schema: 'Nux',
+  nuxKey: 'chat_filters_intro',
+  nuxAction: { acknowledged: true }
+})
+```
+
+```ts
+// Marca que o avatar do perfil foi atualizado (AvatarEventType é uma chave de enum como string)
+await client.chat.set({
+  schema: 'AvatarUpdated',
+  avatarUpdatedAction: { eventType: 'UPDATED' }
+})
+```
+
+Os schemas não cobertos acima (`ChatAssignment` / `ChatAssignmentOpenedStatus`, as superfícies de marketing e broadcast, os schemas de pagamento, e os schemas internos de sync como `Sentinel` e `NctSaltSync`) são ou nichados, deprecados na wire, ou gerenciados pelo próprio engine de sync — veja o [aviso](#all-schemas) abaixo antes de usá-los.
+
 <Tip>
   O nome do campo de valor (`contactAction`, `labelEditAction`, …) corresponde ao subcampo `SyncActionValue` do schema.
 </Tip>

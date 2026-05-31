@@ -129,13 +129,18 @@ npm --workspace=@zapo-js/fake-server run cli -- --port 5222 --peer 5511888@s.wha
 
 ### Benchmarking
 
-The package ships a messaging profiler (send/recv × 1:1/group) used to track the library's performance, plus focused scenario suites for connect lifecycle, history sync, bulk usync, group provisioning, media upload, receipts flood, reconnect/resume, and app-state:
+The package ships a messaging profiler (send/recv × 1:1/group) used to track the library's performance, plus focused scenario suites for connect lifecycle, history sync, bulk usync, group provisioning, media upload, receipts flood, reconnect/resume, app-state, media-on-the-wire, and the Signal retry round-trip:
 
 ```bash
 npm --workspace=@zapo-js/fake-server run bench:messaging
 # or one of: bench:connect, bench:history, bench:usync, bench:group,
-#           bench:media, bench:receipts, bench:reconnect, bench:appstate
+#           bench:media, bench:media:messaging, bench:receipts,
+#           bench:reconnect, bench:appstate, bench:retry
 ```
+
+`bench:media:messaging` sweeps every media type (image / video / audio / ptt / document / sticker) across 1:1 send, group fan-out (SKDM + SKMSG), and receive + download. It defaults to streaming input (`Readable.from(...)`) so the lib walks its streaming-upload path; switch to in-memory mode with `ZAPO_BENCH_MEDIA_INPUT=buffer` to A/B.
+
+`bench:retry` validates the full retry round-trip against wa-web's reference parser: incoming retry, recovery, and outbound retry replay after the peer rotates its prekey bundle.
 
 Tune the workload with `ZAPO_BENCH_*` env vars (`ZAPO_BENCH_CONTACTS`, `ZAPO_BENCH_GROUP_MEMBERS`, `ZAPO_BENCH_MESSAGES`, `ZAPO_BENCH_SCENARIOS`, …) and add `--cpu` / `--heap` / `--separate-process` for profiles. With `--separate-process`, the bench drives the fake server in a child process over an RPC bridge and emits a matching server-side CPU profile and heap snapshot alongside the lib-side ones.
 
@@ -147,6 +152,10 @@ npm --workspace=@zapo-js/fake-server run bench:all-stores -- \
 ```
 
 Add `--start-docker` to bring up the bundled Postgres/MySQL/Redis/Mongo services on ephemeral ports and tear them down at the end. See `packages/fake-server/README.md` for the full flag reference.
+
+<Note>
+  `bench:all-stores` only sweeps the eight scenario suites (`connect-lifecycle`, `history-sync`, `bulk-usync`, `group-provision`, `media-upload`, `receipts-flood`, `reconnect-resume`, `appstate`) plus `messaging`. The newer `bench:media:messaging` and `bench:retry` aren't in its `--benches=` set yet; run them directly when you need them.
+</Note>
 
 <Note>
   The fake server is an in-process testing harness, not a runtime you deploy. Pair it with the **memory** store for fast, isolated tests that reset on every run.

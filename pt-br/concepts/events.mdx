@@ -89,6 +89,45 @@ Veja [Recebendo mensagens](/pt-br/guides/receiving-messages) para detalhes do pa
 | `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. |
 | `mex_notification` | `WaMexNotificationEvent` | Notificações MEX (GraphQL): nome de usuário, status, mudanças de LID, capping. |
 
+### Kinds de notificação MEX {#mex-notification-kinds}
+
+`WaMexNotificationEvent` é uma union discriminada por `kind`. Toda variante carrega `operationName` (a operação GraphQL upstream) e `errors: readonly WaMexNotificationGraphQlError[]` (quaisquer erros GraphQL que o servidor anexou — tipicamente vazio).
+
+| `kind` | `operationName` | Campos extras |
+| --- | --- | --- |
+| `username_set` | `UsernameSetNotification` | `lidJid`, `username` — um contato definiu ou mudou o username. |
+| `username_delete` | `UsernameDeleteNotification` | `lidJid`, `displayName: string \| null` — username removido (`null` indica que o servidor omitiu o nome de fallback). |
+| `username_update_hint` | `UsernameUpdateNotification` | `contactHash` — hint lateral de que algo mudou para um bucket de contato; refetch pelo caminho normal de perfil. |
+| `own_username_sync` | `AccountSyncUsernameNotification` | `ownLidJid`, `username \| null`, `state \| null`, `pin \| null` — seu próprio estado de username sincronizado de outro device. `username` `null` indica que foi removido. |
+| `text_status_update` | `TextStatusUpdateNotification` | `jid`, `text \| null`, `emoji \| null`, `ephemeralDurationSec \| null`, `lastUpdateTime \| null` — o "about"/status de um contato mudou. `text`/`emoji` `null` limpa aquele campo. |
+| `text_status_update_hint` | `TextStatusUpdateNotificationSideSub` | `contactHash` — hint lateral; refetch o status. |
+| `lid_change` | `LidChangeNotification` | `oldLidJid`, `newLidJid` — o LID de um usuário rotacionou. Veja [Mudanças de LID](/pt-br/concepts/identities#lid-changes). |
+| `message_capping` | `MessageCappingInfoNotification` | `cappingStatus` (`'NONE' \| 'FIRST_WARNING' \| 'SECOND_WARNING' \| 'CAPPED' \| string`), mais opcionais `oteStatus`, `mvStatus`, `totalQuota`, `usedQuota`, `cycleStartTimestamp`, `cycleEndTimestamp`, `serverSentTimestamp` — estado da quota de envio da sua conta. |
+| `unknown` | _(o que o servidor enviar)_ | `data: unknown` — catch-all para um `operationName` sem variante tipada; o `data` bruto do GraphQL é repassado literalmente para você decodificar. |
+
+```ts
+client.on('mex_notification', (event) => {
+  switch (event.kind) {
+    case 'username_set':
+      console.log(`${event.lidJid} agora se chama @${event.username}`)
+      break
+    case 'text_status_update':
+      console.log(`status de ${event.jid}:`, event.text, event.emoji)
+      break
+    case 'message_capping':
+      console.log(`capping ${event.cappingStatus}:`, event.usedQuota, '/', event.totalQuota)
+      break
+    case 'lid_change':
+      console.log('LID rotacionou:', event.oldLidJid, '→', event.newLidJid)
+      break
+  }
+})
+```
+
+<Note>
+  Os kinds `*_hint` (`username_update_hint`, `text_status_update_hint`) trazem apenas um `contactHash`, não o valor novo — o servidor está dizendo "algo mudou para esse bucket" e o client é responsável por refetch pelo caminho normal de perfil / status.
+</Note>
+
 ## Falhas {#failures}
 
 | Evento | Payload | Descrição |

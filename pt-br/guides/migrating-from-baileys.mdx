@@ -10,6 +10,86 @@ O `zapo` é uma implementação **independente** do protocolo do WhatsApp Web �
   O estado de auth, os formatos de mensagem e os nomes de método diferem. Planeje reescrever a configuração do socket e os handlers — mas o modelo mental (parear → escutar → enviar) se transfere diretamente.
 </Note>
 
+## Migre sessões existentes (sem reparear) {#move-existing-sessions}
+
+Trocar de biblioteca não precisa significar reparear cada sessão. O [`wa-store-migrate`](https://www.npmjs.com/package/wa-store-migrate) converte o auth state do Baileys direto para o layout de store do zapo — mesma identidade de device, mesmas sessões Signal com cada peer, sem ler QR.
+
+```bash
+npm i wa-store-migrate
+```
+
+A lib é **conversão pura**: não lê arquivos, não abre sockets, não fala com nenhum banco. Você entrega um `BaileysAuthSnapshot` (o mesmo formato `{ creds, keys }` que o `useMultiFileAuthState` mantém em memória), ela devolve um `ZapoStoreSnapshot`, e você escreve isso numa store nova do zapo.
+
+```ts
+import { migrate, bufferJsonReviver, type BaileysAuthSnapshot } from 'wa-store-migrate'
+import { createStore } from 'zapo-js'
+import { createSqliteStore } from '@zapo-js/store-sqlite'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
+// 1. Lê a pasta de auth do Baileys para um snapshot
+function readBaileysMultiFile(dir: string): BaileysAuthSnapshot {
+  const creds = JSON.parse(readFileSync(join(dir, 'creds.json'), 'utf-8'), bufferJsonReviver)
+  const keys: Record<string, Record<string, unknown>> = {}
+  for (const f of readdirSync(dir)) {
+    if (f === 'creds.json') continue
+    const m = /^([a-z-]+)-(.+)\.json$/i.exec(f)
+    if (!m) continue
+    const id = m[2]!.replace(/__/g, '/').replace(/-/g, ':')
+    ;(keys[m[1]!] ??= {})[id] = JSON.parse(
+      readFileSync(join(dir, f), 'utf-8'),
+      bufferJsonReviver
+    )
+  }
+  return { creds, keys: keys as never }
+}
+
+// 2. Converte para o snapshot do zapo (pura, sem I/O)
+const baileys = readBaileysMultiFile('.auth/baileys')
+const { data, losses } = migrate({ from: 'baileys', to: 'zapo', data: baileys })
+for (const l of losses) {
+  console.warn(`[${l.severity}] ${l.domain} x${l.count}: ${l.reason}`)
+}
+
+// 3. Escreve em uma store nova do zapo
+const store = createStore({
+  backends: { sqlite: createSqliteStore({ path: '.auth/zapo.sqlite', driver: 'auto' }) },
+  providers: {
+    auth: 'sqlite', signal: 'sqlite', preKey: 'sqlite', session: 'sqlite',
+    identity: 'sqlite', senderKey: 'sqlite', appState: 'sqlite',
+    privacyToken: 'sqlite',
+    messages: 'none', threads: 'none', contacts: 'none'
+  }
+})
+const s = store.session('default')
+
+await s.auth.save(data.credentials)
+for (const k of data.preKeys ?? []) await s.preKey.putPreKey(k)
+if (data.identities?.length) {
+  await s.identity.setRemoteIdentities(
+    data.identities.map((i) => ({ address: i.address, identityKey: i.identityKey }))
+  )
+}
+if (data.sessions?.length) {
+  await s.session.setSessionsBatch(
+    data.sessions.map((x) => ({ address: x.address, session: x.record as never }))
+  )
+}
+for (const sk of data.senderKeys ?? []) await s.senderKey.upsertSenderKey(sk.record as never)
+if (data.appState?.keys?.length) await s.appState.upsertSyncKeys(data.appState.keys)
+if (data.privacyTokens?.length) await s.privacyToken.upsertBatch(data.privacyTokens)
+```
+
+Aponte um novo `WaClient({ store, sessionId: 'default' })` para a store resultante e chame `connect()` — ele sobe como o device existente, com toda sessão Signal com cada peer intacta.
+
+<Note>
+  **Auth state em banco, não em arquivos?** A forma `BaileysAuthSnapshot` é só `{ creds, keys: { 'pre-key': {...}, 'session': {...}, 'sender-key': {...}, ... } }`. Se sua storage do Baileys é custom (uma tabela MySQL por sessão, linhas no Postgres, hashes no Redis, …), aponte seu reader para essa fonte e produza o mesmo objeto — a chamada `migrate()` e o lado de escrita do zapo continuam idênticos. Para várias sessões, rode o pipeline uma vez por `sessionId`.
+</Note>
+
+<Note>
+  **Expectativas de perda.** Migrar para o zapo **não tem drops** — todo domínio Signal é transferido. Espere algumas entradas com severidade `warn` em `losses`: chaves de mensagem HKDF puladas são descartadas (as sessões se autocorrigem na próxima mensagem), apenas o último estado de sender-key é mantido (o libsignal guarda até 5), e timestamps de privacy-token perdem precisão sub-segundo. Tabela completa em [`wa-store-migrate`](https://www.npmjs.com/package/wa-store-migrate#loss-matrix).
+</Note>
+
 ## Criando o socket {#creating-the-socket}
 
 O Baileys te dá um socket a partir de uma factory; o zapo te dá um `WaClient` mais uma [store](/pt-br/concepts/stores) explícita.

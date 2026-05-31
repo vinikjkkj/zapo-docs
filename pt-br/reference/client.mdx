@@ -22,7 +22,79 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 | `getState` | `() => WaAuthState` | Estado atual de auth/conexão. |
 | `getCredentials` | `() => WaAuthCredentials \| null` | Credenciais atuais, se pareado. |
 | `getClockSkewMs` | `() => number \| null` | Desvio estimado do relógio do servidor (a partir do keep-alive), ou `null`. |
+| `ignoreKey` | `(input: WaIgnoreKey \| WaIgnoreKeyPredicate) => () => void` | Descarta stanzas inbound que casam **antes** de qualquer handler rodar — descriptor ou predicate (veja [Ignorando stanzas inbound](#ignoring-inbound-stanzas)). Retorna uma função `unregister`. |
 | `on` / `once` / `off` | `(event, listener) => this` | Emissor de eventos tipado sobre o [`WaClientEventMap`](/pt-br/concepts/events). |
+
+### Ignorando stanzas inbound {#ignoring-inbound-stanzas}
+
+`client.ignoreKey(input)` descarta stanzas `<message>`, `<receipt>`, `<notification>`, `<presence>`, `<chatstate>` e `<call>` que casam antes de qualquer handler — incluindo os caminhos de persistência e decifragem — ver. O coordinator ainda envia o ack apropriado para o servidor parar de re-entregar.
+
+Aceita dois formatos:
+
+#### Descriptor declarativo — `WaIgnoreKey` {#declarative-descriptor--waignorekey}
+
+```ts
+import type { WaIgnoreKey } from 'zapo-js'
+
+// Descarta tudo de um peer
+const off = client.ignoreKey({ remoteJid: spammerJid })
+
+// Descarta só as mensagens daquele peer (mantém receipts / presence)
+client.ignoreKey({ remoteJid: spammerJid, only: ['message'] })
+
+// Descarta os echoes das suas próprias mensagens (multi-device fan-in)
+client.ignoreKey({ fromMe: true, only: ['message'] })
+
+off() // unregister
+```
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `remoteJid` | `string \| readonly string[]` | O JID do chat. Entradas do array fazem OR. Também casa contra os attrs alt `sender_pn` / `sender_lid` / `participant_pn` / `participant_lid` (e `sender_lid` em `<call>`), então uma forma do JID pega a outra. |
+| `fromMe` | `boolean` | Se a stanza foi enviada por esta conta. |
+| `id` | `string` | Id da stanza. |
+| `participant` | `string` | O autor em grupos / broadcasts. Também casa contra as formas alt. |
+| `only` | `readonly ('message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call')[]` | Restringe a tags específicas. Default: todas as seis. |
+
+Múltiplos campos de topo fazem **AND** entre si; o array de `remoteJid` faz **OR**. Pelo menos um de `remoteJid` / `fromMe` / `id` / `participant` é obrigatório — descriptors vazios e arrays vazios lançam erro.
+
+#### Predicate — `WaIgnoreKeyPredicate` {#predicate--waignorekeypredicate}
+
+Pra qualquer coisa que o descriptor não consiga expressar (filtros por kind de chat, regras customizadas combinando vários campos), passe um predicate `(ctx: WaIgnoreKeyContext) => boolean`. Retorne `true` pra descartar. A lib já fez o parse do node em wire-format antes de chamar — sem precisar mexer em `BinaryNode`.
+
+```ts
+import { isGroupJid, isStatusBroadcastJid, isNewsletterJid } from 'zapo-js'
+
+// Descarta toda mensagem de grupo; mantém receipts/notifications de grupo
+client.ignoreKey((m) => m.kind === 'message' && isGroupJid(m.remoteJid ?? ''))
+
+// Descarta todos os status broadcasts
+client.ignoreKey((m) => isStatusBroadcastJid(m.remoteJid ?? ''))
+
+// Só 1:1 — descarta qualquer coisa de grupo, broadcast ou newsletter
+client.ignoreKey((m) => {
+  const j = m.remoteJid ?? ''
+  return isGroupJid(j) || isStatusBroadcastJid(j) || isNewsletterJid(j)
+})
+```
+
+O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor casa, já parseados:
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `kind` | `'message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call'` | Tag da stanza. |
+| `remoteJid` | `string \| null` | Attr `from` bruto — JID do grupo para grupos, JID PN ou LID device para 1:1. |
+| `fromMe` | `boolean` | Já resolvido contra o `meJid` da conta. |
+| `id` | `string \| undefined` | Id da stanza. |
+| `participant` | `string \| null` | Attr `participant` bruto; `null` para stanzas que não são de grupo. |
+
+<Note>
+  O predicate vê os attrs `from` / `participant` **brutos** — sem resolução de alt-attr PN ↔ LID. O formato descriptor é quem cuida disso automaticamente; se você precisa de matching por JID com cobertura de forma alt *junto* de uma regra custom, prefira o `remoteJid` do descriptor com `only`.
+</Note>
+
+<Note>
+  Os nodes de controle de stream e as tags `success` / `failure` críticas para a conexão passam pelos filtros para manter o fluxo de auth intacto.
+</Note>
 
 ### Coordinator getters {#coordinator-getters}
 

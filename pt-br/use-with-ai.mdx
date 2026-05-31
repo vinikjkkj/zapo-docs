@@ -1,0 +1,92 @@
+---
+title: "Use as docs do seu assistente de IA"
+sidebarTitle: "Uso com IA"
+description: "Puxe estas docs para o Claude Code, Cursor, ChatGPT ou qualquer agente compatível com MCP — três caminhos de integração, sem setup do nosso lado."
+icon: "robot"
+---
+
+Estas docs são feitas para serem consumidas diretamente por agentes de IA, então você pode perguntar coisas como *"como envio um sticker com o zapo?"* ou *"quais eventos disparam durante o pareamento?"* e obter respostas baseadas na referência atual — não em memória desatualizada do modelo.
+
+<Note>
+  Esta página é sobre o MCP da **documentação** — expondo as páginas do zapo.to para seu assistente. Ela **não** é sobre o [`@zapo-js/mcp-server`](/pt-br/dev-tools#mcp-server), que é a ferramenta de dev que controla um `WaClient` ao vivo a partir de um agente. Objetivos diferentes, setup diferente, e você pode usar os dois juntos.
+</Note>
+
+## Escolha um caminho
+
+<CardGroup cols={3}>
+  <Card title="Botão contextual" icon="hand-pointer">
+    Use o menu **Copiar / Abrir em…** no topo de qualquer página para enviar o conteúdo dela ao Claude, ChatGPT ou Cursor. Sem setup.
+  </Card>
+  <Card title="Servidor MCP" icon="plug">
+    Adicione `https://zapo.to/mcp` como servidor MCP no seu cliente — o agente passa a buscar e carregar páginas das docs sob demanda.
+  </Card>
+  <Card title="llms.txt" icon="file-lines">
+    Pacotes em texto puro em [`/llms.txt`](https://zapo.to/llms.txt) (índice) e [`/llms-full.txt`](https://zapo.to/llms-full.txt) (corpus completo) para ferramentas que ainda não falam MCP.
+  </Card>
+</CardGroup>
+
+---
+
+## Botões contextuais
+
+Toda página em [zapo.to](https://zapo.to) tem um menu perto do título que permite:
+
+- **Copiar página como Markdown** — cole direto em qualquer chat.
+- **Ver como Markdown** — veja o fonte cru.
+- **Abrir no ChatGPT / Claude / Cursor** — abre o assistente com a página atual pré-carregada como contexto.
+- **Conectar MCP** — copia a URL do MCP para qualquer outro cliente.
+
+Melhor para uma pergunta pontual sobre uma única página.
+
+---
+
+## Servidor MCP
+
+Para trabalho contínuo — construir uma integração, depurar um evento, planejar uma migração do Baileys — registre as docs como um servidor MCP de longa duração. O agente passa a buscar e carregar páginas sozinho, sem você copiar e colar.
+
+O endpoint é:
+
+```text
+https://zapo.to/mcp
+```
+
+### Claude Code
+
+```bash
+claude mcp add zapo-docs --scope user --transport http https://zapo.to/mcp
+```
+
+### Cursor
+
+Adicione em `~/.cursor/mcp.json` (ou no `.cursor/mcp.json` local do workspace):
+
+```json
+{
+  "mcpServers": {
+    "zapo-docs": {
+      "url": "https://zapo.to/mcp"
+    }
+  }
+}
+```
+
+### Outros clientes
+
+Qualquer cliente compatível com MCP (Windsurf, Zed, Continue, agentes próprios construídos sobre o [spec do MCP](https://modelcontextprotocol.io)) consegue se conectar à mesma URL — consulte a doc do seu cliente para a sintaxe exata de registro. O servidor expõe ferramentas de busca e leitura de páginas.
+
+<Tip>
+  Combine o MCP das docs com o dev tool [`@zapo-js/mcp-server`](/pt-br/dev-tools#mcp-server) para ter um agente que **lê** as docs **e** controla um `WaClient` ao vivo — útil para fluxos do tipo *"explique o que esse evento significa, depois dispare ele numa sessão real"*.
+</Tip>
+
+---
+
+## llms.txt
+
+Para ferramentas que ainda não suportam MCP, o mesmo corpus é publicado em texto estático seguindo a convenção [llms.txt](https://llmstxt.org):
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| [`/llms.txt`](https://zapo.to/llms.txt) | Índice de cada página com títulos e resumos de uma linha — pequeno o bastante para colar em qualquer prompt. |
+| [`/llms-full.txt`](https://zapo.to/llms-full.txt) | Corpos completos das páginas, concatenados. Grande; ideal para janelas de contexto one-shot ou ingestão em RAG. |
+
+Os dois arquivos são regenerados a cada deploy, então sempre refletem as docs em produção.

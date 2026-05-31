@@ -24,7 +24,7 @@ Only `store` and `sessionId` are required; everything else has a sensible defaul
 
 ## Sessions and multi-tenancy
 
-Because every store domain is keyed by `sessionId`, a single store can hold many independent accounts. To run several accounts in one process, create one `WaClient` per `sessionId` over the same store:
+Every store domain is keyed by `sessionId`, so a single store can hold many independent accounts. To run several accounts in one process, create one `WaClient` per `sessionId` over the same store:
 
 ```ts
 const store = createStore({ /* ... */ })
@@ -35,7 +35,7 @@ const accountB = new WaClient({ store, sessionId: 'account-b' }, logger)
 await Promise.all([accountA.connect(), accountB.connect()])
 ```
 
-Each client pairs and reconnects independently. This is the foundation for multi-tenant deployments.
+Each client pairs and reconnects independently. For the full picture — what's per-session vs shared, the single-writer rule across processes, memory budget, sharding, and shutdown — see [Multi-session deployments](/en/guides/multi-session).
 
 ## Device fingerprint
 
@@ -343,6 +343,69 @@ const client = new WaClient(options, new PinoLogger(child, 'info'))
 ```
 
 The signature is `new PinoLogger(logger, level = 'info')`. The level is forwarded to `logger.level` and used as the adapter's reported `level`.
+
+### Custom logger
+
+Need a sink the built-in implementations don't cover — Datadog, OpenTelemetry, syslog, an internal observability pipeline? Implement the `Logger` interface and pass an instance to `WaClient`. The interface is small:
+
+```ts
+import type { Logger, LogLevel } from 'zapo-js'
+
+interface Logger {
+  readonly level: LogLevel
+  trace(message: string, context?: Readonly<Record<string, unknown>>): void
+  debug(message: string, context?: Readonly<Record<string, unknown>>): void
+  info(message: string, context?: Readonly<Record<string, unknown>>): void
+  warn(message: string, context?: Readonly<Record<string, unknown>>): void
+  error(message: string, context?: Readonly<Record<string, unknown>>): void
+  /**
+   * Returns a derived logger that pre-binds `bindings` into every log call's
+   * context. Bindings stack: `parent.child(a).child(b)` merges `{ ...a, ...b }`.
+   * Per-call context wins on key conflicts.
+   */
+  child(bindings: Readonly<Record<string, unknown>>): Logger
+}
+```
+
+`LogLevel` is `'trace' | 'debug' | 'info' | 'warn' | 'error'`. The library calls the five level methods directly — there is no level-gating layer in front, so your implementation is responsible for filtering against `this.level` if you want to skip cheap calls.
+
+A minimal example that forwards to an external sink and tracks bindings through `child()`:
+
+```ts
+import type { Logger, LogLevel } from 'zapo-js'
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+  trace: 10, debug: 20, info: 30, warn: 40, error: 50
+}
+
+class MyLogger implements Logger {
+  constructor(
+    public readonly level: LogLevel = 'info',
+    private readonly bindings: Readonly<Record<string, unknown>> = {}
+  ) {}
+
+  private write(at: LogLevel, message: string, context?: Readonly<Record<string, unknown>>): void {
+    if (LEVEL_RANK[at] < LEVEL_RANK[this.level]) return
+    sendToObservability({ level: at, message, ...this.bindings, ...context })
+  }
+
+  trace(message: string, context?: Readonly<Record<string, unknown>>) { this.write('trace', message, context) }
+  debug(message: string, context?: Readonly<Record<string, unknown>>) { this.write('debug', message, context) }
+  info(message: string, context?: Readonly<Record<string, unknown>>)  { this.write('info',  message, context) }
+  warn(message: string, context?: Readonly<Record<string, unknown>>)  { this.write('warn',  message, context) }
+  error(message: string, context?: Readonly<Record<string, unknown>>) { this.write('error', message, context) }
+
+  child(bindings: Readonly<Record<string, unknown>>): Logger {
+    return new MyLogger(this.level, { ...this.bindings, ...bindings })
+  }
+}
+
+const client = new WaClient(options, new MyLogger('info'))
+```
+
+<Note>
+  `child()` is used internally to attach per-component bindings (e.g. `{ component: 'noise' }`, `{ component: 'signal', sessionId }`). Returning a new instance with merged bindings — instead of mutating — keeps those tags scoped to the producing subsystem.
+</Note>
 
 ## Advanced options
 

@@ -22,7 +22,79 @@ See [Configuration](/en/concepts/configuration) for every option.
 | `getState` | `() => WaAuthState` | Current auth/connection state. |
 | `getCredentials` | `() => WaAuthCredentials \| null` | Current credentials, if paired. |
 | `getClockSkewMs` | `() => number \| null` | Estimated server clock skew (from keep-alive), or `null`. |
+| `ignoreKey` | `(input: WaIgnoreKey \| WaIgnoreKeyPredicate) => () => void` | Drop matching inbound stanzas **before** any handler runs — descriptor or predicate (see [Ignoring inbound stanzas](#ignoring-inbound-stanzas)). Returns an `unregister` function. |
 | `on` / `once` / `off` | `(event, listener) => this` | Typed event emitter over [`WaClientEventMap`](/en/concepts/events). |
+
+### Ignoring inbound stanzas
+
+`client.ignoreKey(input)` drops matching `<message>`, `<receipt>`, `<notification>`, `<presence>`, `<chatstate>`, and `<call>` stanzas before any handler — including the persistence and decryption paths — sees them. The coordinator still sends the appropriate ack so the server stops re-delivering.
+
+It accepts two shapes:
+
+#### Declarative descriptor — `WaIgnoreKey`
+
+```ts
+import type { WaIgnoreKey } from 'zapo-js'
+
+// Drop everything from one peer
+const off = client.ignoreKey({ remoteJid: spammerJid })
+
+// Drop only that peer's messages (keep receipts / presence)
+client.ignoreKey({ remoteJid: spammerJid, only: ['message'] })
+
+// Drop your own outbound message echoes (multi-device fan-in)
+client.ignoreKey({ fromMe: true, only: ['message'] })
+
+off() // unregister
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `remoteJid` | `string \| readonly string[]` | The chat JID. Array entries OR. Also matches the alt `sender_pn` / `sender_lid` / `participant_pn` / `participant_lid` attrs (and `sender_lid` on `<call>`), so one JID form catches the other. |
+| `fromMe` | `boolean` | Whether the stanza was sent by this account. |
+| `id` | `string` | Stanza id. |
+| `participant` | `string` | The author in groups / broadcasts. Also matches the alt forms. |
+| `only` | `readonly ('message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call')[]` | Restrict to specific tags. Default: all six. |
+
+Multiple top-level fields **AND** together; the `remoteJid` array **ORs**. At least one of `remoteJid` / `fromMe` / `id` / `participant` is required — empty descriptors and empty arrays throw.
+
+#### Predicate — `WaIgnoreKeyPredicate`
+
+For anything the descriptor can't express (chat-kind filters, custom rules combining several fields), pass a predicate `(ctx: WaIgnoreKeyContext) => boolean`. Return `true` to drop. The lib has already parsed the wire-format node before calling you — no `BinaryNode` digging required.
+
+```ts
+import { isGroupJid, isStatusBroadcastJid, isNewsletterJid } from 'zapo-js'
+
+// Drop every group message; keep group receipts/notifications
+client.ignoreKey((m) => m.kind === 'message' && isGroupJid(m.remoteJid ?? ''))
+
+// Drop status broadcasts entirely
+client.ignoreKey((m) => isStatusBroadcastJid(m.remoteJid ?? ''))
+
+// 1:1 only — drop anything from a group, broadcast, or newsletter
+client.ignoreKey((m) => {
+  const j = m.remoteJid ?? ''
+  return isGroupJid(j) || isStatusBroadcastJid(j) || isNewsletterJid(j)
+})
+```
+
+`WaIgnoreKeyContext` carries the same fields the descriptor matches on, already parsed:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `kind` | `'message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call'` | Stanza tag. |
+| `remoteJid` | `string \| null` | Raw `from` attr — group JID for groups, PN or LID device JID for 1:1. |
+| `fromMe` | `boolean` | Already resolved against the account's `meJid`. |
+| `id` | `string \| undefined` | Stanza id. |
+| `participant` | `string \| null` | Raw `participant` attr; `null` for non-group stanzas. |
+
+<Note>
+  The predicate sees **raw** `from` / `participant` attrs — no PN ↔ LID alt-attr resolution. The descriptor form is what handles that automatically; if you need both per-JID matching with alt-form coverage *and* a custom rule, prefer the descriptor's `remoteJid` with `only`.
+</Note>
+
+<Note>
+  Stream-control nodes and the connection-critical `success` / `failure` tags bypass filters so the auth flow stays intact.
+</Note>
 
 ### Coordinator getters
 

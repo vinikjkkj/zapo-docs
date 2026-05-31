@@ -1,0 +1,157 @@
+---
+title: "Deploys multi-sessão"
+description: "Rode várias contas WhatsApp em um processo com store compartilhada — o que é por sessão vs compartilhado, a regra de single-writer, orçamento de memória, sharding e shutdown gracioso."
+icon: "users"
+---
+
+O `zapo` é desenhado para que um único processo conduza muitas contas a partir de uma [store](/pt-br/concepts/stores) compartilhada. Cada conta vive atrás de um `sessionId` estável; tudo que é seguro compartilhar (o pool de conexão do backend, a factory do WebSocket, o logger) é compartilhado, e tudo que é específico da conta (sessões Signal, identidades, app-state, mailbox) é particionado por `sessionId`.
+
+## O padrão {#the-pattern}
+
+```ts
+import { createStore, WaClient, createPinoLogger } from 'zapo-js'
+import { createPostgresStore } from '@zapo-js/store-postgres'
+
+const store = createStore({
+  backends: { postgres: createPostgresStore({ pool: { connectionString: process.env.DATABASE_URL } }) },
+  providers: {
+    auth: 'postgres', signal: 'postgres', preKey: 'postgres',
+    session: 'postgres', identity: 'postgres', senderKey: 'postgres',
+    appState: 'postgres', privacyToken: 'postgres',
+    messages: 'postgres', threads: 'postgres', contacts: 'postgres'
+  }
+})
+
+const logger = await createPinoLogger({ level: 'info' })
+
+const clients = ['account-a', 'account-b', 'account-c'].map(
+  (id) => new WaClient({ store, sessionId: id }, logger)
+)
+
+await Promise.all(clients.map((c) => c.connect()))
+```
+
+`sessionId` é a chave durável de uma conta — o mesmo id entre restarts retoma o mesmo device pareado. Mudá-lo orfana as credenciais anteriores.
+
+## O que é por sessão vs compartilhado {#whats-per-session-vs-shared}
+
+| Camada | Escopo |
+| --- | --- |
+| Pool de conexão / file handle do backend | **Compartilhado** entre todas as sessões |
+| Stores por domínio (`auth` / `signal` / `preKey` / `session` / `identity` / `senderKey` / `appState` / `privacyToken` / `messages` / `threads` / `contacts`) | **Por `sessionId`** |
+| Domínios de cache (`retry` / `groupMetadata` / `deviceList` / `messageSecret`) | **Por `sessionId`** |
+| L1 [`cacheLayer`](/pt-br/concepts/stores#read-through-cache-layer) (quando ativado) | **Por `sessionId`, por processo** |
+| Limites em `memory.limits` | Aplicados **por sessão** (multiplique por N para o total de RAM) |
+| Estado do `WaClient` (handlers, retry queue, coordinators) | **Por instância de `WaClient`** |
+
+Migrar para multi-tenant é (1) instanciar N `WaClient`s na mesma `store`, e (2) dimensionar o pool de backend + o orçamento de memória para N sessões concorrentes.
+
+## Ciclo de vida da sessão {#session-lifecycle}
+
+`store.session(sessionId)` é **memoizado**. A primeira chamada materializa o bundle por domínio (locks por sessão, wrappers de cache opcionais, …) e o cacheia dentro da store; chamadas posteriores com o mesmo id retornam o mesmo bundle.
+
+```ts
+const a1 = store.session('account-a')
+const a2 = store.session('account-a')
+a1 === a2 // true
+```
+
+O `WaClient` chama `store.session(sessionId)` sob demanda; você normalmente não o invoca.
+
+### Adicionando tenants em runtime {#adding-tenants-on-the-fly}
+
+Não há etapa de pré-registro — basta construir um novo `WaClient` com um novo `sessionId`:
+
+```ts
+function spawn(sessionId: string): WaClient {
+  const client = new WaClient({ store, sessionId }, logger)
+  // anexe seus event listeners, depois connect()
+  return client
+}
+```
+
+### Removendo tenants {#removing-tenants}
+
+**Não** existe API `store.removeSession(id)`. O map interno de sessões da store só é limpo por `store.destroy()`. Para processos multi-tenant longos:
+
+- **Logout, mantém a entry.** `await client.logout()` apaga o estado persistente daquele `sessionId` (sujeito a [`logoutStoreClear`](/pt-br/concepts/configuration#logoutStoreClear)). O bundle `WaStoreSession` continua no map interno da store — inerte, mas segurando as stores por domínio até o processo reiniciar. Aceitável quando o churn de tenants é baixo em relação à memória total.
+- **Reiniciar o processo** quando você precisa reclamar cada byte (ex.: depois de desprovisionar muitos tenants de uma vez). Destrói a store e reconstrói.
+
+<Warning>
+  Evite chamar `await storeSession.destroy()` em um processo vivo. Ele derruba as stores por domínio dessa sessão, mas a entry **continua no map de sessões da store** — uma chamada posterior a `store.session(id)` retorna o bundle destruído, e as leituras/escritas seguintes lançam erro. Use `client.logout()` (remoção lógica) ou `store.destroy()` (shutdown do processo) no lugar.
+</Warning>
+
+## Propriedade entre processos {#process-ownership}
+
+Em deploys multi-processo, decida como os `sessionId`s mapeiam pra processos:
+
+- **Um processo por `sessionId`** via hash consistente / roteamento sticky no load balancer ou queue (mais simples).
+- **Eleição de líder** antes de abrir o client (advisory lock do Postgres, Redis `SET NX`, lease etcd) — útil pra failover HA.
+
+A opção [`cacheLayer`](/pt-br/concepts/stores#read-through-cache-layer) aperta isso: seu L1 não tem canal de invalidação entre processos, então as linhas de backend de um `sessionId` devem ser donas de um único processo durante todo o lifecycle. O L1 de um processo que assume começa frio e pode servir leituras stale até pegar as escritas que o dono anterior fez.
+
+## Compartilhando um media processor {#sharing-a-media-processor}
+
+`WaMediaProcessor` é um wrapper stateless sobre seus binários de mídia (`sharp`, `ffmpeg`/`ffprobe`, `file-type`). A mesma instância pode servir todos os `WaClient`s — não há estado por sessão dentro do processor, então reutilizá-lo evita pagar o custo de lookup / lazy-import dos binários N vezes.
+
+```ts
+import { createMediaProcessor } from '@zapo-js/media-utils'
+
+const processor = createMediaProcessor()
+
+const clients = tenants.map((id) => new WaClient(
+  { store, sessionId: id, media: { processor } }, // mesma instância, todas as sessões
+  logger
+))
+```
+
+<Tip>
+  Cada método do processor recebe um argumento opcional `ctx: WaMediaProcessorCallContext` carregando o `Logger` daquela chamada. O runtime preenche com o logger da sessão chamadora, então warnings (binário ausente, `detectMimetype` que falhou, ...) caem nos bindings corretos por sessão automaticamente — sem setup. Processors customizados devem consumir `ctx.logger` por chamada e **não cacheá-lo**, já que a mesma instância é compartilhada entre sessões.
+</Tip>
+
+## Orçamento de memória {#memory-budget}
+
+Os caps em `WaCreateStoreOptions.memory.limits` valem **por sessão**. Com N sessões concorrentes, a RAM in-process no pior caso escala linearmente:
+
+| Cap | Por sessão | Com N = 50 sessões |
+| --- | --- | --- |
+| `signalSessions: 5_000` | até 5 000 entries de Double-Ratchet | até 250 000 |
+| `signalRemoteIdentities: 5_000` | até 5 000 linhas de identity | até 250 000 |
+| `groupMetadataGroups: 1_000` | até 1 000 grupos cacheados | até 50 000 |
+| `messages: 10_000` (quando `providers.messages: 'memory'`) | até 10 000 mensagens | até 500 000 |
+
+Ajuste os caps por sessão para baixo conforme N cresce, ou mova o mailbox / domínios de alta cardinalidade para um backend persistente (o provider in-memory existe para testes e contas pequenas). Os TTLs em `memory.cacheTtlMs` são independentes de N — eles só limitam por quanto tempo uma entry sobrevive em cada cache.
+
+## Estratégias de sharding {#sharding-strategies}
+
+| Layout | Quando usar |
+| --- | --- |
+| **Um processo · N sessões · uma store** | Poucos tenants, todos com tráfego leve. Setup mais simples; o processo é um ponto único de falha para todos os tenants. |
+| **N processos · uma sessão cada · backend compartilhado** | Alta carga por tenant, ou você quer isolamento de blast-radius por tenant. O mais robusto em escala. Requer um backend de rede (`@zapo-js/store-postgres` / `mysql` / `redis` / `mongo`). |
+| **K processos · M/K sessões cada · backend compartilhado** | Meio-termo em escala. Empacote tenants por processo até a CPU saturar, depois adicione um processo. Combine com hash consistente em `sessionId` para que a mesma conta sempre caia no mesmo processo. |
+
+`@zapo-js/store-sqlite` é single-host e o arquivo SQLite é segurado por um processo — escolha um dos backends de rede para qualquer layout com mais de um processo.
+
+## Shutdown gracioso {#graceful-shutdown}
+
+```ts
+async function shutdown() {
+  await Promise.all(clients.map((c) => c.disconnect()))
+  await store.destroy()
+}
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, shutdown)
+}
+```
+
+`client.disconnect()` faz flush da fila de [write-behind](/pt-br/concepts/configuration#write-behind-persistence) por sessão e fecha o socket **sem** desvincular o device, então o próximo boot retoma a partir da store. `store.destroy()` então libera o backend compartilhado (pool, file handle, …). Chamar `disconnect()` em todos os clients antes de `store.destroy()` garante que as escritas pendentes de cada sessão sejam flushed; `store.destroy()` não faz isso por você.
+
+<Warning>
+  Não substitua `logout()` por `disconnect()` aqui — `logout()` desvincula o device server-side e limpa o estado armazenado. Use-o só quando você intencionalmente quer remover a conta.
+</Warning>
+
+## Veja também {#see-also}
+
+- [Stores](/pt-br/concepts/stores) — o modelo de persistência por `sessionId` e a camada opcional de read-through cache.
+- [Produção & deploy](/pt-br/guides/production) — checklist operacional mais amplo (logging, timeouts, segurança).
+- [Reconnection](/pt-br/guides/reconnection) — a política de reconexão é por sessão; não existe loop de reconexão compartilhado.

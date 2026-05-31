@@ -53,7 +53,7 @@ const clients = tenants.map((id) => new WaClient({ store, sessionId: id }, logge
 await Promise.all(clients.map((c) => c.connect()))
 ```
 
-Each client pairs, reconnects, and emits events independently. Budget memory/CPU per session (each holds Signal state and in-memory caches), and shard across processes/hosts as you scale — one process per session is the simplest isolation model. See [multi-tenancy](/en/concepts/configuration#sessions-and-multi-tenancy).
+Each client pairs, reconnects, and emits events independently. Budget memory/CPU per session (each holds Signal state and in-memory caches), and shard across processes/hosts as you scale — one process per session is the simplest isolation model. See [Multi-session deployments](/en/guides/multi-session) for the full operational guide.
 
 ## Tune for throughput
 

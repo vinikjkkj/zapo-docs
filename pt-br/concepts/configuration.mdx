@@ -35,7 +35,7 @@ const accountB = new WaClient({ store, sessionId: 'account-b' }, logger)
 await Promise.all([accountA.connect(), accountB.connect()])
 ```
 
-Cada client pareia e reconecta de forma independente. Esta é a base para deployments multi-tenant.
+Cada client pareia e reconecta de forma independente. Para o panorama completo — o que é por sessão vs compartilhado, a regra de single-writer entre processos, orçamento de memória, sharding e shutdown — veja [Deploys multi-sessão](/pt-br/guides/multi-session).
 
 ## Fingerprint do dispositivo {#device-fingerprint}
 
@@ -343,6 +343,69 @@ const client = new WaClient(options, new PinoLogger(child, 'info'))
 ```
 
 A assinatura é `new PinoLogger(logger, level = 'info')`. O nível é encaminhado pra `logger.level` e usado como o `level` reportado pelo adapter.
+
+### Logger customizado {#custom-logger}
+
+Precisa de um sink que as implementações nativas não cobrem — Datadog, OpenTelemetry, syslog, um pipeline de observabilidade interno? Implemente a interface `Logger` e passe a instância pro `WaClient`. A interface é pequena:
+
+```ts
+import type { Logger, LogLevel } from 'zapo-js'
+
+interface Logger {
+  readonly level: LogLevel
+  trace(message: string, context?: Readonly<Record<string, unknown>>): void
+  debug(message: string, context?: Readonly<Record<string, unknown>>): void
+  info(message: string, context?: Readonly<Record<string, unknown>>): void
+  warn(message: string, context?: Readonly<Record<string, unknown>>): void
+  error(message: string, context?: Readonly<Record<string, unknown>>): void
+  /**
+   * Retorna um logger derivado que pre-vincula `bindings` no contexto de cada
+   * chamada. Os bindings empilham: `parent.child(a).child(b)` mescla `{ ...a, ...b }`.
+   * Em conflito de chave, o contexto da chamada vence.
+   */
+  child(bindings: Readonly<Record<string, unknown>>): Logger
+}
+```
+
+`LogLevel` é `'trace' | 'debug' | 'info' | 'warn' | 'error'`. A biblioteca chama os cinco métodos de level diretamente — não há uma camada de level-gating à frente, então sua implementação é responsável por filtrar contra `this.level` se quiser pular chamadas baratas.
+
+Um exemplo mínimo que encaminha para um sink externo e rastreia bindings por `child()`:
+
+```ts
+import type { Logger, LogLevel } from 'zapo-js'
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+  trace: 10, debug: 20, info: 30, warn: 40, error: 50
+}
+
+class MyLogger implements Logger {
+  constructor(
+    public readonly level: LogLevel = 'info',
+    private readonly bindings: Readonly<Record<string, unknown>> = {}
+  ) {}
+
+  private write(at: LogLevel, message: string, context?: Readonly<Record<string, unknown>>): void {
+    if (LEVEL_RANK[at] < LEVEL_RANK[this.level]) return
+    sendToObservability({ level: at, message, ...this.bindings, ...context })
+  }
+
+  trace(message: string, context?: Readonly<Record<string, unknown>>) { this.write('trace', message, context) }
+  debug(message: string, context?: Readonly<Record<string, unknown>>) { this.write('debug', message, context) }
+  info(message: string, context?: Readonly<Record<string, unknown>>)  { this.write('info',  message, context) }
+  warn(message: string, context?: Readonly<Record<string, unknown>>)  { this.write('warn',  message, context) }
+  error(message: string, context?: Readonly<Record<string, unknown>>) { this.write('error', message, context) }
+
+  child(bindings: Readonly<Record<string, unknown>>): Logger {
+    return new MyLogger(this.level, { ...this.bindings, ...bindings })
+  }
+}
+
+const client = new WaClient(options, new MyLogger('info'))
+```
+
+<Note>
+  `child()` é usado internamente para anexar bindings por componente (ex.: `{ component: 'noise' }`, `{ component: 'signal', sessionId }`). Retornar uma nova instância com bindings mesclados — em vez de mutar — mantém esses tags com escopo no subsistema que os produziu.
+</Note>
 
 ## Opções avançadas {#advanced-options}
 

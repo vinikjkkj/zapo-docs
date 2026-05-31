@@ -315,6 +315,146 @@ await client.message.send(jid, {
 })
 ```
 
+### Botões (bruto) {#buttons-raw}
+
+Até três botões de quick-reply. O header é um `oneof` — escolha texto, imagem, vídeo, localização ou documento (pré-upload pra mídia):
+
+```ts
+await client.message.send(jid, {
+  buttonsMessage: {
+    contentText: 'Pedido feito — e agora?',
+    footerText: 'Responda em 24h',
+    headerType: proto.Message.ButtonsMessage.HeaderType.TEXT,
+    text: 'Pedido #1234',
+    buttons: [
+      {
+        buttonId: 'track',
+        buttonText: { displayText: 'Rastrear' },
+        type: proto.Message.ButtonsMessage.Button.Type.RESPONSE
+      },
+      {
+        buttonId: 'cancel',
+        buttonText: { displayText: 'Cancelar' },
+        type: proto.Message.ButtonsMessage.Button.Type.RESPONSE
+      }
+    ]
+  }
+})
+```
+
+### Menu de lista (bruto) {#list-menu-raw}
+
+Uma lista single-select de rows agrupadas em sections:
+
+```ts
+await client.message.send(jid, {
+  listMessage: {
+    title: 'Cardápio',
+    description: 'Escolha um item',
+    buttonText: 'Ver cardápio',
+    footerText: 'Aberto 9–18',
+    listType: proto.Message.ListMessage.ListType.SINGLE_SELECT,
+    sections: [
+      {
+        title: 'Pizzas',
+        rows: [
+          { rowId: 'pizza-margherita', title: 'Margherita', description: 'Tomate, mussarela, manjericão' },
+          { rowId: 'pizza-pepperoni',  title: 'Pepperoni',  description: 'Tomate, queijo, pepperoni' }
+        ]
+      },
+      {
+        title: 'Bebidas',
+        rows: [{ rowId: 'drink-cola', title: 'Cola' }]
+      }
+    ]
+  }
+})
+```
+
+### Interactive native flow (bruto) {#interactive-native-flow-raw}
+
+A superfície interativa moderna — botões cujos parâmetros são payloads ad-hoc codificados em JSON:
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    body: { text: 'Toque abaixo para abrir o form' },
+    footer: { text: 'Powered by seu bot' },
+    nativeFlowMessage: {
+      buttons: [
+        {
+          name: 'cta_url',
+          buttonParamsJson: JSON.stringify({
+            display_text: 'Abrir form',
+            url: 'https://example.com/form'
+          })
+        }
+      ],
+      messageVersion: 1
+    }
+  }
+})
+```
+
+### Produto (bruto) {#product-raw}
+
+Envie um produto do catálogo. O `productImage` interno precisa estar pré-uploadado:
+
+```ts
+await client.message.send(jid, {
+  productMessage: {
+    businessOwnerJid: '5511999999999@s.whatsapp.net',
+    body: 'Dá uma olhada nisso',
+    footer: 'Em estoque',
+    product: {
+      productId: '12345',
+      title: 'Chapéu',
+      description: 'Tamanho único, ajustável',
+      currencyCode: 'BRL',
+      priceAmount1000: 49_900, // 49,90 BRL — preço × 1000
+      retailerId: 'sku-001',
+      url: 'https://example.com/p/12345',
+      productImage: { /* campos de imagem pré-uploadados */ }
+    }
+  }
+})
+```
+
+### Pedido (bruto) {#order-raw}
+
+Confirmação / consulta de pedido:
+
+```ts
+await client.message.send(jid, {
+  orderMessage: {
+    orderId: 'ord-abc',
+    orderTitle: 'Pedido de exemplo',
+    itemCount: 3,
+    status: proto.Message.OrderMessage.OrderStatus.INQUIRY,   // ou ACCEPTED / DECLINED
+    surface: proto.Message.OrderMessage.OrderSurface.CATALOG,
+    sellerJid: '5511888888888@s.whatsapp.net',
+    totalAmount1000: 149_700, // 149,70 BRL — total × 1000
+    totalCurrencyCode: 'BRL',
+    message: 'Detalhes do pedido'
+  }
+})
+```
+
+### Convite de admin de newsletter (bruto) {#newsletter-admin-invite-raw}
+
+Convide um contato para ser co-admin de uma das suas newsletters:
+
+```ts
+await client.message.send(contactJid, {
+  newsletterAdminInviteMessage: {
+    newsletterJid: '120363xxxxxxxxxxxxxx@newsletter',
+    newsletterName: 'My Newsletter',
+    caption: 'Vire co-admin',
+    inviteExpiration: Math.floor(Date.now() / 1000) + 7 * 86_400
+  }
+})
+```
+
 ### Reação (bruto) {#reaction-raw}
 
 ```ts
