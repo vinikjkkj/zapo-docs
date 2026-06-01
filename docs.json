@@ -108,7 +108,7 @@
           }
         ],
         "banner": {
-          "content": "Zapo is pre-1.0 — breaking changes are expected until the first major release. Pin exact versions. [Learn more](/en/introduction)",
+          "content": "🎉 zapo 1.0 is here — the first stable release, following semantic versioning. [Learn more](/en/introduction)",
           "dismissible": true
         }
       },
@@ -186,7 +186,7 @@
           }
         ],
         "banner": {
-          "content": "O Zapo é pré-1.0 — breaking changes são esperadas até o primeiro release maior. Fixe versões exatas. [Saiba mais](/pt-br/introduction)",
+          "content": "🎉 zapo 1.0 chegou — o primeiro release estável, seguindo versionamento semântico. [Saiba mais](/pt-br/introduction)",
           "dismissible": true
         }
       }

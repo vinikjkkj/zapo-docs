@@ -80,4 +80,4 @@ const logger = await createPinoLogger({ level: 'info', pretty: false })
 
 - **Credentials are secrets.** `WaAuthCredentials` holds the device keys — if you persist them outside the built-in store, encrypt at rest. ([Authentication](/en/concepts/authentication#credentials))
 - **Never enable `dangerous.*`** in production — those flags disable security checks. ([config](/en/concepts/configuration#dangerous-options))
-- **Pin exact versions.** `zapo` is pre-1.0; breaking changes are expected until the first major release.
+- **Versioning.** `zapo` is `1.0` and follows [semantic versioning](https://semver.org) — breaking changes only land in a new major. Use a version range or lockfile as usual, and review the changelog before major upgrades.

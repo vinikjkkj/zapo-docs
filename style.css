@@ -31,3 +31,26 @@
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* 1.0 launch banner — Zapo brand green */
+#banner {
+  background: rgba(22, 163, 56, 0.12);
+  color: #14532d;
+  border-bottom: 1px solid rgba(22, 163, 56, 0.3);
+}
+
+#banner a {
+  color: #166a25;
+  text-decoration: underline;
+}
+
+/* Dark mode */
+.dark #banner {
+  background: rgba(22, 163, 56, 0.18);
+  color: #86efac;
+  border-bottom-color: rgba(22, 163, 56, 0.4);
+}
+
+.dark #banner a {
+  color: #bbf7d0;
+}
