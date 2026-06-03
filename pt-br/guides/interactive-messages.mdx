@@ -133,6 +133,15 @@ await client.message.send(jid, { type: 'pin', target: event })   // fixar
 await client.message.send(jid, { type: 'unpin', target: event }) // desafixar
 ```
 
+Pins expiram — passe `durationSecs` para sobrescrever o default. O wa-web oferece três presets:
+
+```ts
+await client.message.send(jid, { type: 'pin', target: event, durationSecs: 604_800 })   // 7 dias
+await client.message.send(jid, { type: 'pin', target: event, durationSecs: 2_592_000 }) // 30 dias
+```
+
+O default é **`86_400`** (24h). O TTL viaja com o pin via `messageContextInfo.messageAddOnDurationInSecs`; sem ele os clients receptores dropam o pin silenciosamente, então a lib sempre carimba o default se você omitir. `durationSecs` é ignorado em `unpin`.
+
 ## Manter no chat {#keep-in-chat}
 
 Para chats com mensagens temporárias, mantenha (ou desfaça a manutenção de) uma mensagem específica:

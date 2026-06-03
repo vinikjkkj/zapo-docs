@@ -153,6 +153,42 @@ client.on('message', async (event) => {
 
 All three accept either a `WaIncomingMessageEvent` or a raw `Proto.IMessage`, plus optional `WaDownloadMediaOptions` (for example `maxBytes` to cap `downloadBytes`).
 
+### Without a connected client
+
+`downloadMediaMessage` is a free function that mirrors `client.message.download` but does not need a paired session. The encrypted-media metadata travels inside the (already decrypted) message itself, so you can re-download media from a persisted event long after the original socket is gone — useful for offline workers, archive replays, or anything that processes stored messages without spinning up a `WaClient`.
+
+```ts
+import { downloadMediaMessage } from 'zapo-js'
+import { createWriteStream } from 'node:fs'
+
+const stream = await downloadMediaMessage(event)
+stream.pipe(createWriteStream('photo.jpg'))
+```
+
+Accepts a `WaIncomingMessageEvent` or a raw `Proto.IMessage`, returns a `Readable` you own (pipe it or `.destroy()` it — an unconsumed stream leaks the socket). MAC + SHA-256 verification runs as bytes are consumed, same semantics as the coordinator method. Throws when the message has no downloadable media.
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `transfer` | `WaMediaTransferClient` | Reuse an existing transfer client — inherits its proxy agents, timeouts, and MAC-verification toggle, and avoids spinning up a new HTTP client per call in a loop. A stateless one is created when omitted (fine for one-offs). |
+| `proxy` | `WaProxyTransport` | Per-call proxy for the CDN download leg, mirroring the client's `proxy.mediaDownload`. The fetch runs over `node:http`/`node:https`, so only the `http.Agent` form is honored — an undici dispatcher is ignored. Takes precedence over the default agent of a `transfer` you pass. |
+| `signal` / `timeoutMs` / `maxBytes` | (from `WaDownloadMediaOptions`) | Same semantics as the coordinator methods. |
+
+For lower-level access — when you want to do the CDN fetch yourself, hand the keys to another process, or just inspect what's downloadable — `resolveMediaPayload` returns the keys + hashes without doing any I/O:
+
+```ts
+import { resolveMediaPayload } from 'zapo-js'
+
+const payload = resolveMediaPayload(event.message)
+// → WaResolvedMediaPayload | null
+// { mediaType, directPath, mediaKey, fileSha256?, fileEncSha256?, mimetype?, fileLength? }
+```
+
+Returns `null` when the message has no downloadable media, or when the proto carried no `directPath` / `mediaKey`. It unwraps `ephemeralMessage`, `viewOnceMessage` / `viewOnceMessageV2`, and `documentWithCaptionMessage` before resolving. Supported kinds: `image`, `video` (`gif` when `gifPlayback`), `audio` (`ptt` when `ptt`), `document`, `sticker`, `ptv`.
+
+<Warning>
+  `payload.mediaKey` is the AES/MAC seed for the encrypted blob — treat it like a secret. Don't log it, don't put it in error messages, and don't ship it to a third-party service unless that's the whole point of your pipeline.
+</Warning>
+
 ## Media processing
 
 For proper media, use a **media processor**. Install `@zapo-js/media-utils` and pass one through the `media` client option — it probes and processes media (dimensions, duration, thumbnails, waveforms, voice-note normalization) before upload. Without it, media still uploads but lacks this processing:

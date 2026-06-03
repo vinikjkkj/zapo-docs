@@ -199,10 +199,14 @@ When others read or play your messages, you receive `receipt` events:
 ```ts
 client.on('receipt', (event) => {
   // event.status: 'delivered' | 'read' | 'played' | 'inactive'
-  console.log(event.status, 'for', event.stanzaId)
+  for (const id of event.messageIds) {
+    console.log(event.status, 'for', id)
+  }
 })
 ```
 
+`event.messageIds` is the full set of stanza ids this receipt acknowledges. WhatsApp batches read/delivery receipts into a single `<receipt>` carrying a `<list><item id=…/>` block — `messageIds` mirrors wa-web's `externalIds`: list items first, then `event.stanzaId` appended last. Single-message receipts contain just `[event.stanzaId]`.
+
 <Note>
-  `receipt` events still expose `stanzaId` / `chatJid` directly (they extend `WaIncomingBaseEvent`); the rename only applies to `message`, `message_addon`, and `message_bot_chunk` payloads, which now use `event.key`.
+  `receipt` events still expose `stanzaId` / `chatJid` directly (they extend `WaIncomingBaseEvent`); the rename only applies to `message`, `message_addon`, and `message_bot_chunk` payloads, which now use `event.key`. `event.stanzaId` is still the **last** id in the batch — iterate `messageIds` to cover the rest.
 </Note>

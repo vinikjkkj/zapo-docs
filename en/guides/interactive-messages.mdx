@@ -133,6 +133,15 @@ await client.message.send(jid, { type: 'pin', target: event })   // pin
 await client.message.send(jid, { type: 'unpin', target: event }) // unpin
 ```
 
+Pins expire — pass `durationSecs` to override the default. wa-web offers three presets:
+
+```ts
+await client.message.send(jid, { type: 'pin', target: event, durationSecs: 604_800 })   // 7 days
+await client.message.send(jid, { type: 'pin', target: event, durationSecs: 2_592_000 }) // 30 days
+```
+
+Default is **`86_400`** (24h). The TTL travels with the pin via `messageContextInfo.messageAddOnDurationInSecs`; without it receiving clients silently drop the pin, so the lib always stamps the default when you omit it. `durationSecs` is ignored on `unpin`.
+
 ## Keep-in-chat
 
 For disappearing-message chats, keep (or un-keep) a specific message:

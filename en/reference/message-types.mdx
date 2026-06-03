@@ -62,7 +62,7 @@ Media builders also accept any non-managed field of the underlying protobuf mess
 | `poll-vote` | `WaSendPollVoteMessage` | **`poll`**, **`selectedOptionNames`** | [Voting](/en/guides/interactive-messages#voting-on-a-poll) |
 | `event` | `WaSendEventMessage` | **`name`**, **`startTime`** | [Events](/en/guides/interactive-messages#events) |
 | `event-response` | `WaSendEventResponseMessage` | **`event`**, **`response`** | [Event response](/en/guides/interactive-messages#responding-to-an-event) |
-| `pin` / `unpin` | `WaSendPinMessage` | **`target`** | [Pinning](/en/guides/interactive-messages#pinning) |
+| `pin` / `unpin` | `WaSendPinMessage` | **`target`** (+ optional `durationSecs`) | [Pinning](/en/guides/interactive-messages#pinning) |
 | `keep` / `unkeep` | `WaSendKeepMessage` | **`target`** | [Keep-in-chat](/en/guides/interactive-messages#keep-in-chat) |
 | `revoke` | `WaSendRevokeMessage` | **`target`** | [Revoking](/en/guides/interactive-messages#revoking-delete-for-everyone) |
 

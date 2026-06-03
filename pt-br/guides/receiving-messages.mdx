@@ -199,10 +199,14 @@ Quando outras pessoas leem ou reproduzem suas mensagens, você recebe eventos `r
 ```ts
 client.on('receipt', (event) => {
   // event.status: 'delivered' | 'read' | 'played' | 'inactive'
-  console.log(event.status, 'for', event.stanzaId)
+  for (const id of event.messageIds) {
+    console.log(event.status, 'for', id)
+  }
 })
 ```
 
+`event.messageIds` é o conjunto completo de stanza ids que este recibo confirma. O WhatsApp agrupa recibos de read/delivery em um único `<receipt>` carregando um bloco `<list><item id=…/>` — `messageIds` espelha o `externalIds` do wa-web: itens da lista primeiro, depois `event.stanzaId` anexado por último. Recibos de mensagem única contêm apenas `[event.stanzaId]`.
+
 <Note>
-  Eventos `receipt` ainda expõem `stanzaId` / `chatJid` diretamente (eles estendem `WaIncomingBaseEvent`); a renomeação se aplica somente aos payloads de `message`, `message_addon` e `message_bot_chunk`, que agora usam `event.key`.
+  Eventos `receipt` ainda expõem `stanzaId` / `chatJid` diretamente (eles estendem `WaIncomingBaseEvent`); a renomeação se aplica somente aos payloads de `message`, `message_addon` e `message_bot_chunk`, que agora usam `event.key`. O `event.stanzaId` ainda é o **último** id do batch — itere `messageIds` para cobrir o resto.
 </Note>

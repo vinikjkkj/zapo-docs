@@ -121,6 +121,7 @@ Decryption failures are tracked and can trigger a retry-receipt so the sender re
 - A sync sends the last known version per collection; the server returns **patches** (or a full **snapshot**).
 - Each mutation's index and value are MAC-verified and the value decrypted (`WaAppStateCrypto`: AES-CBC + HMAC, per-collection keys derived via HKDF).
 - Verified mutations are applied to the `appState` store and surfaced as [`mutation`](/en/concepts/events#state-history--mex) events.
+- **Contact sink** — winning `Contact` mutations (including the snapshot ones at pair-time) stream into the `contacts` store unconditionally, bootstrapping the address book on first connect independent of the public `emitSnapshotMutations` toggle. The sink resolves the LID-canonical JID from `contactAction.lidJid`, mirrors the PN form into `phoneNumber`, and writes `fullName ?? firstName` as `displayName`. History-sync additionally persists `inlineContacts` and per-conversation `displayName` / `username` when the primary device forwards them; the pair payload advertises `supportInlineContacts` so the server knows to ship those.
 - Outgoing changes from [`client.chat`](/en/reference/chat-mutations) are encoded as mutations, batched, and flushed.
 
 ## Store layer

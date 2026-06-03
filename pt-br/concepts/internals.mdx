@@ -121,6 +121,7 @@ O `WaAppStateSyncClient` (`src/appstate/`) reconcilia as configurações por con
 - Uma sincronização envia a última versão conhecida por coleção; o servidor retorna **patches** (ou um **snapshot** completo).
 - O índice e o valor de cada mutation são verificados por MAC e o valor é descriptografado (`WaAppStateCrypto`: AES-CBC + HMAC, chaves por coleção derivadas via HKDF).
 - As mutations verificadas são aplicadas à store `appState` e expostas como eventos [`mutation`](/pt-br/concepts/events#state-history--mex).
+- **Sink de contatos** — mutations `Contact` vencedoras (incluindo as de snapshot em pair-time) fluem incondicionalmente para a store `contacts`, dando bootstrap no address book no primeiro connect independente do toggle público `emitSnapshotMutations`. O sink resolve o JID LID-canonical a partir de `contactAction.lidJid`, espelha a forma PN em `phoneNumber` e escreve `fullName ?? firstName` como `displayName`. O history-sync adicionalmente persiste `inlineContacts` e `displayName` / `username` por conversation quando o primary device os encaminha; o payload de pair anuncia `supportInlineContacts` para que o servidor saiba enviá-los.
 - Mudanças de saída de [`client.chat`](/pt-br/reference/chat-mutations) são codificadas como mutations, agrupadas em lote e descarregadas.
 
 ## Camada de store {#store-layer}

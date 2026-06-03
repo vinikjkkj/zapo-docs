@@ -62,7 +62,7 @@ Os builders de mídia também aceitam qualquer campo não-gerenciado da mensagem
 | `poll-vote` | `WaSendPollVoteMessage` | **`poll`**, **`selectedOptionNames`** | [Votação](/pt-br/guides/interactive-messages#voting-on-a-poll) |
 | `event` | `WaSendEventMessage` | **`name`**, **`startTime`** | [Eventos](/pt-br/guides/interactive-messages#events) |
 | `event-response` | `WaSendEventResponseMessage` | **`event`**, **`response`** | [Resposta a evento](/pt-br/guides/interactive-messages#responding-to-an-event) |
-| `pin` / `unpin` | `WaSendPinMessage` | **`target`** | [Fixar](/pt-br/guides/interactive-messages#pinning) |
+| `pin` / `unpin` | `WaSendPinMessage` | **`target`** (+ `durationSecs` opcional) | [Fixar](/pt-br/guides/interactive-messages#pinning) |
 | `keep` / `unkeep` | `WaSendKeepMessage` | **`target`** | [Manter no chat](/pt-br/guides/interactive-messages#keep-in-chat) |
 | `revoke` | `WaSendRevokeMessage` | **`target`** | [Revogar](/pt-br/guides/interactive-messages#revoking-delete-for-everyone) |
 
