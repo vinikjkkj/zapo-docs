@@ -58,7 +58,7 @@ new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
 <ParamField path="history" type="WaHistorySyncOptions">
   Controls processing of `historySyncNotification` chunks — both the initial bootstrap WhatsApp pushes after pairing and the on-demand backfill triggered by [`message.requestHistorySync`](/en/guides/receiving-messages#requesting-older-history).
 
-  - `enabled?: boolean` — process incoming history chunks. **Default `true`.** Set to `false` to drop them silently (useful when you don't persist mailbox/threads/contacts and the conversation download would just burn bandwidth).
+  - `enabled?: boolean` — process incoming history chunks. **Default `true`.** Set to `false` to drop them silently (useful when you don't persist mailbox/threads/contacts and the conversation download would just burn bandwidth). The lib still acks the chunk so the server stops re-sending it, matching wa-web.
   - `requireFullSync?: boolean` — request the full archive instead of just recent chats.
 </ParamField>
 

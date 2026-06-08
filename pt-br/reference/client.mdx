@@ -83,13 +83,13 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | Campo | Tipo | Notas |
 | --- | --- | --- |
 | `kind` | `'message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call'` | Tag da stanza. |
-| `remoteJid` | `string \| null` | Attr `from` bruto — JID do grupo para grupos, JID PN ou LID device para 1:1. |
+| `remoteJid` | `string \| null` | JID do chat sem device — JID do grupo para grupos, JID PN ou LID na forma **user** para 1:1 (o segmento `:device` é stripped para casar com `event.key.remoteJid`). Valores `from` sem user (ex.: `s.whatsapp.net`) ficam como vieram. |
 | `fromMe` | `boolean` | Já resolvido contra o `meJid` da conta. |
 | `id` | `string \| undefined` | Id da stanza. |
-| `participant` | `string \| null` | Attr `participant` bruto; `null` para stanzas que não são de grupo. |
+| `participant` | `string \| null` | O autor em grupos / broadcasts. Mesmo stripping de device do `remoteJid`; `null` para stanzas que não são de grupo. |
 
 <Note>
-  O predicate vê os attrs `from` / `participant` **brutos** — sem resolução de alt-attr PN ↔ LID. O formato descriptor é quem cuida disso automaticamente; se você precisa de matching por JID com cobertura de forma alt *junto* de uma regra custom, prefira o `remoteJid` do descriptor com `only`.
+  O predicate vê `from` / `participant` com o device stripped — mas **sem** resolução de alt-attr PN ↔ LID. O formato descriptor é quem cuida da parte de PN ↔ LID automaticamente; se você precisa de matching por JID com cobertura de forma alt *junto* de uma regra custom, prefira o `remoteJid` do descriptor com `only`.
 </Note>
 
 <Note>

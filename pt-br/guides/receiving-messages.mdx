@@ -20,7 +20,7 @@ client.on('message', (event: WaIncomingMessageEvent) => {
 
 | Campo | Tipo | Descrição |
 | --- | --- | --- |
-| `key.remoteJid` | `string` | O JID da conversa (grupo ou 1:1). |
+| `key.remoteJid` | `string` | JID da conversa sem device (grupo ou 1:1) — o segmento `:device` é stripped; o id do device fica exposto em `key.senderDevice`. |
 | `key.id` | `string` | O id (stanza) da mensagem. |
 | `key.fromMe` | `boolean` | Verdadeiro quando a mensagem foi enviada por esta conta. |
 | `key.participant` | `string?` | O autor em grupos / broadcasts (omitido em 1:1). |

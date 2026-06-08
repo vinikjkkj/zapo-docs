@@ -83,13 +83,13 @@ client.ignoreKey((m) => {
 | Field | Type | Notes |
 | --- | --- | --- |
 | `kind` | `'message' \| 'receipt' \| 'notification' \| 'presence' \| 'chatstate' \| 'call'` | Stanza tag. |
-| `remoteJid` | `string \| null` | Raw `from` attr — group JID for groups, PN or LID device JID for 1:1. |
+| `remoteJid` | `string \| null` | Deviceless chat JID — group JID for groups, PN or LID **user**-form JID for 1:1 (the `:device` segment is stripped to match `event.key.remoteJid`). Userless `from` values (e.g. `s.whatsapp.net`) are kept verbatim. |
 | `fromMe` | `boolean` | Already resolved against the account's `meJid`. |
 | `id` | `string \| undefined` | Stanza id. |
-| `participant` | `string \| null` | Raw `participant` attr; `null` for non-group stanzas. |
+| `participant` | `string \| null` | The author in groups / broadcasts. Same device-stripping as `remoteJid`; `null` for non-group stanzas. |
 
 <Note>
-  The predicate sees **raw** `from` / `participant` attrs — no PN ↔ LID alt-attr resolution. The descriptor form is what handles that automatically; if you need both per-JID matching with alt-form coverage *and* a custom rule, prefer the descriptor's `remoteJid` with `only`.
+  The predicate sees the device-stripped `from` / `participant` — but **no** PN ↔ LID alt-attr resolution. The descriptor form is what handles the PN ↔ LID part automatically; if you need both per-JID matching with alt-form coverage *and* a custom rule, prefer the descriptor's `remoteJid` with `only`.
 </Note>
 
 <Note>
