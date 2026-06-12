@@ -67,8 +67,12 @@ await client.connect()
 O modo mobile precisa de um conjunto de credenciais **já registrado**: um `WaAuthCredentials` com `meJid` preenchido, `platform: 'android'` e `deviceInfo` anexado. Você semeia isso na auth store antes de conectar (por exemplo, importado de um device bundle).
 
 <Note>
-  Uma vez que as credenciais com `deviceInfo` são persistidas, reconexões posteriores usam **automaticamente** o transporte TCP mobile — você não precisa passar `mobileTransport` de novo.
+  Uma vez que as credenciais com `deviceInfo` são persistidas, reconexões posteriores rodam **automaticamente** em modo mobile-primary completo — transporte TCP, formatos de IQ / message id mobile, gating de app-state primary e withholding de placeholder-resend (veja abaixo) tudo deriva do `deviceInfo` carregado. Você não precisa re-passar `mobileTransport` em cada construção.
 </Note>
+
+### Withholding de placeholder-resend {#placeholder-resend-withholding}
+
+Quando um device companion falha em decifrar uma mensagem recebida, ele normalmente pede a um peer pareado o plaintext original via um placeholder-resend request. Um **telefone primário não tem peer device** segurando o plaintext, então uma sessão mobile-primary **pula o placeholder request inteiro** e cai para um retry receipt comum — o caminho padrão de re-encrypt que o sender já suporta. Isso evita o request expirar silenciosamente e a mensagem ser dropada.
 
 ## Eventos de registro {#registration-events}
 

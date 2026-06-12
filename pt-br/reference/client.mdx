@@ -303,11 +303,11 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 
 | Method | Signature | Description |
 | --- | --- | --- |
-| `getProfilePicture` | `(jid, type?, existingId?) => Promise<WaProfilePictureResult>` | Envelope da imagem (URL + caminho direto + id). |
+| `getProfilePicture` | `(jid, type?: 'preview' \| 'image', existingId?) => Promise<WaProfilePictureResult>` | Envelope da imagem (`{ url?, directPath?, id?, type? }`). `type` default é `'preview'` (variante compacta); `'image'` retorna o original em alta resolução. Passe o `existingId` cacheado para o servidor fazer short-circuit quando a foto não mudou. |
 | `setProfilePicture` | `(imageBytes, targetJid?) => Promise<string \| null>` | Define a imagem sua/de um alvo. `imageBytes` é enviado **como está** — pré-codifique um JPEG quadrado. Retorna o id da imagem. |
 | `deleteProfilePicture` | `(targetJid?) => Promise<void>` | Remove a imagem (operação de admin para grupos). |
 | `getStatus` / `setStatus` | `(jid) / (text) => Promise<…>` | Obtém/define o "Sobre" legado. |
-| `setPushName` | `(name) => Promise<void>` | Atualiza o nome de exibição broadcast aos contatos. Roteado por uma mutação de app-state; chega aos contatos na sua próxima mensagem enviada. String vazia restaura o padrão do dispositivo. |
+| `setPushName` | `(name) => Promise<void>` | Atualiza o nome de exibição broadcast aos contatos. Aplicado às credenciais locais imediatamente e roteado por uma mutação de app-state; os contatos veem na sua próxima mensagem enviada. String vazia restaura o padrão do dispositivo. |
 | `getProfiles` | `(jids) => Promise<readonly WaProfileInfo[]>` | Id de imagem + status em lote. |
 | `getDisappearingMode` | `(jids) => Promise<readonly WaDisappearingModeResult[]>` | Configuração de modo temporário em lote. |
 | `setDisappearingMode` | `(durationSeconds) => Promise<void>` | Define a duração padrão de modo temporário aplicada a **novos** chats 1:1 (`0`/`86400`/`604800`/`7776000`). Chats existentes mantêm a configuração. |

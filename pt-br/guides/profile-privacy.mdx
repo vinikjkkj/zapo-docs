@@ -13,8 +13,11 @@ O `client.profile` ([`WaProfileCoordinator`](/pt-br/reference/client#profile)) l
 ```ts
 import { readFile } from 'node:fs/promises'
 
-// Ler a foto de alguém (ou a sua)
+// Ler a foto de alguém (ou a sua) — default é o preview de baixa resolução
 const pic = await client.profile.getProfilePicture(jid)
+
+// Original em alta resolução (o avatar full-size que o usuário subiu)
+const fullPic = await client.profile.getProfilePicture(jid, 'image')
 
 // Definir a sua
 await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
@@ -22,6 +25,8 @@ await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
 // Removê-la
 await client.profile.deleteProfilePicture()
 ```
+
+`getProfilePicture(jid, type?, existingId?)` retorna um `WaProfilePictureResult` — `{ url?, directPath?, id?, type? }`. O segundo argumento escolhe entre a variante compacta **`'preview'`** (default) e o original em alta resolução **`'image'`**; ambos vêm no mesmo envelope, só os bytes por trás de `url` / `directPath` diferem. Passe o `existingId` cacheado para o servidor fazer short-circuit quando a foto não mudou (o resultado então volta sem o novo `url`/`directPath`).
 
 ### Recado / texto de status {#about--status-text}
 
@@ -32,7 +37,7 @@ await client.profile.setStatus('Available')
 
 ### Push name {#push-name}
 
-O `pushName` é o nome de exibição que os contatos veem para a sua conta em chats e listas de participantes de grupo. A mudança é enfileirada como uma mutação de app-state e se propaga na próxima mensagem que você enviar — não há broadcast imediato.
+O `pushName` é o nome de exibição que os contatos veem para a sua conta em chats e listas de participantes de grupo. A mudança é aplicada às credenciais **locais** imediatamente (então `client.getCredentials()?.pushName` já reflete o novo valor) e é roteada por uma mutação de app-state; os contatos veem o novo nome na sua próxima mensagem enviada.
 
 ```ts
 await client.profile.setPushName('Alice')

@@ -13,8 +13,11 @@ icon: "id-card"
 ```ts
 import { readFile } from 'node:fs/promises'
 
-// Read someone's picture (or your own)
+// Read someone's picture (or your own) — defaults to the low-res preview
 const pic = await client.profile.getProfilePicture(jid)
+
+// High-resolution original (the full-size avatar the user uploaded)
+const fullPic = await client.profile.getProfilePicture(jid, 'image')
 
 // Set your own
 await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
@@ -22,6 +25,8 @@ await client.profile.setProfilePicture(await readFile('./avatar.jpg'))
 // Remove it
 await client.profile.deleteProfilePicture()
 ```
+
+`getProfilePicture(jid, type?, existingId?)` returns a `WaProfilePictureResult` — `{ url?, directPath?, id?, type? }`. The second argument picks between the compact **`'preview'`** variant (default) and the high-resolution **`'image'`** original; both flavors are returned as the same envelope, only the bytes behind `url` / `directPath` differ. Pass the cached `existingId` to let the server short-circuit when the picture hasn't changed (the result then comes back without the new `url`/`directPath`).
 
 ### About / status text
 
@@ -32,7 +37,7 @@ await client.profile.setStatus('Available')
 
 ### Push name
 
-`pushName` is the display name peers see for your account in chats and group participant lists. The change is queued through an app-state mutation and propagates the next time you send a message — there's no immediate broadcast.
+`pushName` is the display name peers see for your account in chats and group participant lists. The change is applied to the **local** credentials immediately (so `client.getCredentials()?.pushName` reflects the new value right away) and is routed through an app-state mutation; peers see the new name on your next outgoing message.
 
 ```ts
 await client.profile.setPushName('Alice')
