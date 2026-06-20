@@ -58,9 +58,30 @@ See [Reconnection](/en/guides/reconnection) for the handling pattern.
 | `message_addon` | `WaIncomingAddonEvent` | Reactions, poll votes, comments (decrypted addons). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Protocol messages (edits, revokes, …). |
 | `message_bot_chunk` | `WaIncomingBotChunkEvent` | Streamed bot response chunks. |
+| `message_unavailable` | `WaIncomingUnavailableMessageEvent` | A content-less placeholder arrived (see [Unavailable messages](#unavailable-messages)). |
 | `receipt` | `WaIncomingReceiptEvent` | Delivery / read / played receipts. |
 
 See [Receiving messages](/en/guides/receiving-messages) for payload details and text extraction.
+
+### Unavailable messages
+
+Some incoming `<message>` stanzas carry an `<unavailable/>` marker instead of an encrypted body — a view-once whose contents have already been consumed, or a hosted/bot message the server could not fan out. There is nothing to decrypt, but the arrival itself is still useful information (audit logs, "this message is no longer available" UI rows). The lib acks them and emits a typed `message_unavailable` event with a `kind` discriminator:
+
+```ts
+client.on('message_unavailable', (event) => {
+  // event.kind: 'view_once' | 'hosted' | 'other'
+  console.log('unavailable', event.kind, 'from', event.key.remoteJid, 'id', event.key.id)
+})
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `kind` | `'view_once' \| 'hosted' \| 'other'` | Which flavor of content the server signalled as unavailable. |
+| `key` | `WaIncomingMessageKey` | Same shape the `message` event carries — store or correlate it like any other message id. |
+| `timestampSeconds` | `number?` | From the stanza's `t` attr. |
+| `pushName` | `string?` | Sender's display name from the stanza's `notify` attr. |
+
+There is no `message` payload — the body is genuinely gone (or was never encrypted to this device).
 
 ## Presence & chat-state
 

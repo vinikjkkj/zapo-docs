@@ -143,10 +143,12 @@ Options: `timeoutMs` (default 10s), `proxy` (undici dispatcher only — `http.Ag
 
 ## Addons (reactions, poll votes)
 
-<ParamField path="addons" type="{ autoDecrypt?: boolean }" default="{ autoDecrypt: true }">
-  Encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, message edits, …) are decrypted automatically and emitted as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Set `autoDecrypt: false` to receive them encrypted and decrypt yourself via `client.message.tryDecryptAddon(event)`.
+<ParamField path="addons" type="{ autoDecrypt?: boolean, persistAllSecrets?: boolean }" default="{ autoDecrypt: true, persistAllSecrets: false }">
+  Encrypted [addons](/en/reference/glossary#addon) (poll votes, reactions, message edits, …) are decrypted automatically and emitted as typed [`message_addon`](/en/guides/receiving-messages#addons) events. Set `autoDecrypt: false` to receive them encrypted and decrypt yourself via `client.message.tryDecryptAddon(event)`. The parent message secret is looked up in the `messageSecret` cache first, then in the `messages` store.
 
-  When auto-decrypt is on, the `messageSecret` cache must be a real store — the in-tree memory provider is the default, while `'none'` defeats the cache and the client logs a warning at startup.
+  `persistAllSecrets: true` persists the 32-byte message secret of **every** sent and received message, not just the poll / event / bot-prompt ones the library knows will get a follow-up. Encrypted addons whose parent can be any message type — reactions, comments, `secretEncryptedMessage` edits — need the parent's secret to decrypt; without this flag, those parents stay decryptable across a restart only when the full `messages` archive is persistent. Use it to keep them decryptable while storing only the secret (`messages: 'none'`).
+
+  Has no effect when the `messageSecret` cache is `'none'` — every secret write lands in the noop store and is silently discarded. With the default `'memory'` provider it works for the lifetime of the process but is lost on restart and bounded by the cache's LRU and `messageSecretMs` TTL; point `messageSecret` at a persistent backend to keep secrets across restarts.
 </ParamField>
 
 ## Media

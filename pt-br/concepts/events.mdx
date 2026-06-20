@@ -58,9 +58,30 @@ Veja [Reconexão](/pt-br/guides/reconnection) para o padrão de tratamento.
 | `message_addon` | `WaIncomingAddonEvent` | Reações, votos em enquetes, comentários (addons descriptografados). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Mensagens de protocolo (edições, revogações, …). |
 | `message_bot_chunk` | `WaIncomingBotChunkEvent` | Chunks de resposta de bot em stream. |
+| `message_unavailable` | `WaIncomingUnavailableMessageEvent` | Chegou um placeholder sem conteúdo (veja [Mensagens indisponíveis](#unavailable-messages)). |
 | `receipt` | `WaIncomingReceiptEvent` | Recibos de entrega / leitura / reprodução. |
 
 Veja [Recebendo mensagens](/pt-br/guides/receiving-messages) para detalhes do payload e extração de texto.
+
+### Mensagens indisponíveis {#unavailable-messages}
+
+Algumas stanzas `<message>` recebidas carregam um marcador `<unavailable/>` no lugar de um corpo criptografado — uma view-once cujo conteúdo já foi consumido, ou uma mensagem hosted/bot que o servidor não conseguiu fazer fanout. Não há nada para decifrar, mas a chegada em si ainda é informação útil (audit logs, linhas "esta mensagem não está mais disponível" na UI). A lib ackeia e emite um evento tipado `message_unavailable` com discriminador `kind`:
+
+```ts
+client.on('message_unavailable', (event) => {
+  // event.kind: 'view_once' | 'hosted' | 'other'
+  console.log('indisponível', event.kind, 'de', event.key.remoteJid, 'id', event.key.id)
+})
+```
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `kind` | `'view_once' \| 'hosted' \| 'other'` | Qual variante de conteúdo o servidor sinalizou como indisponível. |
+| `key` | `WaIncomingMessageKey` | Mesma forma que o evento `message` carrega — armazene ou correlacione como qualquer outro id de mensagem. |
+| `timestampSeconds` | `number?` | Vem do attr `t` da stanza. |
+| `pushName` | `string?` | Nome de exibição do remetente vindo do attr `notify` da stanza. |
+
+Não há payload `message` — o corpo realmente sumiu (ou nunca foi criptografado para este device).
 
 ## Presença e chat-state {#presence--chat-state}
 

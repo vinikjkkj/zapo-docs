@@ -143,10 +143,12 @@ Opções: `timeoutMs` (padrão 10s), `proxy` (apenas dispatcher do undici — o 
 
 ## Addons (reações, votos em enquetes) {#addons-reactions-poll-votes}
 
-<ParamField path="addons" type="{ autoDecrypt?: boolean }" default="{ autoDecrypt: true }">
-  [Addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, edições de mensagem, …) são descriptografados automaticamente e emitidos como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Defina `autoDecrypt: false` para recebê-los criptografados e descriptografar você mesmo via `client.message.tryDecryptAddon(event)`.
+<ParamField path="addons" type="{ autoDecrypt?: boolean, persistAllSecrets?: boolean }" default="{ autoDecrypt: true, persistAllSecrets: false }">
+  [Addons](/pt-br/reference/glossary#addon) criptografados (votos em enquetes, reações, edições de mensagem, …) são descriptografados automaticamente e emitidos como eventos tipados [`message_addon`](/pt-br/guides/receiving-messages#addons). Defina `autoDecrypt: false` para recebê-los criptografados e descriptografar você mesmo via `client.message.tryDecryptAddon(event)`. O secret da mensagem-pai é procurado no cache `messageSecret` primeiro, depois no store `messages`.
 
-  Com auto-decrypt ligado, o cache `messageSecret` precisa ser um store real — o provider de memória embutido é o padrão, enquanto `'none'` desliga o cache e o client emite um warning na inicialização.
+  `persistAllSecrets: true` persiste o secret de 32 bytes de **toda** mensagem enviada e recebida, não só as de poll / event / bot-prompt que a lib sabe que terão follow-up. Addons criptografados cujo pai pode ser qualquer tipo de mensagem — reações, comentários, edições via `secretEncryptedMessage` — precisam do secret do pai para decifrar; sem essa flag, esses pais só continuam decifráveis depois de um restart quando o arquivo `messages` completo é persistente. Use para manter a decifragem possível guardando apenas o secret (`messages: 'none'`).
+
+  Sem efeito quando o cache `messageSecret` é `'none'` — toda escrita de secret cai no noop store e é silenciosamente descartada. Com o provider `'memory'` default funciona pelo tempo de vida do processo, mas perde no restart e fica limitado ao LRU e ao TTL `messageSecretMs` do cache; aponte `messageSecret` para um backend persistente para manter os secrets entre restarts.
 </ParamField>
 
 ## Mídia {#media}
