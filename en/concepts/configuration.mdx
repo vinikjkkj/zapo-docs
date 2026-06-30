@@ -409,6 +409,22 @@ const client = new WaClient(options, new MyLogger('info'))
   `child()` is used internally to attach per-component bindings (e.g. `{ component: 'noise' }`, `{ component: 'signal', sessionId }`). Returning a new instance with merged bindings — instead of mutating — keeps those tags scoped to the producing subsystem.
 </Note>
 
+## Plugins
+
+<ParamField path="plugins" type="readonly WaClientPluginDefinition[]">
+  Optional `WaClient` plugins — behavior hooks and/or coordinators exposed at `client[exposeAs]`. Authored with [`defineWaClientPlugin`](/en/concepts/plugins). The voice-calling plugin (`@zapo-js/voip`) is the reference implementation; see the [plugin system](/en/concepts/plugins) page for how to wire and author plugins.
+</ParamField>
+
+```ts
+import { voipPlugin } from '@zapo-js/voip'
+
+new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin()]
+}, logger)
+```
+
 ## Advanced options
 
 Rarely needed — listed for completeness.

@@ -6,6 +6,10 @@ icon: "bell"
 
 `WaClient` is a strongly-typed event emitter. Every incoming activity — messages, receipts, group changes, presence — is surfaced as an event with a typed payload.
 
+<Note>
+  [Plugins](/en/concepts/plugins) can contribute their own typed events; they appear on `client.on` only when the plugin is in the `plugins` array. See the [VoIP guide](/en/guides/voip) for an example — its `voip_*` events are available when `voipPlugin()` is installed.
+</Note>
+
 ## Listening
 
 ```ts

@@ -42,6 +42,7 @@ O pacote principal **não tem dependências de runtime obrigatórias**. Todo o r
     <Tree.File name="@zapo-js/store-redis — backend Redis" />
     <Tree.File name="@zapo-js/store-mongo — backend MongoDB" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
+    <Tree.File name="@zapo-js/voip — chamadas de voz do WhatsApp" />
     <Tree.File name="@zapo-js/mcp-server — ferramenta dev: controle por um agente de IA" />
     <Tree.File name="@zapo-js/fake-server — ferramenta dev: servidor de teste in-process" />
   </Tree.Folder>
@@ -126,6 +127,19 @@ Ele invoca `ffmpeg`/`ffprobe` e usa `sharp`, então garanta que esses binários 
 <Note>
   `@zapo-js/media-utils` também lista [`file-type`](https://github.com/sindresorhus/file-type) (`^19`) como peer dependency **opcional**. Instale-o (`npm install file-type`) para habilitar a detecção automática de mimetype — sem ele, a [resolução de mimetype do guia de mídia](/pt-br/guides/media#mimetype-resolution) volta a exigir um `mimetype` explícito em cada envio.
 </Note>
+
+## Chamadas de voz {#voice-calls}
+
+Instale [`@zapo-js/voip`](/pt-br/guides/voip) para fazer e receber chamadas de voz do WhatsApp. Ele é distribuído como um plugin de `WaClient` e puxa duas peer dependencies próprias:
+
+```bash
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+```
+
+- **`@roamhq/wrtc`** — SCTP para o transporte de relay.
+- **`libmlow-wasm`** — perfil Opus do WhatsApp, em WebAssembly (sem build nativo).
+
+Veja o [guia de VoIP](/pt-br/guides/voip) para saber como conectar `voipPlugin()` ao client.
 
 ## Verifique sua configuração {#verify-your-setup}
 

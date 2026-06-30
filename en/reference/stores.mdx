@@ -149,6 +149,32 @@ const redis = createRedisStore({
 | `redis` | `Redis \| RedisOptions` | An `ioredis` instance or options. **Required.** |
 | `keyPrefix` | `string` | Prefix for all keys. |
 | `cacheTtlMs` | object | Cache TTLs. |
+| `storeTtlMs` | object | Opt-in per-domain TTL on the otherwise-persistent stores (see [Per-domain store TTL](#per-domain-store-ttl)). |
+
+### Per-domain store TTL
+
+Persistent store domains never expire by default. Set `storeTtlMs.<domain>Ms` to make Redis prune that domain's keys automatically — implemented as `PEXPIRE` on each write, no background cleanup needed. Any domain left unset stays persistent (byte-identical to the previous behavior).
+
+```ts
+createRedisStore({
+  redis: { host: '127.0.0.1', port: 6379 },
+  storeTtlMs: {
+    messagesMs: 30 * 24 * 60 * 60_000, // drop messages older than 30 days
+    sessionMs:   7 * 24 * 60 * 60_000  // drop sessions idle for 7 days
+  }
+})
+```
+
+Two semantics, by domain kind:
+
+| Group | Domains | Refresh on |
+| --- | --- | --- |
+| **Data** | `messagesMs`, `threadsMs`, `contactsMs`, `privacyTokenMs` | **write only** — keys expire a fixed window after their last update (history / retention bounding). |
+| **Crypto & session** | `preKeyMs`, `sessionMs`, `identityMs`, `signalMs`, `senderKeyMs`, `appStateMs` | **read and write** (sliding) — an actively used session keeps its keys alive, only idle sessions are evicted. |
+
+<Warning>
+  `auth` has no TTL knob on purpose: expiring login credentials would log the device out. Pick a crypto TTL longer than your worst idle window — an idle session beyond that window evicts the Signal / app-state keys and forces a re-handshake or re-sync. Non-positive `ttlMs` values are rejected at construction.
+</Warning>
 
 Requires the `ioredis` peer dependency.
 

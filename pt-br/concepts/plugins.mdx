@@ -1,0 +1,205 @@
+---
+title: "Plugins"
+description: "Estenda o WaClient com plugins tipados: registre handlers de stanza, exponha novos coordinators em client[exposeAs] e contribua com eventos tipados que só existem quando o plugin está instalado."
+icon: "puzzle-piece"
+---
+
+O sistema de plugins permite estender o `WaClient` sem fazer fork dele. Um plugin pode conectar-se ao pipeline de stanzas de entrada, expor seu próprio coordinator em `client[exposeAs]`, contribuir com eventos tipados em `client.on` e fazer limpeza no disconnect — tudo com inferência completa de TypeScript, sem augmentation global de módulo.
+
+`@zapo-js/voip` é a implementação de referência; veja o [guia de VoIP](/pt-br/guides/voip) para o que parece um plugin finalizado.
+
+## O que é um plugin {#what-a-plugin-is}
+
+Cada plugin é um valor `WaClientPluginDefinition` passado pela opção [`plugins`](/pt-br/concepts/configuration#plugins):
+
+```ts
+new WaClient({ store, sessionId: 'default', plugins: [myPlugin()] }, logger)
+```
+
+Há dois sabores:
+
+- **Plugins de comportamento** rodam efeitos colaterais (registram handlers de stanza, ouvem eventos, agendam trabalho) e não expõem nada no client.
+- **Plugins de exposição** também publicam um valor em `client[exposeAs]` — tipicamente um objeto coordinator, como `client.voip`.
+
+Ambos os sabores podem contribuir com eventos tipados que aparecem em `client.on` / `client.once` / `client.off` **apenas quando o plugin está no array `plugins`**. A inferência é derivada do valor: se o plugin não estiver instalado, o nome do evento não existe no tipo do client.
+
+## Autoria de um plugin {#authoring-a-plugin}
+
+Use `defineWaClientPlugin` para autoria com tipos seguros. Ele tem duas sobrecargas.
+
+### Plugin de comportamento {#behavior-plugin}
+
+```ts
+import { defineWaClientPlugin } from 'zapo-js'
+
+export function loggingPlugin() {
+  return defineWaClientPlugin({
+    id: 'example/logging',
+    setup(ctx) {
+      const unregister = ctx.registerIncomingHandler({
+        tag: 'message',
+        handler: async (node) => {
+          ctx.logger.info('saw <message>', { from: node.attrs.from })
+          // retorna false para o handler do core ainda rodar
+          return false
+        }
+      })
+      ctx.registerDispose(() => unregister())
+    }
+  })
+}
+```
+
+### Plugin de exposição {#expose-plugin}
+
+A sobrecarga de exposição recebe três parâmetros de tipo: a chave `exposeAs` como literal string, o tipo do valor retornado por `setup` e o mapa de eventos. A inferência flui do valor de volta para `client.on` e `client[exposeAs]`:
+
+```ts
+import { defineWaClientPlugin } from 'zapo-js'
+
+interface MetricsEvents {
+  readonly metrics_tick: (payload: { readonly count: number }) => void
+}
+
+class Metrics {
+  count = 0
+  increment(): void {
+    this.count += 1
+  }
+}
+
+export function metricsPlugin() {
+  return defineWaClientPlugin<'metrics', Metrics, MetricsEvents>({
+    id: 'example/metrics',
+    exposeAs: 'metrics',
+    setup(ctx) {
+      const metrics = new Metrics()
+      const interval = setInterval(() => {
+        ctx.emit('metrics_tick', { count: metrics.count })
+      }, 1000)
+      ctx.registerDispose(() => clearInterval(interval))
+      return metrics
+    },
+    dispose(metrics) {
+      // metrics é tipado como Metrics aqui
+      metrics.count = 0
+    }
+  })
+}
+```
+
+Depois de conectar `metricsPlugin()` em `plugins`, `client.metrics` é tipado como `Metrics` e `client.on('metrics_tick', ...)` é verificado contra `MetricsEvents`.
+
+<Note>
+  O parâmetro `exposeAs` é restrito a `K extends keyof WaClient ? never : K`. Tentar expor um nome que já existe no client — `'message'`, `'group'`, `'voip'` se voip também estiver instalado — é um erro de TypeScript no call site.
+</Note>
+
+## Contexto do plugin {#plugin-context}
+
+`setup` recebe um `WaClientPluginContext`:
+
+| Campo | Tipo | O que ele te dá |
+| --- | --- | --- |
+| `client` | `WaClient` | O host client, para late binding (handlers podem ler `client.getCredentials()`, etc.). |
+| `options` | `Readonly<WaClientOptions>` | As opções exatas com que o client foi construído. |
+| `logger` | `Logger` | Child logger já marcado com `{ plugin: id }`. |
+| `stores` | session stores | Os mesmos domínios por sessão que os coordinators usam. |
+| `deps` | `WaClientDependencies` | Grafo de dependências dos coordinators (avançado). |
+| `emit` | função | Emite um evento (tipado) no host client. |
+| `on` / `off` / `once` | funções | Assina eventos no host client. |
+| `queryWithContext` | função | Envia uma query estilo IQ e aguarda o node de resposta. |
+| `registerIncomingHandler` | função | Conecta-se ao pipeline de stanzas de entrada; veja abaixo. |
+| `registerIncomingStanzaFilter` | função | Descarta ou reescreve stanzas antes dos handlers do core rodarem. |
+| `registerDispose` | função | Agenda um callback de teardown. Roda LIFO no `WaClient.disconnect`. |
+
+<Warning>
+  `ctx.deps` é uma API avançada para autores de plugin — novos coordinators podem aparecer em releases minor. Alguns coordinators aninhados acessam material de chaves, então **não** logue nem persista `deps` de forma indiscriminada.
+</Warning>
+
+### Handlers de entrada {#incoming-handlers}
+
+`registerIncomingHandler({ tag, prepend, handler })` permite interceptar uma tag específica de stanza (`'message'`, `'iq'`, `'call'`, `'ack'`, `'receipt'`, …). Retorne `true` de `handler` para sinalizar que você cuidou da stanza (o core client não vai dar ack novamente); retorne `false` para deixar o resto do pipeline rodar.
+
+```ts
+ctx.registerIncomingHandler({
+  tag: 'call',
+  prepend: true,
+  handler: async (node) => {
+    // roda antes do handler do core; retornar true reivindica a stanza
+    return true
+  }
+})
+```
+
+`registerIncomingStanzaFilter` roda ainda mais cedo e pode descartar stanzas inteiramente.
+
+## Extensão de eventos tipados {#typed-event-extension}
+
+Plugins encadeiam seus eventos no host client por meio de um marcador fantasma `__pluginEvents` carregado pelo valor de retorno de `defineWaClientPlugin`. O terceiro parâmetro genérico é o mapa de eventos:
+
+```ts
+defineWaClientPlugin<'voip', WaVoipCoordinator, VoipEvents>({ /* ... */ })
+```
+
+O tipo de evento do `WaClient` é derivado da tupla `plugins` via `WaClientPluginEventsFromPlugins`. O efeito prático: um evento `voip_*` existe em `client.on` **apenas quando `voipPlugin()` está em `plugins`**.
+
+```ts
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin()]
+}, logger)
+
+// OK: voipPlugin contribui com voip_call_incoming
+client.on('voip_call_incoming', (call) => { /* ... */ })
+
+// Sem voipPlugin() em plugins, a linha acima é um erro de tipo.
+```
+
+Não há augmentation global de módulo — instalar um `WaClient` diferente no mesmo projeto não herda eventos de plugins estranhos.
+
+## Ciclo de vida {#lifecycle}
+
+Plugins instalam durante `new WaClient(...)`:
+
+1. O client é construído e seus coordinators são conectados.
+2. `installWaClientPlugins` itera o array `plugins` **em ordem**. Para cada plugin:
+   - O `id` é verificado contra ids vistos anteriormente.
+   - Se `exposeAs` estiver definido, o nome é verificado contra outros plugins e contra membros existentes do `WaClient`.
+   - `setup(ctx)` roda. O valor de retorno (para plugins de exposição) é publicado como um getter não-configurável e não-gravável no client.
+3. No `client.disconnect()`, depois que os handlers de entrada drenam, os callbacks de `dispose` registrados rodam em ordem **reversa** (LIFO). Um dispose que lança é logado e o resto ainda roda.
+
+## Condições de erro {#error-conditions}
+
+`installWaClientPlugins` lança sincronamente durante a construção do client nestes casos:
+
+- **`id` duplicado** — `"duplicate wa client plugin id: <id>"`. Cada plugin precisa ter um id único no array `plugins`.
+- **`exposeAs` duplicado** — `"duplicate wa client plugin exposeAs: <name>"`. Dois plugins de exposição não podem publicar o mesmo nome.
+- **Colisão com um built-in** — `"wa client plugin exposeAs \"<name>\" collides with a reserved client member"`. Tentar `exposeAs: 'message'`, `'group'`, `'on'`, etc. falha em runtime (e em compile time via a guarda `keyof WaClient`).
+
+```ts
+// lança: duplicate wa client plugin id
+new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin(), voipPlugin()]
+})
+
+// lança: collides with a reserved client member
+const badPlugin = defineWaClientPlugin({
+  id: 'example/bad',
+  exposeAs: 'message' as never,
+  setup: () => ({})
+})
+```
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Guia de VoIP" icon="phone" href="/pt-br/guides/voip" arrow>
+    Faça e receba chamadas do WhatsApp via `@zapo-js/voip`, o plugin de referência.
+  </Card>
+  <Card title="Configuração" icon="sliders" href="/pt-br/concepts/configuration#plugins" arrow>
+    Onde `plugins` fica em `WaClientOptions`.
+  </Card>
+</CardGroup>

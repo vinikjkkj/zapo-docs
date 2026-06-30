@@ -42,6 +42,7 @@ The core package has **no mandatory runtime dependencies**. Everything else — 
     <Tree.File name="@zapo-js/store-redis — Redis backend" />
     <Tree.File name="@zapo-js/store-mongo — MongoDB backend" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
+    <Tree.File name="@zapo-js/voip — WhatsApp voice calls" />
     <Tree.File name="@zapo-js/mcp-server — dev tool: drive from an AI agent" />
     <Tree.File name="@zapo-js/fake-server — dev tool: in-process test server" />
   </Tree.Folder>
@@ -126,6 +127,19 @@ It shells out to `ffmpeg`/`ffprobe` and uses `sharp`, so make sure those binarie
 <Note>
   `@zapo-js/media-utils` also lists [`file-type`](https://github.com/sindresorhus/file-type) (`^19`) as an **optional** peer dependency. Install it (`npm install file-type`) to enable automatic mimetype detection — without it, the [media guide's mimetype resolution](/en/guides/media#mimetype-resolution) falls back to requiring an explicit `mimetype` on each send.
 </Note>
+
+## Voice calls
+
+Install [`@zapo-js/voip`](/en/guides/voip) to place and receive WhatsApp voice calls. It ships as a `WaClient` plugin and pulls two peer dependencies of its own:
+
+```bash
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+```
+
+- **`@roamhq/wrtc`** — SCTP for the relay transport.
+- **`libmlow-wasm`** — WhatsApp's Opus profile, as WebAssembly (no native build).
+
+See the [VoIP guide](/en/guides/voip) for how to wire `voipPlugin()` into the client.
 
 ## Verify your setup
 

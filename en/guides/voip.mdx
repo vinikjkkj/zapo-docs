@@ -1,0 +1,289 @@
+---
+title: "Voice calls (VoIP)"
+description: "Place and answer WhatsApp voice calls with @zapo-js/voip — a plugin that exposes a coordinator at client.voip, decodes inbound PCM, and lets you feed live outbound audio with backpressure."
+icon: "phone"
+---
+
+`@zapo-js/voip` is the official voice-calling plugin for `zapo-js`. It rides on the [plugin system](/en/concepts/plugins), exposes a `WaVoipCoordinator` at `client.voip`, and emits `voip_*` events on the host client.
+
+<Warning>
+  Only **audio** media is implemented. You may flag a call as video in the signaling (see `CallOfferOptions.isVideo`), but no video media is encoded or transported.
+</Warning>
+
+## Install
+
+```bash
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+```
+
+The package has three peer dependencies, all required at runtime:
+
+- **`@roamhq/wrtc`** (`>= 0.10.0`) — provides SCTP for the relay transport.
+- **`libmlow-wasm`** (`^0.1.1`) — WhatsApp's Opus profile, compiled to WebAssembly. No native build step.
+- **`zapo-js`** (`^1.0.0`) — the host client.
+
+Some methods also need an `ffmpeg` binary on `PATH`:
+
+- `loadAudio` decodes the audio file via `ffmpeg`.
+- Streaming audio with `feedLiveAudio` from a file likewise needs `ffmpeg` to produce 16 kHz mono `Float32Array` chunks.
+
+## Wire the plugin
+
+Add `voipPlugin()` to `WaClientOptions.plugins`. The coordinator appears at `client.voip` and the `voip_*` events become available on `client.on`.
+
+```ts
+import { WaClient } from 'zapo-js'
+import { voipPlugin } from '@zapo-js/voip'
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin()]
+}, logger)
+
+await client.connect()
+
+client.on('voip_call_incoming', (call) => {
+  console.log('incoming', call.callId, 'from', call.peerJid)
+})
+```
+
+### Plugin options
+
+```ts
+voipPlugin({ maxConcurrentCalls: 2, logLevel: 'warn' })
+```
+
+<ParamField path="maxConcurrentCalls" type="number" default="1">
+  Maximum simultaneous non-ended calls (ringing, connecting, or active). Increase to enable parallel multi-call. Outgoing `startCall` rejects, and incoming calls arrive with `acceptBlocked: true`, when the limit is hit.
+</ParamField>
+
+<ParamField path="logLevel" type="LogLevel">
+  Minimum log level for the (chatty) VoIP plugin. Defaults to the host client's level; set it to cap diagnostics independently — for example `'warn'` to keep VoIP noise out of a `trace` host logger.
+</ParamField>
+
+## The coordinator surface
+
+### Placing a call
+
+```ts
+const callId = await client.voip.startCall({
+  peerJid: '5511999999999@s.whatsapp.net'
+})
+```
+
+<ParamField path="peerJid" type="string" required>
+  Bare or device JID to call.
+</ParamField>
+
+<ParamField path="isVideo" type="boolean" default="false">
+  Flag the call as video in the signaling stanzas. Video media encode/transport is **not implemented**; only audio media flows.
+</ParamField>
+
+<ParamField path="audioFile" type="string">
+  Audio file to preload and play once the call connects (needs `ffmpeg`). Equivalent to calling `loadAudio` after the call goes active.
+</ParamField>
+
+<ParamField path="peerDevices" type="string[]">
+  Explicit peer device JIDs to ring; omit to resolve them automatically.
+</ParamField>
+
+`startCall` resolves with the new call id once the offer is sent. Progress then arrives via `voip_call_state`. It rejects when you're at the `maxConcurrentCalls` limit or if the offer fails to send.
+
+### Answering and ending
+
+```ts
+await client.voip.acceptCall(callId)
+await client.voip.rejectCall(callId)          // EndCallReason.Declined
+await client.voip.endCall(callId)             // EndCallReason.UserEnded
+await client.voip.endCall(callId, EndCallReason.Busy)
+```
+
+- `acceptCall(callId)` — accept a ringing incoming call. Throws if `callId` is unknown or not in an acceptable state.
+- `rejectCall(callId, reason?)` — reject a ringing incoming call (default reason `Declined`). Sends the reject stanza, then tears the call down.
+- `endCall(callId, reason?)` — end an active or connecting call (default reason `UserEnded`). No-op if the call is unknown or already ended.
+
+### Preloaded outbound audio
+
+```ts
+await client.voip.loadAudio(callId, './hello.mp3')
+```
+
+Decodes `audioPath` via `ffmpeg` and queues it as the outbound audio, played once the call is active. Throws if the file is missing or `ffmpeg` is unavailable.
+
+For an unbounded or live source (TTS stream, ongoing capture) use external audio mode instead — see below.
+
+### Mute
+
+```ts
+client.voip.setMute(callId, true)   // mute local outbound audio
+client.voip.setMute(callId, false)  // unmute
+```
+
+### Live outbound audio (external mode)
+
+For sources you can't preload — streaming TTS, real-time capture — switch the call into **external audio mode** and pump samples in as they arrive. The plugin buffers them through a bounded jitter buffer and watermarks the buffer so a respectful producer never loses audio.
+
+```ts
+client.voip.setExternalAudioMode(callId, true)
+
+const { pauseMs, resumeMs } = client.voip.getFeedWatermarksMs()
+
+// later, repeatedly:
+const bufferedMs = client.voip.feedLiveAudio(callId, samples) // Float32Array, 16 kHz mono
+if (bufferedMs >= pauseMs) {
+  // back off until getLiveBufferMs(callId) <= resumeMs
+}
+```
+
+| Method | Returns | What it does |
+| --- | --- | --- |
+| `setExternalAudioMode(callId, enabled)` | `void` | Switch outbound audio source between preloaded playback and the live feed. Disable to return to preloaded playback. |
+| `feedLiveAudio(callId, data)` | `number` | Feed a chunk of mono PCM (`Float32Array` at the engine sample rate). Returns the audio currently buffered ahead of the sender in milliseconds, so a producer can pace itself. Returns `0` when no session exists. The buffer is bounded and drops the oldest samples on overflow. |
+| `getLiveBufferMs(callId)` | `number` | Milliseconds of live audio currently buffered ahead of the sender. `0` when no session exists or external mode is off. |
+| `getFeedWatermarksMs()` | `{ pauseMs, resumeMs }` | Backpressure watermarks for the live feed, in milliseconds. Constants of the feed contract, independent of any specific call. |
+
+<Tip>
+  The watermark contract: pause feeding once `getLiveBufferMs(callId) >= pauseMs`, resume once it drains back to `resumeMs`. `pauseMs` stays below the engine's internal drop threshold, so a producer that respects it never loses audio. If you ignore it, oldest samples are dropped on overflow.
+</Tip>
+
+### Snapshots
+
+```ts
+const call = client.voip.getCall(callId)   // CallInfo | null
+const all  = client.voip.getCalls()        // readonly CallInfo[]
+```
+
+`CallInfo` captures everything you need to render UI: `callId`, `peerJid`, `direction`, `mediaType`, `createdAt`, `callerPn`, plus a `stateData` object (`state`, `audioMuted`, `videoOff`, `connectedAt`, `endReason`, `durationSecs`, `acceptBlocked`, …) and derived getters `isInitiator`, `isActive`, `isRinging`, `isEnded`, `canAccept`, `canReject`, `isAcceptBlocked`.
+
+## Events
+
+Add `voipPlugin()` to `plugins` and these events become available on `client.on`. Without the plugin they don't exist on the type — see [Plugins](/en/concepts/plugins#typed-event-extension).
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `voip_call_state` | `CallInfo` | The call's state transitioned (ringing, connecting, active, on_hold, ended, …). |
+| `voip_call_incoming` | `CallInfo` | A new incoming call. |
+| `voip_call_ended` | `CallInfo` | The call ended (any reason). |
+| `voip_call_inbound_audio` | `{ call, pcm }` | Decoded peer audio. `pcm` is 16 kHz mono `Float32Array`. |
+| `voip_call_outbound_audio_finished` | `CallInfo` | The preloaded outbound audio finished sending. |
+| `voip_call_error` | `Error` | A non-fatal call error (logging hook). |
+
+## Enums
+
+All `enum` values are lowercase strings — use the enum constants to avoid typos.
+
+### `CallState`
+
+| Constant | String value |
+| --- | --- |
+| `CallState.Initiating` | `'initiating'` |
+| `CallState.Ringing` | `'ringing'` |
+| `CallState.IncomingRinging` | `'incoming_ringing'` |
+| `CallState.Connecting` | `'connecting'` |
+| `CallState.Active` | `'active'` |
+| `CallState.OnHold` | `'on_hold'` |
+| `CallState.Ended` | `'ended'` |
+
+### `CallDirection`
+
+| Constant | String value |
+| --- | --- |
+| `CallDirection.Outgoing` | `'outgoing'` |
+| `CallDirection.Incoming` | `'incoming'` |
+
+### `CallMediaType`
+
+| Constant | String value |
+| --- | --- |
+| `CallMediaType.Audio` | `'audio'` |
+| `CallMediaType.Video` | `'video'` |
+
+### `EndCallReason`
+
+| Constant | String value |
+| --- | --- |
+| `EndCallReason.UserEnded` | `'user_ended'` |
+| `EndCallReason.Declined` | `'declined'` |
+| `EndCallReason.Timeout` | `'timeout'` |
+| `EndCallReason.Busy` | `'busy'` |
+| `EndCallReason.Cancelled` | `'cancelled'` |
+| `EndCallReason.Failed` | `'failed'` |
+| `EndCallReason.DoNotDisturb` | `'do_not_disturb'` |
+| `EndCallReason.Unknown` | `'unknown'` |
+
+## Audio format
+
+- **Sample rate:** 16 kHz.
+- **Channels:** mono.
+- **Sample format:** `Float32Array` in `[-1.0, 1.0]`.
+- **Codec on the wire:** WhatsApp's Opus profile, encoded via `libmlow-wasm`. The RTP payload type is `120` (`PayloadType.WhatsAppOpus`).
+
+Both inbound (`voip_call_inbound_audio`) and outbound (`feedLiveAudio`) are this same `Float32Array` shape — keep your buffers in this format and you can route them straight through.
+
+## Worked example
+
+A minimal incoming auto-accept that records inbound PCM into an in-memory buffer:
+
+```ts
+import { WaClient, createPinoLogger } from 'zapo-js'
+import { CallState, voipPlugin } from '@zapo-js/voip'
+
+const logger = await createPinoLogger({ level: 'info' })
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin({ maxConcurrentCalls: 1 })]
+}, logger)
+
+const recordings = new Map<string, Float32Array[]>()
+
+client.on('voip_call_incoming', async (call) => {
+  if (!call.canAccept) return
+  await client.voip.acceptCall(call.callId)
+  recordings.set(call.callId, [])
+})
+
+client.on('voip_call_inbound_audio', ({ call, pcm }) => {
+  // pcm is 16 kHz mono Float32Array
+  const buffer = recordings.get(call.callId)
+  if (buffer) buffer.push(pcm.slice())
+})
+
+client.on('voip_call_state', (call) => {
+  if (call.stateData.state === CallState.Active) {
+    console.log(`call ${call.callId} active`)
+  }
+})
+
+client.on('voip_call_ended', (call) => {
+  const chunks = recordings.get(call.callId) ?? []
+  const total = chunks.reduce((n, c) => n + c.length, 0)
+  console.log(`call ${call.callId} ended; recorded ${total} samples`)
+  recordings.delete(call.callId)
+})
+
+await client.connect()
+```
+
+For a fuller example — placing outgoing calls, preloaded vs streamed playback, hangup-after-audio, WAV recording — see [`examples/voip-example.ts`](https://github.com/vinikjkkj/zapo/blob/master/examples/voip-example.ts) in the zapo source tree.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Plugin system" icon="puzzle-piece" href="/en/concepts/plugins" arrow>
+    How `voipPlugin()` plugs into `WaClient`, and how to author your own.
+  </Card>
+  <Card title="Events" icon="bell" href="/en/concepts/events" arrow>
+    The host client's event surface; `voip_*` events sit alongside the built-ins.
+  </Card>
+</CardGroup>
+
+## Credits
+
+The VoIP plugin was built by:
+
+- [@vinikjkkj](https://github.com/vinikjkkj)
+- [@edgardmessias](https://github.com/edgardmessias) — Edgard Lorraine Messias
+- [@w3nder](https://github.com/w3nder) — Wender Teixeira

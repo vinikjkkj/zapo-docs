@@ -149,6 +149,32 @@ const redis = createRedisStore({
 | `redis` | `Redis \| RedisOptions` | Uma instância `ioredis` ou opções. **Obrigatório.** |
 | `keyPrefix` | `string` | Prefixo para todas as chaves. |
 | `cacheTtlMs` | object | TTLs de cache. |
+| `storeTtlMs` | object | TTL opt-in por domínio nos stores normalmente persistentes (veja [TTL por domínio do store](#per-domain-store-ttl)). |
+
+### TTL por domínio do store {#per-domain-store-ttl}
+
+Domínios de store persistentes nunca expiram por padrão. Defina `storeTtlMs.<domínio>Ms` para o Redis prunar as chaves daquele domínio automaticamente — implementado como `PEXPIRE` em cada escrita, sem precisar de cleanup em background. Qualquer domínio deixado de fora permanece persistente (comportamento byte-idêntico ao anterior).
+
+```ts
+createRedisStore({
+  redis: { host: '127.0.0.1', port: 6379 },
+  storeTtlMs: {
+    messagesMs: 30 * 24 * 60 * 60_000, // descarta mensagens mais antigas que 30 dias
+    sessionMs:   7 * 24 * 60 * 60_000  // descarta sessions ociosas por 7 dias
+  }
+})
+```
+
+Duas semânticas, por tipo de domínio:
+
+| Grupo | Domínios | Refresh em |
+| --- | --- | --- |
+| **Dados** | `messagesMs`, `threadsMs`, `contactsMs`, `privacyTokenMs` | **só write** — chaves expiram uma janela fixa após a última escrita (limite de histórico / retenção). |
+| **Crypto & sessão** | `preKeyMs`, `sessionMs`, `identityMs`, `signalMs`, `senderKeyMs`, `appStateMs` | **read e write** (sliding) — uma sessão ativa mantém as chaves vivas, só sessões ociosas são evictadas. |
+
+<Warning>
+  `auth` não tem botão de TTL de propósito: expirar credenciais de login deslogaria o device. Escolha um TTL de crypto maior que sua pior janela de ociosidade — uma sessão ociosa além dessa janela evicta as chaves de Signal / app-state e força um novo handshake ou re-sync. Valores `ttlMs` não-positivos são rejeitados na construção.
+</Warning>
 
 Requer a peer dependency `ioredis`.
 

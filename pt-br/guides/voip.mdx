@@ -1,0 +1,289 @@
+---
+title: "Chamadas de voz (VoIP)"
+description: "Faça e atenda chamadas de voz do WhatsApp com @zapo-js/voip — um plugin que expõe um coordinator em client.voip, decodifica PCM de entrada e permite alimentar áudio ao vivo de saída com backpressure."
+icon: "phone"
+---
+
+`@zapo-js/voip` é o plugin oficial de chamadas de voz para `zapo-js`. Ele se apoia no [sistema de plugins](/pt-br/concepts/plugins), expõe um `WaVoipCoordinator` em `client.voip` e emite eventos `voip_*` no host client.
+
+<Warning>
+  Apenas mídia **de áudio** está implementada. Você pode marcar uma chamada como vídeo no signaling (veja `CallOfferOptions.isVideo`), mas nenhuma mídia de vídeo é codificada ou transportada.
+</Warning>
+
+## Instalação {#install}
+
+```bash
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+```
+
+O package tem três peer dependencies, todas obrigatórias em runtime:
+
+- **`@roamhq/wrtc`** (`>= 0.10.0`) — fornece SCTP para o transporte de relay.
+- **`libmlow-wasm`** (`^0.1.1`) — perfil Opus do WhatsApp, compilado para WebAssembly. Sem etapa de build nativo.
+- **`zapo-js`** (`^1.0.0`) — o host client.
+
+Alguns métodos também precisam de um binário `ffmpeg` no `PATH`:
+
+- `loadAudio` decodifica o arquivo de áudio via `ffmpeg`.
+- Streamar áudio com `feedLiveAudio` a partir de um arquivo igualmente precisa de `ffmpeg` para produzir chunks `Float32Array` 16 kHz mono.
+
+## Conecte o plugin {#wire-the-plugin}
+
+Adicione `voipPlugin()` em `WaClientOptions.plugins`. O coordinator aparece em `client.voip` e os eventos `voip_*` ficam disponíveis em `client.on`.
+
+```ts
+import { WaClient } from 'zapo-js'
+import { voipPlugin } from '@zapo-js/voip'
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin()]
+}, logger)
+
+await client.connect()
+
+client.on('voip_call_incoming', (call) => {
+  console.log('incoming', call.callId, 'from', call.peerJid)
+})
+```
+
+### Opções do plugin {#plugin-options}
+
+```ts
+voipPlugin({ maxConcurrentCalls: 2, logLevel: 'warn' })
+```
+
+<ParamField path="maxConcurrentCalls" type="number" default="1">
+  Máximo de chamadas simultâneas não-ended (ringing, connecting ou active). Aumente para habilitar multi-call em paralelo. `startCall` de saída rejeita, e chamadas de entrada chegam com `acceptBlocked: true`, quando o limite é atingido.
+</ParamField>
+
+<ParamField path="logLevel" type="LogLevel">
+  Log level mínimo para o (verboso) plugin de VoIP. Por padrão usa o nível do host client; defina-o para limitar diagnósticos de forma independente — por exemplo `'warn'` para manter o ruído do VoIP fora de um host logger em `trace`.
+</ParamField>
+
+## A superfície do coordinator {#the-coordinator-surface}
+
+### Iniciando uma chamada {#placing-a-call}
+
+```ts
+const callId = await client.voip.startCall({
+  peerJid: '5511999999999@s.whatsapp.net'
+})
+```
+
+<ParamField path="peerJid" type="string" required>
+  JID bare ou de dispositivo a chamar.
+</ParamField>
+
+<ParamField path="isVideo" type="boolean" default="false">
+  Marca a chamada como vídeo nas stanzas de signaling. O encode/transport de mídia de vídeo **não está implementado**; apenas mídia de áudio trafega.
+</ParamField>
+
+<ParamField path="audioFile" type="string">
+  Arquivo de áudio a pré-carregar e tocar assim que a chamada conectar (precisa de `ffmpeg`). Equivalente a chamar `loadAudio` depois que a chamada ficar ativa.
+</ParamField>
+
+<ParamField path="peerDevices" type="string[]">
+  JIDs explícitos de dispositivo do peer para tocar; omita para resolvê-los automaticamente.
+</ParamField>
+
+`startCall` resolve com o id da nova chamada uma vez que a oferta é enviada. O progresso então chega via `voip_call_state`. Rejeita quando você está no limite de `maxConcurrentCalls` ou se a oferta falha em enviar.
+
+### Atendendo e encerrando {#answering-and-ending}
+
+```ts
+await client.voip.acceptCall(callId)
+await client.voip.rejectCall(callId)          // EndCallReason.Declined
+await client.voip.endCall(callId)             // EndCallReason.UserEnded
+await client.voip.endCall(callId, EndCallReason.Busy)
+```
+
+- `acceptCall(callId)` — aceita uma chamada de entrada tocando. Lança se `callId` for desconhecido ou não estiver em um estado aceitável.
+- `rejectCall(callId, reason?)` — rejeita uma chamada de entrada tocando (reason padrão `Declined`). Envia a stanza de reject e em seguida desmonta a chamada.
+- `endCall(callId, reason?)` — encerra uma chamada ativa ou conectando (reason padrão `UserEnded`). No-op se a chamada for desconhecida ou já estiver encerrada.
+
+### Áudio de saída pré-carregado {#preloaded-outbound-audio}
+
+```ts
+await client.voip.loadAudio(callId, './hello.mp3')
+```
+
+Decodifica `audioPath` via `ffmpeg` e o enfileira como o áudio de saída, tocado assim que a chamada ficar ativa. Lança se o arquivo estiver ausente ou se `ffmpeg` não estiver disponível.
+
+Para uma fonte ilimitada ou ao vivo (stream de TTS, captura contínua) use modo de áudio externo — veja abaixo.
+
+### Mute {#mute}
+
+```ts
+client.voip.setMute(callId, true)   // muta áudio local de saída
+client.voip.setMute(callId, false)  // desmuta
+```
+
+### Áudio ao vivo de saída (modo externo) {#live-outbound-audio-external-mode}
+
+Para fontes que você não consegue pré-carregar — TTS streaming, captura em tempo real — coloque a chamada em **modo de áudio externo** e bombeie samples conforme chegam. O plugin os bufferiza por meio de um jitter buffer limitado e cria watermarks no buffer de modo que um produtor respeitoso nunca perde áudio.
+
+```ts
+client.voip.setExternalAudioMode(callId, true)
+
+const { pauseMs, resumeMs } = client.voip.getFeedWatermarksMs()
+
+// depois, repetidamente:
+const bufferedMs = client.voip.feedLiveAudio(callId, samples) // Float32Array, 16 kHz mono
+if (bufferedMs >= pauseMs) {
+  // segura até getLiveBufferMs(callId) <= resumeMs
+}
+```
+
+| Método | Retorna | O que faz |
+| --- | --- | --- |
+| `setExternalAudioMode(callId, enabled)` | `void` | Alterna a fonte de áudio de saída entre playback pré-carregado e feed ao vivo. Desabilite para voltar para o playback pré-carregado. |
+| `feedLiveAudio(callId, data)` | `number` | Alimenta um chunk de PCM mono (`Float32Array` no sample rate do engine). Retorna o áudio atualmente bufferizado à frente do sender em milissegundos, então um produtor pode regular seu ritmo. Retorna `0` quando não há sessão. O buffer é limitado e descarta os samples mais antigos no overflow. |
+| `getLiveBufferMs(callId)` | `number` | Milissegundos de áudio ao vivo atualmente bufferizados à frente do sender. `0` quando não há sessão ou modo externo está desligado. |
+| `getFeedWatermarksMs()` | `{ pauseMs, resumeMs }` | Watermarks de backpressure para o feed ao vivo, em milissegundos. Constantes do contrato do feed, independentes de qualquer chamada específica. |
+
+<Tip>
+  O contrato dos watermarks: pause o feed quando `getLiveBufferMs(callId) >= pauseMs`, retome quando ele drenar de volta para `resumeMs`. `pauseMs` fica abaixo do threshold de descarte interno do engine, então um produtor que o respeita nunca perde áudio. Se você ignorá-lo, os samples mais antigos são descartados no overflow.
+</Tip>
+
+### Snapshots {#snapshots}
+
+```ts
+const call = client.voip.getCall(callId)   // CallInfo | null
+const all  = client.voip.getCalls()        // readonly CallInfo[]
+```
+
+`CallInfo` captura tudo que você precisa para renderizar UI: `callId`, `peerJid`, `direction`, `mediaType`, `createdAt`, `callerPn`, mais um objeto `stateData` (`state`, `audioMuted`, `videoOff`, `connectedAt`, `endReason`, `durationSecs`, `acceptBlocked`, …) e getters derivados `isInitiator`, `isActive`, `isRinging`, `isEnded`, `canAccept`, `canReject`, `isAcceptBlocked`.
+
+## Eventos {#events}
+
+Adicione `voipPlugin()` a `plugins` e estes eventos ficam disponíveis em `client.on`. Sem o plugin eles não existem no tipo — veja [Plugins](/pt-br/concepts/plugins#typed-event-extension).
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `voip_call_state` | `CallInfo` | O estado da chamada transitou (ringing, connecting, active, on_hold, ended, …). |
+| `voip_call_incoming` | `CallInfo` | Uma nova chamada de entrada. |
+| `voip_call_ended` | `CallInfo` | A chamada encerrou (qualquer razão). |
+| `voip_call_inbound_audio` | `{ call, pcm }` | Áudio decodificado do peer. `pcm` é `Float32Array` 16 kHz mono. |
+| `voip_call_outbound_audio_finished` | `CallInfo` | O áudio pré-carregado de saída terminou de enviar. |
+| `voip_call_error` | `Error` | Um erro de chamada não-fatal (hook de logging). |
+
+## Enums {#enums}
+
+Todos os valores do `enum` são strings minúsculas — use as constantes do enum para evitar erros de digitação.
+
+### `CallState`
+
+| Constante | Valor string |
+| --- | --- |
+| `CallState.Initiating` | `'initiating'` |
+| `CallState.Ringing` | `'ringing'` |
+| `CallState.IncomingRinging` | `'incoming_ringing'` |
+| `CallState.Connecting` | `'connecting'` |
+| `CallState.Active` | `'active'` |
+| `CallState.OnHold` | `'on_hold'` |
+| `CallState.Ended` | `'ended'` |
+
+### `CallDirection`
+
+| Constante | Valor string |
+| --- | --- |
+| `CallDirection.Outgoing` | `'outgoing'` |
+| `CallDirection.Incoming` | `'incoming'` |
+
+### `CallMediaType`
+
+| Constante | Valor string |
+| --- | --- |
+| `CallMediaType.Audio` | `'audio'` |
+| `CallMediaType.Video` | `'video'` |
+
+### `EndCallReason`
+
+| Constante | Valor string |
+| --- | --- |
+| `EndCallReason.UserEnded` | `'user_ended'` |
+| `EndCallReason.Declined` | `'declined'` |
+| `EndCallReason.Timeout` | `'timeout'` |
+| `EndCallReason.Busy` | `'busy'` |
+| `EndCallReason.Cancelled` | `'cancelled'` |
+| `EndCallReason.Failed` | `'failed'` |
+| `EndCallReason.DoNotDisturb` | `'do_not_disturb'` |
+| `EndCallReason.Unknown` | `'unknown'` |
+
+## Formato do áudio {#audio-format}
+
+- **Sample rate:** 16 kHz.
+- **Canais:** mono.
+- **Formato de sample:** `Float32Array` em `[-1.0, 1.0]`.
+- **Codec no fio:** perfil Opus do WhatsApp, codificado via `libmlow-wasm`. O payload type RTP é `120` (`PayloadType.WhatsAppOpus`).
+
+Tanto a entrada (`voip_call_inbound_audio`) quanto a saída (`feedLiveAudio`) usam o mesmo formato `Float32Array` — mantenha seus buffers neste formato e você consegue roteá-los direto.
+
+## Exemplo prático {#worked-example}
+
+Um auto-accept mínimo de entrada que grava o PCM de entrada em um buffer em memória:
+
+```ts
+import { WaClient, createPinoLogger } from 'zapo-js'
+import { CallState, voipPlugin } from '@zapo-js/voip'
+
+const logger = await createPinoLogger({ level: 'info' })
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [voipPlugin({ maxConcurrentCalls: 1 })]
+}, logger)
+
+const recordings = new Map<string, Float32Array[]>()
+
+client.on('voip_call_incoming', async (call) => {
+  if (!call.canAccept) return
+  await client.voip.acceptCall(call.callId)
+  recordings.set(call.callId, [])
+})
+
+client.on('voip_call_inbound_audio', ({ call, pcm }) => {
+  // pcm é Float32Array 16 kHz mono
+  const buffer = recordings.get(call.callId)
+  if (buffer) buffer.push(pcm.slice())
+})
+
+client.on('voip_call_state', (call) => {
+  if (call.stateData.state === CallState.Active) {
+    console.log(`call ${call.callId} active`)
+  }
+})
+
+client.on('voip_call_ended', (call) => {
+  const chunks = recordings.get(call.callId) ?? []
+  const total = chunks.reduce((n, c) => n + c.length, 0)
+  console.log(`call ${call.callId} ended; recorded ${total} samples`)
+  recordings.delete(call.callId)
+})
+
+await client.connect()
+```
+
+Para um exemplo mais completo — colocando chamadas de saída, playback pré-carregado vs streamado, hangup-after-audio, gravação WAV — veja [`examples/voip-example.ts`](https://github.com/vinikjkkj/zapo/blob/master/examples/voip-example.ts) na árvore de source do zapo.
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Sistema de plugins" icon="puzzle-piece" href="/pt-br/concepts/plugins" arrow>
+    Como `voipPlugin()` se encaixa no `WaClient` e como autorar o seu próprio.
+  </Card>
+  <Card title="Eventos" icon="bell" href="/pt-br/concepts/events" arrow>
+    A superfície de eventos do host client; eventos `voip_*` ficam ao lado dos built-ins.
+  </Card>
+</CardGroup>
+
+## Créditos {#credits}
+
+O plugin de VoIP foi construído por:
+
+- [@vinikjkkj](https://github.com/vinikjkkj)
+- [@edgardmessias](https://github.com/edgardmessias) — Edgard Lorraine Messias
+- [@w3nder](https://github.com/w3nder) — Wender Teixeira
