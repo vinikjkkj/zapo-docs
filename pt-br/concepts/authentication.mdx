@@ -29,6 +29,7 @@ sequenceDiagram
 | `auth_qr` | `{ qr: string, ttlMs: number }` | Um novo QR está disponível para renderizar. Reemitido conforme ele rotaciona. |
 | `auth_pairing_code` | `{ code: string }` | Um código de pareamento de 8 caracteres foi emitido (fluxo por código). |
 | `auth_pairing_required` | `{ forceManual: boolean }` | A sessão precisa de entrada de pareamento. |
+| `auth_passkey_required` | `{ hasSigner: boolean }` | O servidor está forçando uma passkey para linkar este device (veja [Linking com passkey](#passkey-gated-linking-shortcake) abaixo). |
 | `auth_paired` | `{ credentials: WaAuthCredentials }` | O pareamento foi bem-sucedido; as credenciais agora estão persistidas. |
 
 Assim que `auth_paired` dispara, as credenciais são gravadas na store e reutilizadas em todo `connect()` subsequente — você não verá `auth_qr` novamente, a menos que a sessão seja desvinculada ou limpa.
@@ -77,6 +78,51 @@ await client.connect()
 <Note>
   `requestPairingCode(phoneNumber, shouldShowPushNotification?, customCode?)` requer uma conexão ativa e retorna o código como uma string. No telefone, abra **Aparelhos conectados → Conectar com número de telefone**.
 </Note>
+
+## Linking com passkey (Shortcake) {#passkey-gated-linking-shortcake}
+
+Para algumas contas, o servidor do WhatsApp recusa o fluxo normal de QR / código de pareamento e exige uma **assertion WebAuthn de passkey** do authenticator do dono da conta antes de um companion conseguir linkar. O protocolo de fio por trás disso está documentado em detalhe em [WhatsApp passkey & Shortcake linking](/pt-br/reverse-engineering/passkey-linking); esta seção cobre como opt-in no lado do client.
+
+O gatilho é server-driven. Quando dispara, o `zapo` emite **`auth_passkey_required`** como aviso (`hasSigner` diz se o handshake de fato prossegue) e depois roda o handshake Shortcake internamente — desde que você tenha configurado um signer.
+
+### O signer {#the-signer}
+
+Defina `signPasskeyAssertion` em `WaClientOptions`. O `zapo` te entrega o request options WebAuthn bruto do servidor, e você devolve a assertion + credential id:
+
+```ts
+import { WaClient, type WaShortcakeAssertionSigner } from 'zapo-js'
+
+const signPasskeyAssertion: WaShortcakeAssertionSigner = async (requestOptions) => {
+  // requestOptions é um Uint8Array — o PublicKeyCredentialRequestOptions JSON
+  // bruto emitido pelo servidor. Rote pelo authenticator da sua escolha.
+  const { credentialId, webauthnAssertion } = await myAuthenticator.sign(requestOptions)
+  return { credentialId, webauthnAssertion }
+}
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  signPasskeyAssertion
+}, logger)
+```
+
+A source da credencial fica **fora** da lib — um authenticator real (hardware/OS), um virtual, ou um relay pra outro processo — o `zapo` nunca toca material de passkey diretamente.
+
+<Warning>
+  Não há bypass headless. Sem um signer que produza uma assertion que **o próprio authenticator do dono da conta assinaria** (veja a página de reverse-engineering pra entender por que a parede segura), o link não completa numa conta com passkey. Quando `hasSigner` é `false` no `auth_passkey_required`, a lib ackeia o prologue mas o handshake para — mostre um prompt de UI dizendo que uma passkey é necessária, e configure um signer pra próxima tentativa ou caia num device que consiga completar.
+</Warning>
+
+```ts
+client.on('auth_passkey_required', ({ hasSigner }) => {
+  if (hasSigner) {
+    console.log('servidor está forçando passkey — rodando handshake Shortcake…')
+  } else {
+    console.warn('passkey exigida mas nenhum signPasskeyAssertion configurado; link não pode prosseguir')
+  }
+})
+```
+
+`auth_paired` ainda dispara no sucesso — o handshake Shortcake é só um passo adicional encaixado no fluxo normal de pareamento (normalmente logo após `pair-device` ou um `companion_finish` de código). Nenhum evento "pareado" novo é introduzido.
 
 ## Credenciais {#credentials}
 

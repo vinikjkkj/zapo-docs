@@ -37,6 +37,7 @@ client.off('receipt', handler) // stop listening
 | `auth_qr` | `{ qr, ttlMs }` | A QR code to render for pairing. |
 | `auth_pairing_code` | `{ code }` | An 8-character pairing code was issued. |
 | `auth_pairing_required` | `{ forceManual }` | The session needs pairing input. |
+| `auth_passkey_required` | `{ hasSigner }` | The server is forcing a [Shortcake passkey](/en/concepts/authentication#passkey-gated-linking-shortcake) to link. `hasSigner: false` means the handshake stalls until you configure a signer. |
 | `auth_paired` | `{ credentials }` | Pairing succeeded. |
 | `connection` | `WaConnectionEvent` | Socket opened or closed (see below). |
 

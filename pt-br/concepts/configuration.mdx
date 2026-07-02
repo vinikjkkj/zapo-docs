@@ -141,6 +141,14 @@ Opções: `timeoutMs` (padrão 10s), `proxy` (apenas dispatcher do undici — o 
   - `true` — anuncia o client como **online** (igual ao WhatsApp Web com a aba em foco no momento do login).
 </ParamField>
 
+## Linking com passkey {#passkey-gated-linking}
+
+<ParamField path="signPasskeyAssertion" type="WaShortcakeAssertionSigner">
+  Signer WebAuthn externo para o [handshake Shortcake de passkey](/pt-br/concepts/authentication#passkey-gated-linking-shortcake) forçado pelo servidor. Chamado com o `PublicKeyCredentialRequestOptions` bruto (`Uint8Array`) que o servidor emitiu; deve retornar `{ credentialId, webauthnAssertion }`. A source da credencial (authenticator real / virtual, relay) fica fora da lib.
+
+  Sem isso, uma conta que receber um passkey prologue forçado pelo servidor emite [`auth_passkey_required`](/pt-br/concepts/events#auth--connection) com `hasSigner: false` e o link fica parado — veja o [deep dive](/pt-br/reverse-engineering/passkey-linking) de reverse engineering pro detalhe no nível do fio.
+</ParamField>
+
 ## Addons (reações, votos em enquetes) {#addons-reactions-poll-votes}
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean, persistAllSecrets?: boolean }" default="{ autoDecrypt: true, persistAllSecrets: false }">

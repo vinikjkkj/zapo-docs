@@ -29,6 +29,7 @@ sequenceDiagram
 | `auth_qr` | `{ qr: string, ttlMs: number }` | A new QR is available to render. Re-emitted as it rotates. |
 | `auth_pairing_code` | `{ code: string }` | An 8-character pairing code was issued (code flow). |
 | `auth_pairing_required` | `{ forceManual: boolean }` | The session needs pairing input. |
+| `auth_passkey_required` | `{ hasSigner: boolean }` | The server is forcing a passkey to link this device (see [Passkey-gated linking](#passkey-gated-linking-shortcake) below). |
 | `auth_paired` | `{ credentials: WaAuthCredentials }` | Pairing succeeded; credentials are now persisted. |
 
 Once `auth_paired` fires, the credentials are written to the store and reused on every subsequent `connect()` — you will not see `auth_qr` again unless the session is unlinked or cleared.
@@ -77,6 +78,51 @@ await client.connect()
 <Note>
   `requestPairingCode(phoneNumber, shouldShowPushNotification?, customCode?)` requires an active connection and returns the code as a string. On the phone, open **Linked devices → Link with phone number instead**.
 </Note>
+
+## Passkey-gated linking (Shortcake)
+
+For some accounts, WhatsApp's server refuses the plain QR / pairing-code flow and demands a **WebAuthn passkey assertion** from the account owner's authenticator before a companion can link. The wire protocol behind this is documented in depth in [WhatsApp passkey & Shortcake linking](/en/reverse-engineering/passkey-linking); this section covers how to opt in on the client side.
+
+The trigger is server-driven. When it fires, `zapo` emits **`auth_passkey_required`** as a heads-up (`hasSigner` tells you whether the handshake will actually proceed) and then runs the Shortcake handshake internally — provided you configured a signer.
+
+### The signer
+
+Set `signPasskeyAssertion` on `WaClientOptions`. `zapo` hands you the server's raw WebAuthn request options, and you hand back the assertion + credential id:
+
+```ts
+import { WaClient, type WaShortcakeAssertionSigner } from 'zapo-js'
+
+const signPasskeyAssertion: WaShortcakeAssertionSigner = async (requestOptions) => {
+  // requestOptions is a Uint8Array — the raw PublicKeyCredentialRequestOptions
+  // JSON the server issued. Route it through your authenticator of choice.
+  const { credentialId, webauthnAssertion } = await myAuthenticator.sign(requestOptions)
+  return { credentialId, webauthnAssertion }
+}
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  signPasskeyAssertion
+}, logger)
+```
+
+The credential source stays **outside** the library — a real hardware/OS authenticator, a virtual authenticator, or a relay to another process — `zapo` never touches passkey material directly.
+
+<Warning>
+  There is no headless bypass. Without a signer that produces an assertion the **account owner's own authenticator would sign** (see the reverse-engineering page for why the wall holds), the link cannot complete on a passkey-gated account. When `hasSigner` is `false` on `auth_passkey_required`, the lib acks the prologue but the handshake stops — surface a UI prompt telling the user a passkey is required, and either configure a signer for the next attempt or fall back to a device that can complete it.
+</Warning>
+
+```ts
+client.on('auth_passkey_required', ({ hasSigner }) => {
+  if (hasSigner) {
+    console.log('server is forcing a passkey — running Shortcake handshake…')
+  } else {
+    console.warn('passkey required but no signPasskeyAssertion is configured; link cannot proceed')
+  }
+})
+```
+
+`auth_paired` still fires on success — the Shortcake handshake is just an additional step slotted into the normal pairing flow (usually right after `pair-device` or a pairing-code `companion_finish`). No new "paired" event is introduced.
 
 ## Credentials
 

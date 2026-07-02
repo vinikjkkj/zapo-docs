@@ -2,6 +2,7 @@
 title: "WhatsApp passkey & Shortcake linking"
 description: "An independent reverse-engineering of WhatsApp's passkey-gated device linking — the Shortcake / CRSC protocol, its cryptography, a correlated mobile ⇄ web wire capture, and why there is no headless bypass."
 icon: "key"
+searchable: false
 ---
 
 WhatsApp is rolling out **passkey-gated device linking**: for some accounts the server refuses the normal QR / pairing-code flow and demands a **WebAuthn passkey assertion** before a companion can link. The official clients call this flow **Shortcake** (web side) and **CRSC** — *Companion Registration over Side Channel* (phone side).

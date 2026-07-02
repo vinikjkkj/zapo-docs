@@ -141,6 +141,14 @@ Options: `timeoutMs` (default 10s), `proxy` (undici dispatcher only — `http.Ag
   - `true` — announce the client as **online** (matches WhatsApp Web with the tab focused at login time).
 </ParamField>
 
+## Passkey-gated linking
+
+<ParamField path="signPasskeyAssertion" type="WaShortcakeAssertionSigner">
+  External WebAuthn signer for the server-forced [Shortcake passkey handshake](/en/concepts/authentication#passkey-gated-linking-shortcake). Called with the raw `PublicKeyCredentialRequestOptions` (`Uint8Array`) the server issued; must return `{ credentialId, webauthnAssertion }`. The credential source (real / virtual authenticator, relay) stays outside the library.
+
+  Without this, an account that gets a server-forced passkey prologue emits [`auth_passkey_required`](/en/concepts/events#auth--connection) with `hasSigner: false` and the link stalls — see the reverse-engineering [deep dive](/en/reverse-engineering/passkey-linking) for the wire-level detail.
+</ParamField>
+
 ## Addons (reactions, poll votes)
 
 <ParamField path="addons" type="{ autoDecrypt?: boolean, persistAllSecrets?: boolean }" default="{ autoDecrypt: true, persistAllSecrets: false }">
