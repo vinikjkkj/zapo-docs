@@ -17,3 +17,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Local reverse-engineering research notes (raw, unredacted captured data — never commit)
+___*

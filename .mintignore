@@ -5,3 +5,6 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Local reverse-engineering research notes (raw, unredacted captured data — never publish)
+___*

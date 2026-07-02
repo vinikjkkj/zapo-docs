@@ -107,6 +107,13 @@
               "en/concepts/mobile",
               "en/dev-tools"
             ]
+          },
+          {
+            "group": "Reverse engineering",
+            "icon": "microscope",
+            "pages": [
+              "en/reverse-engineering/passkey-linking"
+            ]
           }
         ],
         "banner": {
@@ -186,6 +193,13 @@
               "pt-br/concepts/internals",
               "pt-br/concepts/mobile",
               "pt-br/dev-tools"
+            ]
+          },
+          {
+            "group": "Engenharia reversa",
+            "icon": "microscope",
+            "pages": [
+              "pt-br/reverse-engineering/passkey-linking"
             ]
           }
         ],
