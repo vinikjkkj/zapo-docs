@@ -75,7 +75,6 @@
               "en/guides/broadcast-lists",
               "en/guides/bots",
               "en/guides/presence-status",
-              "en/guides/voip",
               "en/guides/profile-privacy",
               "en/guides/reconnection",
               "en/guides/errors",
@@ -83,6 +82,14 @@
               "en/guides/production",
               "en/troubleshooting",
               "en/guides/recipes"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "icon": "puzzle-piece",
+            "pages": [
+              "en/guides/voip",
+              "en/guides/wam"
             ]
           },
           {
@@ -162,7 +169,6 @@
               "pt-br/guides/broadcast-lists",
               "pt-br/guides/bots",
               "pt-br/guides/presence-status",
-              "pt-br/guides/voip",
               "pt-br/guides/profile-privacy",
               "pt-br/guides/reconnection",
               "pt-br/guides/errors",
@@ -170,6 +176,14 @@
               "pt-br/guides/production",
               "pt-br/troubleshooting",
               "pt-br/guides/recipes"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "icon": "puzzle-piece",
+            "pages": [
+              "pt-br/guides/voip",
+              "pt-br/guides/wam"
             ]
           },
           {

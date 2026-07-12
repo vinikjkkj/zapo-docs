@@ -43,6 +43,7 @@ O pacote principal **não tem dependências de runtime obrigatórias**. Todo o r
     <Tree.File name="@zapo-js/store-mongo — backend MongoDB" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
     <Tree.File name="@zapo-js/voip — chamadas de voz do WhatsApp" />
+    <Tree.File name="@zapo-js/wam — paridade de telemetria do WhatsApp Web (analytics)" />
     <Tree.File name="@zapo-js/mcp-server — ferramenta dev: controle por um agente de IA" />
     <Tree.File name="@zapo-js/fake-server — ferramenta dev: servidor de teste in-process" />
   </Tree.Folder>
@@ -140,6 +141,18 @@ npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
 - **`libmlow-wasm`** — perfil Opus do WhatsApp, em WebAssembly (sem build nativo).
 
 Veja o [guia de VoIP](/pt-br/guides/voip) para saber como conectar `voipPlugin()` ao client.
+
+## Paridade de telemetria {#telemetry-parity}
+
+Instale [`@zapo-js/wam`](/pt-br/guides/wam) para que a sessão emita as batches de analytics client-side `w:stats` que uma aba real do WhatsApp Web envia — uma melhoria de paridade de wire / anti-fingerprinting, não obrigatória para mensageria.
+
+```bash
+npm install @zapo-js/wam
+```
+
+A única peer dependency é `zapo-js`. O registry de eventos WAM (`@vinikjkkj/wa-wam`) é fixado como `dependencies` regular do plugin, então vem transitivamente.
+
+Veja o [guia WAM](/pt-br/guides/wam) para saber como conectar `wamPlugin()` ao client. É opt-in: pule-o a menos que você especificamente queira a paridade.
 
 ## Verifique sua configuração {#verify-your-setup}
 

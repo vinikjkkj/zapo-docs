@@ -118,6 +118,210 @@ const result = await client.email.verifyCode('123456')
 await client.email.confirm()
 ```
 
+## Hospedando dispositivos companheiros {#hosting-companion-devices}
+
+<Badge color="orange" icon="mobile">Apenas mobile-primary</Badge>
+
+Uma sessão companion vive do outro lado de um QR / código de pareamento, vinculada por um telefone real. Quando o zapo *é* o telefone, os papéis se invertem: esta sessão primary pode **hospedar companions** — vincular uma aba do WhatsApp Web, revogá-la, listar o que está conectado e reconciliar contra a lista de dispositivos do servidor. O coordinator fica em `client.mobile` ([`WaMobileCoordinator`](/pt-br/reference/client)).
+
+<Note>
+  `client.mobile` requer uma sessão mobile-primary. Ler o getter em uma conexão Web/companion retorna o coordinator, mas os métodos de link/revoke/publish lançam `client.mobile requires a mobile-primary session (…)` antes de tocar na rede. `reconcileCompanions()` vira um no-op em sessões não-primary.
+</Note>
+
+### Métodos {#methods}
+
+| Método | Assinatura | Descrição |
+| --- | --- | --- |
+| `linkCompanion` | `(qr: string) => Promise<LinkCompanionResult>` | Vincula um companion escaneando sua string de QR de pareamento. Retorna `{ deviceJid, keyIndex }`. |
+| `linkCompanionByCode` | `(pairingCode: string) => Promise<LinkCompanionResult>` | Vincula pelo código de pareamento de 8 caracteres (fluxo "vincular com número de telefone"). O companion precisa ter solicitado um código para esta conta antes; sem um `companion_hello` pendente, a chamada lança. |
+| `revokeCompanion` | `(deviceJid: string, reason?: string) => Promise<void>` | Desvincula um companion hospedado, remove-o do conjunto rastreado e republica a key-index list. `reason` tem default `'user_initiated'`. Lança quando o companion não é rastreado por este primary. |
+| `revokeAllCompanions` | `(reason?: string, { excludeHostedCompanion? }?) => Promise<void>` | O "log out all companion devices" do telefone — envia `remove-companion-device all="true"`. Com `excludeHostedCompanion: true`, poupa os companions que esta conta hospeda. |
+| `listCompanions` | `() => Promise<readonly CompanionRecord[]>` | Os companions rastreados no epoch atual. Cada `CompanionRecord` carrega `{ deviceJid, keyIndex, companionIdentityPublicKey, addedAtSeconds }`. |
+| `reconcileCompanions` | `() => Promise<readonly string[]>` | Sincroniza o conjunto rastreado com a lista de dispositivos ao vivo do servidor (`usync`), removendo qualquer companion que o servidor não lista mais. Roda automaticamente no connect e em `account_sync`; seguro chamar manualmente. Retorna os device jids removidos. É um no-op quando nenhum companion é rastreado. |
+| `publishKeyIndexList` | `() => Promise<void>` | Re-assina e republica a key-index list para o conjunto atual de dispositivos (raro — é chamado por você após link/revoke). |
+
+### Eventos {#events}
+
+Atividade de companion-host aparece no client:
+
+| Evento | Payload | Quando |
+| --- | --- | --- |
+| `companion_host_linked` | `{ deviceJid: string, keyIndex: number }` | Um companion foi vinculado com sucesso via `linkCompanion` / `linkCompanionByCode`. |
+| `companion_host_revoked` | `{ deviceJid: string }` | Um companion hospedado foi removido — via `revokeCompanion` / `revokeAllCompanions`, ou removido durante uma reconciliação após o usuário desvinculá-lo em outra superfície. |
+| `companion_host_error` | `Error` | Uma etapa de link ou provisioning em background falhou. |
+
+### Bootstrap gates cuidados por você {#bootstrap-gates-handled-for-you}
+
+Todo companion que um telefone WhatsApp vincula hoje espera três sinais no pair-time. O `zapo` os fornece para que o companion não se remova sozinho após o QR:
+
+- **Client-props de LID migration** — um primary LID-native declara `isChatDbLidMigrated` e `isSyncdPureLidSession` no elemento `<client-props>` para que o companion rode `setIsLidMigrated` no pair-time e não se remova sozinho por conta da sua blocklist endereçada por LID.
+- **History-sync `INITIAL_BOOTSTRAP`** — o primary envia a notificação inicial de history-sync como uma peer message; sem ela, o companion se remove sozinho com `HistorySyncTimeout`.
+- **`setting_pushName` semeado** — o nome de exibição do próprio primary é semeado na collection `critical_block` do app-state, uma vez por sessão, para o critical bootstrap do companion completar.
+
+Todos os três são automáticos; nenhuma chamada de método necessária.
+
+### Persistência {#persistence}
+
+O estado do epoch ADV (`rawId`, `currentKeyIndex`, companions rastreados) **precisa** persistir entre reinícios — reusar um índice de chave companion já emitido quebra dispositivos previamente vinculados. Wire um `CompanionHostPersistence` em `WaClientOptions.companionHost.persistence` e o zapo carrega/salva transparentemente.
+
+Uma implementação file-backed vem embarcada com a lib:
+
+```ts
+import { createFileCompanionHostPersistence, WaClient } from 'zapo-js'
+
+const client = new WaClient({
+  store,
+  sessionId: 'primary',
+  mobileTransport: { deviceInfo: /* ... */ },
+  companionHost: {
+    persistence: createFileCompanionHostPersistence('./companion-host.json')
+  }
+}, logger)
+```
+
+<Warning>
+  Sem hook de persistência o epoch é apenas em memória — bom pra smoke test, **inseguro pra relink em produção**. No restart o primary re-emitiria o key index 1 pra um novo companion enquanto o companion previamente linkado ainda o carrega, quebrando decrypt de sessão no device mais antigo.
+</Warning>
+
+#### Backend custom {#custom-backend}
+
+O contrato é dois métodos sobre `CompanionHostEpochState`:
+
+```ts
+interface CompanionHostPersistence {
+  load(): CompanionHostEpochState | null | Promise<CompanionHostEpochState | null>
+  save(state: CompanionHostEpochState): void | Promise<void>
+}
+
+interface CompanionHostEpochState {
+  readonly rawId: number             // id ADV estável da conta
+  readonly currentKeyIndex: number   // último key index emitido; próximo companion recebe +1
+  readonly companions: readonly CompanionRecord[]
+}
+
+interface CompanionRecord {
+  readonly deviceJid: string
+  readonly keyIndex: number
+  readonly companionIdentityPublicKey: Uint8Array
+  readonly addedAtSeconds: number
+}
+```
+
+Aponte pra qualquer store que você já roda. O estado é pequeno (header do epoch + uma linha por companion linkado), então não há necessidade de um domínio de core-store dedicado. Exemplo contra `better-sqlite3`:
+
+```ts
+import Database from 'better-sqlite3'
+import type {
+  CompanionHostEpochState,
+  CompanionHostPersistence,
+  CompanionRecord
+} from 'zapo-js'
+
+function createSqliteCompanionHostPersistence(
+  db: Database.Database,
+  sessionId: string
+): CompanionHostPersistence {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS companion_host_epoch (
+      session_id       TEXT PRIMARY KEY,
+      raw_id           INTEGER NOT NULL,
+      current_key_index INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS companion_host_devices (
+      session_id                     TEXT NOT NULL,
+      device_jid                     TEXT NOT NULL,
+      key_index                      INTEGER NOT NULL,
+      companion_identity_public_key  BLOB NOT NULL,
+      added_at_seconds               INTEGER NOT NULL,
+      PRIMARY KEY (session_id, device_jid)
+    );
+  `)
+  const readEpoch = db.prepare<[string]>(
+    'SELECT raw_id AS rawId, current_key_index AS currentKeyIndex FROM companion_host_epoch WHERE session_id = ?'
+  )
+  const readDevices = db.prepare<[string]>(
+    'SELECT device_jid AS deviceJid, key_index AS keyIndex, companion_identity_public_key AS pk, added_at_seconds AS addedAtSeconds FROM companion_host_devices WHERE session_id = ?'
+  )
+  const upsertEpoch = db.prepare(
+    'INSERT INTO companion_host_epoch (session_id, raw_id, current_key_index) VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET raw_id = excluded.raw_id, current_key_index = excluded.current_key_index'
+  )
+  const clearDevices = db.prepare('DELETE FROM companion_host_devices WHERE session_id = ?')
+  const insertDevice = db.prepare(
+    'INSERT INTO companion_host_devices (session_id, device_jid, key_index, companion_identity_public_key, added_at_seconds) VALUES (?, ?, ?, ?, ?)'
+  )
+
+  return {
+    load(): CompanionHostEpochState | null {
+      const header = readEpoch.get(sessionId) as { rawId: number; currentKeyIndex: number } | undefined
+      if (!header) return null
+      const rows = readDevices.all(sessionId) as Array<{
+        deviceJid: string
+        keyIndex: number
+        pk: Buffer
+        addedAtSeconds: number
+      }>
+      const companions: CompanionRecord[] = rows.map((row) => ({
+        deviceJid: row.deviceJid,
+        keyIndex: row.keyIndex,
+        companionIdentityPublicKey: new Uint8Array(row.pk),
+        addedAtSeconds: row.addedAtSeconds
+      }))
+      return { rawId: header.rawId, currentKeyIndex: header.currentKeyIndex, companions }
+    },
+    save(state: CompanionHostEpochState): void {
+      db.transaction(() => {
+        upsertEpoch.run(sessionId, state.rawId, state.currentKeyIndex)
+        clearDevices.run(sessionId)
+        for (const c of state.companions) {
+          insertDevice.run(
+            sessionId,
+            c.deviceJid,
+            c.keyIndex,
+            Buffer.from(c.companionIdentityPublicKey),
+            c.addedAtSeconds
+          )
+        }
+      })()
+    }
+  }
+}
+```
+
+O `save` roda a cada mudança de estado por `linkCompanion` / `revokeCompanion` / `reconcileCompanions`, então envolva a escrita multi-statement numa transaction pra manter atomicidade. `load` é chamado uma vez durante o wire-up do coordinator.
+
+### Exemplo trabalhado {#worked-example}
+
+```ts
+import { WaClient } from 'zapo-js'
+
+const client = new WaClient(
+  { store, sessionId: 'primary', mobileTransport: { deviceInfo } },
+  logger
+)
+
+client.on('companion_host_linked', ({ deviceJid, keyIndex }) => {
+  console.log('linked companion', deviceJid, 'at key index', keyIndex)
+})
+
+client.on('companion_host_revoked', ({ deviceJid }) => {
+  console.log('companion revoked:', deviceJid)
+})
+
+client.on('companion_host_error', (error) => {
+  console.warn('companion-host operation failed', error.message)
+})
+
+await client.connect()
+
+// Solicite uma string de QR do WhatsApp Web, depois vincule:
+const qr = await readCompanionQrFromSomewhere()
+const { deviceJid } = await client.mobile.linkCompanion(qr)
+
+// Depois, liste o que está conectado ou revogue:
+const companions = await client.mobile.listCompanions()
+await client.mobile.revokeCompanion(deviceJid)
+```
+
 ## Funcionalidades padrão continuam valendo {#standard-features-still-apply}
 
 Uma vez conectado no modo mobile, o resto da API permanece inalterado — `client.message`, `client.group`, eventos, stores, etc. funcionam todos da mesma forma. A única diferença é o transporte e o modelo de auth/identidade.

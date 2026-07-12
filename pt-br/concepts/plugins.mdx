@@ -168,6 +168,7 @@ Plugins instalam durante `new WaClient(...)`:
    - Se `exposeAs` estiver definido, o nome é verificado contra outros plugins e contra membros existentes do `WaClient`.
    - `setup(ctx)` roda. O valor de retorno (para plugins de exposição) é publicado como um getter não-configurável e não-gravável no client.
 3. No `client.disconnect()`, depois que os handlers de entrada drenam, os callbacks de `dispose` registrados rodam em ordem **reversa** (LIFO). Um dispose que lança é logado e o resto ainda roda.
+4. No próximo `client.connect()`, os plugins são **reinstalados** do zero — o `disconnect()` anterior os disposeou, então o `connect()` roda `setup(ctx)` novamente. Os accessors `client[exposeAs]` continuam funcionando entre reconexões (eles resolvem contra a instância de coordinator recém-instalada), e `setup` vê um contexto limpo a cada vez.
 
 ## Condições de erro {#error-conditions}
 

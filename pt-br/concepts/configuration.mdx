@@ -89,16 +89,21 @@ Todos em milissegundos; os padrões são ajustados para produção.
 | `messageRetryDelayMs` | Atraso entre as retentativas de envio de mensagem. |
 | `signalFetchKeyBundlesTimeoutMs` | Timeout para buscas de key bundles (prekeys) do Signal. |
 
-## Versão do WhatsApp Web {#whatsapp-web-version}
+## Versão do WhatsApp {#whatsapp-web-version}
 
-O zapo embarca uma versão de produção testada do WA Web. Ocasionalmente o WhatsApp rejeita clients antigos durante o handshake noise com HTTP `405` / `failure_client_too_old`. Você tem três opções para se recuperar.
+O zapo embarca uma versão de produção testada por transporte. Ocasionalmente o WhatsApp rejeita clients antigos durante o handshake noise com HTTP `405` / `failure_client_too_old`. Você tem três opções para se recuperar.
 
 <ParamField path="version" type="string | () => string | Promise<string>">
-  Sobrescreve a string de versão anunciada pelo client (`'x.y.z'`). Aceita um literal ou um resolver chamado **uma vez por `connect()`** — útil para buscar a versão atual sob demanda sem recriar o client.
+  Sobrescreve a string de versão anunciada pelo client. Aceita um literal ou um resolver chamado **uma vez por `connect()`** — útil para buscar a versão atual sob demanda sem recriar o client. O formato aceito depende do transporte resolvido para o connect:
+
+  - **Web** aceita uma versão de 3 a 5 partes (`2.3000.x[.y.z]`); as 4ª e 5ª partes, quando fornecidas, são anunciadas no payload noise.
+  - **Mobile** aceita exatamente uma app version Android de 4 partes (`2.26.x.y`); ela sobrescreve `mobileTransport.deviceInfo.appVersion` no payload de login.
+
+  Uma quantidade de partes inválida para o transporte resolvido lança no `connect()`.
 </ParamField>
 
 <ParamField path="recoverFromClientTooOld" type="boolean" default="false">
-  Quando `true`, ao receber `failure_client_too_old` o client emite um warning, busca a versão atual do WA Web via [`fetchLatestWaWebVersion()`](#fetchlatestwawebversion), aplica como override de uso único e reconecta automaticamente. Trate como paliativo até atualizar o zapo — o default embarcado continua sendo o caminho recomendado.
+  Quando `true`, ao receber `failure_client_too_old` o client emite um warning, busca a versão atual para o transporte ativo ([`fetchLatestWaWebVersion()`](#fetchlatestwawebversion) para Web, [`fetchLatestWaMobileVersion()`](#fetchlatestwamobileversion) para Mobile), aplica como override de uso único e reconecta automaticamente. Em Mobile, o override é aplicado atualizando `deviceInfo.appVersion` para o próximo connect. Trate como paliativo até atualizar o zapo — o default embarcado continua sendo o caminho recomendado.
 </ParamField>
 
 ```ts
@@ -120,7 +125,7 @@ new WaClient({ store, sessionId: 'default', recoverFromClientTooOld: true }, log
 
 ### `fetchLatestWaWebVersion()`
 
-Faz scraping do `client_revision` atual em `web.whatsapp.com/sw.js` e retorna uma string de versão no formato `2.3000.x` aceito por `version`.
+Faz scraping do `client_revision` atual em `web.whatsapp.com/sw.js` e retorna uma string de versão no formato `2.3000.x` aceito por `version` em uma sessão Web.
 
 ```ts
 import { fetchLatestWaWebVersion } from 'zapo-js'
@@ -133,6 +138,26 @@ const { version, parts } = await fetchLatestWaWebVersion({
 ```
 
 Opções: `timeoutMs` (padrão 10s), `proxy` (apenas dispatcher do undici — o `fetch` global não honra `http.Agent`), `signal`, `userAgent`, `headers` e uma override de `fetch` para testes. Erros de rede e parsing são lançados — envolva em `try`/`catch` se quiser cair no default embarcado.
+
+### `fetchLatestWaMobileVersion()`
+
+Faz scraping da versão atual do WhatsApp para Android em uma página pública de app-listing e retorna uma string `2.26.x.y` de 4 partes adequada para `version` em uma sessão Mobile (ou como override para `mobileTransport.deviceInfo.appVersion`).
+
+```ts
+import { fetchLatestWaMobileVersion } from 'zapo-js'
+
+const { version, parts } = await fetchLatestWaMobileVersion({
+  timeoutMs: 10_000,
+  proxy: dispatcher
+})
+```
+
+Opções: tudo que o fetcher Web aceita (`timeoutMs`, `proxy`, `signal`, `userAgent`, `headers`, `fetch`) mais:
+
+- `url?: string` — sobrescreve a página a ser lida. A fonte padrão é um mirror público de app-listing porque a própria página do WhatsApp em `whatsapp.com/android` só mostra a versão mínima obsoleta; re-aponte se o layout mudar ou for inalcançável da sua rede.
+- `versionPattern?: RegExp` — sobrescreve o regex de extração. Precisa expor a versão no capture group 1. O padrão combina com um `2.x.x.x` de 4 partes e retorna o primeiro hit na página.
+
+A string parseada precisa ter exatamente quatro partes numéricas; qualquer outra coisa lança (`invalid wa-mobile version parsed from page`). Erros de rede e parsing são lançados — envolva em `try`/`catch` se quiser cair em uma versão hardcoded conhecida.
 
 ## Presença ao conectar {#presence-on-connect}
 

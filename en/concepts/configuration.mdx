@@ -89,16 +89,21 @@ All in milliseconds; defaults are tuned for production.
 | `messageRetryDelayMs` | Delay between message-send retries. |
 | `signalFetchKeyBundlesTimeoutMs` | Timeout for Signal prekey-bundle fetches. |
 
-## WhatsApp Web version
+## WhatsApp version {#whatsapp-web-version}
 
-zapo ships with a tested production WA Web version baked in. WhatsApp occasionally rejects older clients during the noise handshake with HTTP `405` / `failure_client_too_old`. You have three options to recover.
+zapo ships with a tested production version baked in per transport. WhatsApp occasionally rejects older clients during the noise handshake with HTTP `405` / `failure_client_too_old`. You have three options to recover.
 
 <ParamField path="version" type="string | () => string | Promise<string>">
-  Override the version string the client advertises (`'x.y.z'`). Either a literal or a resolver invoked **once per `connect()`** — useful for fetching the current version lazily without rebuilding the client.
+  Override the version string the client advertises. Either a literal or a resolver invoked **once per `connect()`** — useful for fetching the current version lazily without rebuilding the client. The accepted shape depends on the transport resolved for the connect:
+
+  - **Web** takes a 3- to 5-part version (`2.3000.x[.y.z]`); the 4th and 5th parts, when supplied, are advertised in the noise payload.
+  - **Mobile** takes exactly a 4-part Android app version (`2.26.x.y`); it overrides `mobileTransport.deviceInfo.appVersion` in the login payload.
+
+  An invalid part count for the resolved transport throws on `connect()`.
 </ParamField>
 
 <ParamField path="recoverFromClientTooOld" type="boolean" default="false">
-  When `true`, on `failure_client_too_old` the client logs a warning, fetches the current WA Web version via [`fetchLatestWaWebVersion()`](#fetchlatestwawebversion), applies it as a one-shot override, and reconnects automatically. Treat it as a stopgap until you upgrade zapo — the bundled default is still the recommended path.
+  When `true`, on `failure_client_too_old` the client logs a warning, fetches the current version for the active transport ([`fetchLatestWaWebVersion()`](#fetchlatestwawebversion) for Web, [`fetchLatestWaMobileVersion()`](#fetchlatestwamobileversion) for Mobile), applies it as a one-shot override, and reconnects automatically. On Mobile the override is applied by refreshing `deviceInfo.appVersion` for the next connect. Treat it as a stopgap until you upgrade zapo — the bundled default is still the recommended path.
 </ParamField>
 
 ```ts
@@ -120,7 +125,7 @@ new WaClient({ store, sessionId: 'default', recoverFromClientTooOld: true }, log
 
 ### `fetchLatestWaWebVersion()`
 
-Scrapes the current `client_revision` from `web.whatsapp.com/sw.js` and returns a version string in the `2.3000.x` form accepted by `version`.
+Scrapes the current `client_revision` from `web.whatsapp.com/sw.js` and returns a version string in the `2.3000.x` form accepted by `version` for a Web session.
 
 ```ts
 import { fetchLatestWaWebVersion } from 'zapo-js'
@@ -133,6 +138,26 @@ const { version, parts } = await fetchLatestWaWebVersion({
 ```
 
 Options: `timeoutMs` (default 10s), `proxy` (undici dispatcher only — `http.Agent` is not honored by the global `fetch`), `signal`, `userAgent`, `headers`, and a `fetch` override for tests. Network and parse errors throw — wrap in `try`/`catch` if you want to fall back to the bundled default.
+
+### `fetchLatestWaMobileVersion()`
+
+Scrapes the current WhatsApp for Android version from a public app-listing page and returns a 4-part `2.26.x.y` string suitable for `version` on a Mobile session (or as an override for `mobileTransport.deviceInfo.appVersion`).
+
+```ts
+import { fetchLatestWaMobileVersion } from 'zapo-js'
+
+const { version, parts } = await fetchLatestWaMobileVersion({
+  timeoutMs: 10_000,
+  proxy: dispatcher
+})
+```
+
+Options: everything the Web fetcher accepts (`timeoutMs`, `proxy`, `signal`, `userAgent`, `headers`, `fetch`) plus:
+
+- `url?: string` — override the page to scrape. The default source is a public app-listing mirror because WhatsApp's own `whatsapp.com/android` page only shows the stale minimum-requirement version; retarget if the layout changes or is unreachable from your network.
+- `versionPattern?: RegExp` — override the extraction regex. Must expose the version in capture group 1. The default matches a 4-part `2.x.x.x` and returns the first hit on the page.
+
+The parsed string must have exactly four numeric parts; anything else throws (`invalid wa-mobile version parsed from page`). Network and parse errors throw — wrap in `try`/`catch` if you want to fall back to a known-good hardcoded version.
 
 ## Presence on connect
 

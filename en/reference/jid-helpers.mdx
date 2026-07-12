@@ -114,3 +114,21 @@ client.on('message', (event) => {
 | `proto` | The full protobuf namespace — build raw `Proto.IMessage` payloads. |
 | `delay(ms)` | Promise-based sleep. |
 | `parseUsyncResultEnvelope` | Parse a USync IQ result envelope. |
+| `WA_VERSION` | The bundled default WhatsApp Web version string the client advertises when `version` is omitted. |
+
+## Device identity helpers
+
+Two low-level helpers reachable via the `zapo-js/protocol` subpath — useful when authoring a plugin that needs the same `deviceBrowser` / `deviceOsDisplayName` / `devicePlatform` resolution the client factory and auth client use, so its own payloads agree with the pairing `ClientPayload`.
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `resolveWaDeviceIdentity` | `(options: WaDeviceIdentityOptions) => WaDeviceIdentity` | Resolves a fully-populated `{ browser, osDisplayName, platform }` from raw options, applying the same defaults the client uses (browser falls back to `WA_DEFAULTS.DEVICE_BROWSER`, OS name to the runtime OS, platform inferred from the browser). |
+| `getWaBrowserDisplayName` | `(browser: string) => string` | The human-readable browser name advertised during pairing (e.g. `'chrome'` → `'Chrome'`). Unknown inputs are echoed back unchanged. |
+
+```ts
+import { resolveWaDeviceIdentity, getWaBrowserDisplayName } from 'zapo-js/protocol'
+
+const device = resolveWaDeviceIdentity({ deviceBrowser: 'firefox' })
+// { browser: 'firefox', osDisplayName: '<runtime OS>', platform: '3' }
+getWaBrowserDisplayName('firefox') // 'Firefox'
+```

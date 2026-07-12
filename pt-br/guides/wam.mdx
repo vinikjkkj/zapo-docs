@@ -1,0 +1,167 @@
+---
+title: "Telemetria WAM (paridade de analytics)"
+description: "Emita as batches de telemetria client-side w:stats que uma aba real do WhatsApp Web envia, para paridade de wire e anti-fingerprinting — via o plugin @zapo-js/wam."
+icon: "chart-line"
+---
+
+`@zapo-js/wam` é um plugin opcional que envia as batches de telemetria **WAM** (`w:stats`) client-side que um client real do WhatsApp Web envia após o login. Isso é uma **melhoria de paridade**, não observabilidade do seu próprio código: WAM é o stream interno de analytics do WhatsApp, e espelhar seu formato reduz a chance de uma sessão headless se destacar em comparação a uma aba Web real.
+
+<Note>
+  Você não precisa deste plugin para enviar ou receber mensagens, fazer chamadas ou usar qualquer coordinator. Instale apenas quando quiser que a pegada de wire da sessão inclua os analytics que abas do WA Web emitem — para propósitos de anti-fingerprinting.
+</Note>
+
+## Instalação {#install}
+
+```bash
+npm install @zapo-js/wam
+```
+
+A única peer dependency é **`zapo-js`** (`^1.5.0`). O registry de eventos WAM e o encoder de wire ([`@vinikjkkj/wa-wam`](https://www.npmjs.com/package/@vinikjkkj/wa-wam)) é fixado como `dependencies` regular do plugin, então vem transitivamente — não precisa instalar explicitamente.
+
+## Conectando o plugin {#wire-the-plugin}
+
+Adicione `wamPlugin()` a `WaClientOptions.plugins`. Um `WaWamCoordinator` aparece em `client.wam` e — por padrão — um pipeline de telemetria completo roda em background.
+
+```ts
+import { WaClient } from 'zapo-js'
+import { wamPlugin } from '@zapo-js/wam'
+
+const client = new WaClient({
+  store,
+  sessionId: 'default',
+  plugins: [wamPlugin()]
+}, logger)
+
+await client.connect()
+```
+
+Essa é a integração inteira no caso comum. O plugin observa o client host, comita eventos de protocolo conforme acontecem e fabrica telemetria de UI plausível ao lado.
+
+### Opções do plugin {#plugin-options}
+
+Toda opção é opcional; cada uma cai em um valor que combina (ou segue de perto) o que um client real do WA Web usa.
+
+<ParamField path="logLevel" type="LogLevel">
+  Nível mínimo de log para o plugin WAM. Padrão é o do client host.
+</ParamField>
+
+<ParamField path="flushIntervalMs" type="number" default="5000">
+  Janela de coalescência antes de um buffer não vazio flushar. Combina com `WA_WAM_BUFFER_CONSTANTS.inMemoryBufferingDurationSecs` quando disponível.
+</ParamField>
+
+<ParamField path="maxBufferSize" type="number" default="50000">
+  Tamanho em bytes que força um flush imediato da batch de um canal, antes do interval. Combina com `WA_WAM_BUFFER_CONSTANTS.maxBufferSize` quando disponível.
+</ParamField>
+
+<ParamField path="appVersion" type="string">
+  Sobrescreve a app version anunciada. Padrão é a `WA_VERSION` embarcada.
+</ParamField>
+
+<ParamField path="serviceImprovementOptOut" type="boolean" default="false">
+  O bit de consentimento `service_improvement_opt_out` estampado nas batches de saída. Deixe em `false` para paridade com uma aba WA Web padrão.
+</ParamField>
+
+<ParamField path="autoEmit" type="boolean" default="true">
+  Quando `true`, o plugin observa o client host (frames, eventos de conexão, sends) e comita os eventos de protocolo correspondentes por conta própria. Use `false` para dirigir `client.wam.commit(...)` inteiramente por conta própria.
+</ParamField>
+
+<ParamField path="syntheticUi" type="boolean | WaWamSyntheticUiOptions" default="true">
+  Fabrica telemetria de UI (`UiAction`) plausível — chat opens, image opens, audio media loads, info-drawer opens, envios de attachment-tray, ambient re-opens e amostras periódicas de `MemoryStat` — para que o perfil de eventos mimetize uma sessão humana do WA Web. Tudo é jitterizado e rate-limitado; uma fabricação mal-cronometrada é um tell pior do que nenhuma. Passe `false` para desabilitar, ou um objeto de opções (`WaWamSyntheticUiOptions`) para ajustar probabilidades por evento (`chatOpenProbability`, `imageOpenProbability`, `audioLoadProbability`, `infoOpenProbability`, `attachmentTrayProbability`, `aboutConsumptionProbability`), intervalos ambient / de memory-sample, uma janela de horário ativo, e gates de capacidade por surface (`channels`, `communities`, `business` — todos default `false`; habilite só quando a sessão de fato tem aquela surface, já que disparar um evento de channel/community/business em uma conta que não tem é em si um tell).
+</ParamField>
+
+## Eventos emitidos {#events-emitted}
+
+O plugin cobre **131 dos 426 eventos do registry (~31%)**. O resto é dado que um client headless não consegue produzir ou fingir de forma plausível — internals de browser/runtime, estado de device e OS, fluxos exclusivos do app mobile, internals de crypto, ads, agregados server-side — mais eventos carregados nos canais privados (não-`w:stats`).
+
+Os 131 vêm de duas fontes com toggles independentes:
+
+| Fonte | Flag | Default | Contagem |
+| --- | --- | --- | --- |
+| Protocol lifecycle | `autoEmit` | on | 19 |
+| Integrator actions | `autoEmit` | on | 18 |
+| Synthetic UI | `syntheticUi` | on | 94 |
+
+<AccordionGroup>
+  <Accordion title="Protocol lifecycle (19)">
+    Derivados de stanzas inbound/outbound reais — nada fabricado. `E2eMessageSend`, `E2eMessageRecv`, `MessageSend`, `MessageReceive`, `WebcMessageSend`, `ReceiptStanzaReceive`, `MessageHighRetryCount`, `EditMessageSend`, `ClockSkewDifferenceT`, `GroupJoinC`, `WaOldCode`, `WebcSocketConnect`, `WebcStreamModeChange`, `WebcPageResume`, `WebcRawPlatforms`, `MdBootstrapHistoryDataReceived`, `UnknownStanza`, `OfflineCountTooHigh`, `WebWamForceFlush`.
+  </Accordion>
+
+  <Accordion title="Integrator actions (18)">
+    Envios próprios do client e mutações de app-state. `ForwardSend`, `ReactionActions`, `PollsActions`, `SendDocument`, `StickerSend`, `PinInChatMessageSend`, `RevokeMessageSend`, `SendRevokeMessage`, `MessageDeleteActions`, `WaFsGroupJoinRequestAction`, `GroupCreate`, `GroupCreateC`, `EphemeralSettingChange`, `DisappearingModeSettingChange`, `ChatMute`, `ChatAction`, `StatusMute`, `MdSyncdDogfoodingFeatureUsage`.
+  </Accordion>
+
+  <Accordion title="Synthetic UI (94)">
+    Atividade plausível; cada evento está ancorado no próprio emit do WA Web (apenas o subset de campos que o WA seta, com valores plausíveis). O stream base — `UiAction` (chat / image / info opens), `WebcChatOpen`, `AttachmentTrayActions`, `ContactSearchExperience`, `MemoryStat`, `UserActivity` / `TsBitArray`, `WebcEmojiOpen`, `StickerPickerOpened`, `AboutConsumption` / `AboutInteraction`, `WebcMediaLoad` — mais uma tabela ambient ponderada de ~70 outros eventos de UI e 9 ancorados em mensagens (playback / compose de mídia, mention picker, group catch-up, …).
+
+    **9 eventos são gated por capacidade** (default `false`) — dispará-los em uma conta que não tem a surface é em si um tell:
+
+    - `ChannelOpen` — precisa de `channels`
+    - Os eventos `Community*` e `GroupJourney` — precisam de `communities`
+    - `WaShopsManagement`, `MdChatAssignmentSecondaryAction`, `StructuredMessageBuyerInteraction` — precisam de `business`
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Duas disciplinas mantêm o conjunto emitido como um fingerprint fiel. Eventos auto-emitidos de protocol e integrator disparam somente quando **todo campo é derivável honestamente** da atividade real do client. Eventos synthetic UI são fabricados mas cada um replica o emit real do WA Web — verificado contra o bundle web desofuscado — jitterizado, rate-limitado e confinado a horas ativas configuráveis.
+</Note>
+
+## `client.wam` {#client-wam}
+
+O coordinator expõe três métodos.
+
+| Método | Assinatura | Descrição |
+| --- | --- | --- |
+| `commit` | `<K>(name: K, payload?: WaWamEventArgs<K>) => void` | Comita um evento WAM na batch do canal atual. O evento é dropado pelo mesmo gate de sampling `Math.random() * weight > 1` que o WA aplica (e dropado silenciosamente se o nome do evento é desconhecido). |
+| `flush` | `() => Promise<void>` | Flusha toda batch aberta imediatamente. |
+| `dispose` | `() => Promise<void>` | Para de aceitar novos eventos, desmonta `autoEmit` e `syntheticUi` e flusha o que sobrou. Chamado automaticamente quando o plugin é dispostado no `disconnect()`. |
+
+```ts
+// Comita um evento manualmente (autoEmit faz a maior parte desses por você)
+client.wam.commit('UiAction', { uiActionType: 'CHAT_OPEN' })
+```
+
+<Note>
+  Batches só sobem enquanto o client está conectado. Uma batch produzida offline é dropada no flush — o plugin loga um trace e segue em frente. Reconecte, e batches futuras sobem normalmente.
+</Note>
+
+## O que o pipeline faz {#what-the-pipeline-does}
+
+- **`autoEmit`** subscribe na surface de protocolo do client host e comita os eventos WAM correspondentes conforme ocorrem — é isso que faz o default "instale e esqueça" funcionar.
+- **`syntheticUi`** observa a mesma surface e fabrica eventos de UI em escala humana ao lado (chat opens em mensagens inbound, info-drawer opens ocasionais, ambient re-opens entre picos de atividade). Time-of-day e probabilidades por evento são ajustáveis; gates de capacidade têm default off, então nada específico a channel/community/business dispara a menos que você ligue.
+
+Ambos ficam ligados por padrão. Coloque qualquer um em `false` para desligar.
+
+## Exemplo trabalhado {#worked-example}
+
+Instale o plugin e deixe os defaults fazerem tudo — este é o caso comum pretendido:
+
+```ts
+import { WaClient } from 'zapo-js'
+import { wamPlugin } from '@zapo-js/wam'
+
+const client = new WaClient({
+  store,
+  sessionId: 'main',
+  plugins: [wamPlugin()]
+}, logger)
+
+await client.connect()
+// batches de telemetria agora flusham a cada ~5s enquanto conectado
+```
+
+Para um bot headless que nunca abre chats, desabilite a UI sintética para o perfil combinar com o comportamento real (um bot que martela `send` sem nunca "abrir" um chat é em si um sinal):
+
+```ts
+plugins: [wamPlugin({ syntheticUi: false })]
+```
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Sistema de plugins" icon="puzzle-piece" href="/pt-br/concepts/plugins" arrow>
+    Como `client.wam` é ligado via `defineWaClientPlugin`.
+  </Card>
+  <Card title="Instalação" icon="download" href="/pt-br/installation#telemetry-parity" arrow>
+    Onde `@zapo-js/wam` se encaixa no ecossistema de pacotes.
+  </Card>
+</CardGroup>

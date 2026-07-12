@@ -113,6 +113,7 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `business` | `WaBusinessCoordinator` | [business](#business) |
 | `bot` | `WaBotCoordinator` | [bot](#bot) |
 | `email` | `WaEmailCoordinator` | [email](#email) |
+| `mobile` | `WaMobileCoordinator` | [mobile](#mobile) |
 | `lowlevel` | `WaLowLevelCoordinator` | [API de baixo nível](/pt-br/reference/low-level) |
 
 ---
@@ -391,6 +392,22 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `confirm` | `(context?) => Promise<void>` | Confirmação de propriedade pós-verificação. |
 
 <Warning>O vínculo de e-mail é **mobile-only** — todo método lança em uma conexão Web/companion. Veja [Conexões mobile](/pt-br/concepts/mobile).</Warning>
+
+---
+
+## mobile {#mobile}
+
+`WaMobileCoordinator` — veja [Hospedando dispositivos companheiros](/pt-br/concepts/mobile#hosting-companion-devices). Requer uma sessão mobile-primary; métodos de link/revoke/publish lançam em uma conexão Web/companion.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `linkCompanion` | `(qr) => Promise<LinkCompanionResult>` | Vincula um companion pela sua string de QR. Retorna `{ deviceJid, keyIndex }`. |
+| `linkCompanionByCode` | `(pairingCode) => Promise<LinkCompanionResult>` | Vincula um companion pelo código de pareamento de 8 caracteres (o companion precisa ter solicitado um código para esta conta antes). |
+| `revokeCompanion` | `(deviceJid, reason?) => Promise<void>` | Desvincula um companion hospedado e republica a key-index list. `reason` tem default `'user_initiated'`. |
+| `revokeAllCompanions` | `(reason?, { excludeHostedCompanion? }?) => Promise<void>` | "Log out all companion devices"; `excludeHostedCompanion` (opt-in) poupa os companions que esta conta hospeda. |
+| `listCompanions` | `() => Promise<readonly CompanionRecord[]>` | Os companions que este primary vinculou no epoch atual. |
+| `reconcileCompanions` | `() => Promise<readonly string[]>` | Reconcilia o conjunto rastreado contra o servidor (`usync`); roda automaticamente no connect e em `account_sync`. Retorna os device jids removidos. |
+| `publishKeyIndexList` | `() => Promise<void>` | Re-assina e republica a key-index list para o conjunto atual de dispositivos. |
 
 ---
 

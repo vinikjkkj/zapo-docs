@@ -113,6 +113,7 @@ client.ignoreKey((m) => {
 | `business` | `WaBusinessCoordinator` | [business](#business) |
 | `bot` | `WaBotCoordinator` | [bot](#bot) |
 | `email` | `WaEmailCoordinator` | [email](#email) |
+| `mobile` | `WaMobileCoordinator` | [mobile](#mobile) |
 | `lowlevel` | `WaLowLevelCoordinator` | [low-level API](/en/reference/low-level) |
 
 ---
@@ -391,6 +392,22 @@ client.ignoreKey((m) => {
 | `confirm` | `(context?) => Promise<void>` | Post-verification ownership confirmation. |
 
 <Warning>Email binding is **mobile-only** — every method throws on a Web/companion connection. See [Mobile connections](/en/concepts/mobile).</Warning>
+
+---
+
+## mobile
+
+`WaMobileCoordinator` — see [Hosting companion devices](/en/concepts/mobile#hosting-companion-devices). Requires a mobile-primary session; link/revoke/publish methods throw on a Web/companion connection.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `linkCompanion` | `(qr) => Promise<LinkCompanionResult>` | Link a companion by its QR string. Returns `{ deviceJid, keyIndex }`. |
+| `linkCompanionByCode` | `(pairingCode) => Promise<LinkCompanionResult>` | Link a companion by its 8-char pairing code (the companion must have requested a code for this account first). |
+| `revokeCompanion` | `(deviceJid, reason?) => Promise<void>` | Unlink a hosted companion and republish the key-index list. `reason` defaults to `'user_initiated'`. |
+| `revokeAllCompanions` | `(reason?, { excludeHostedCompanion? }?) => Promise<void>` | "Log out all companion devices"; opt-in `excludeHostedCompanion` spares the companions this account itself hosts. |
+| `listCompanions` | `() => Promise<readonly CompanionRecord[]>` | The companions this primary has linked in the current epoch. |
+| `reconcileCompanions` | `() => Promise<readonly string[]>` | Reconcile the tracked set against the server (`usync`); runs automatically on connect and on `account_sync`. Returns the removed device jids. |
+| `publishKeyIndexList` | `() => Promise<void>` | Re-sign and republish the key-index list for the current device set. |
 
 ---
 
