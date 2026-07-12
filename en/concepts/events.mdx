@@ -59,7 +59,8 @@ See [Reconnection](/en/guides/reconnection) for the handling pattern.
 
 | Event | Payload | Description |
 | --- | --- | --- |
-| `message` | `WaIncomingMessageEvent` | An incoming (or self-sent) message. |
+| `message` | `WaIncomingMessageEvent` | An inbound `<message>` stanza was decrypted. |
+| `message_send` | `WaOutgoingMessageEvent` | An outbound message this client is sending, with its decrypted `Proto.IMessage` — the symmetric counterpart to `message`. Lets plugins / loggers observe forwards, reactions, polls, media the wire stanza hides. |
 | `message_addon` | `WaIncomingAddonEvent` | Reactions, poll votes, comments (decrypted addons). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Protocol messages (edits, revokes, …). |
 | `message_bot_chunk` | `WaIncomingBotChunkEvent` | Streamed bot response chunks. |
@@ -110,7 +111,8 @@ There is no `message` payload — the body is genuinely gone (or was never encry
 
 | Event | Payload | Description |
 | --- | --- | --- |
-| `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) synced from another device. |
+| `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) **synced from another device**. Inbound only; this client's own outbound actions surface on `mutation_send`. |
+| `mutation_send` | `WaAppStateMutationEvent` | An app-state action this client is sending — the outbound counterpart to `mutation`, symmetric to how `message_send` pairs with `message`. `event.source` is always `'local'`. **Optimistic**: emitted as the mutation is enqueued, before the server flush confirms it. |
 | `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. |
 | `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
 | `mex_notification` | `WaMexNotificationEvent` | MEX (GraphQL) notifications: username, status, LID changes, capping. |
@@ -153,6 +155,16 @@ client.on('mex_notification', (event) => {
 <Note>
   `*_hint` kinds (`username_update_hint`, `text_status_update_hint`) carry only a `contactHash`, not the new value — the server is telling you "something changed for this bucket" and the client is expected to refetch through the regular profile / status fetch path.
 </Note>
+
+## Companion host (mobile-primary)
+
+Emitted by the [`client.mobile`](/en/concepts/mobile#hosting-companion-devices) coordinator when a mobile-primary session links, revokes, or fails to provision a companion device. All three only fire on a mobile-primary session.
+
+| Event | Payload | Description |
+| --- | --- | --- |
+| `companion_host_linked` | `{ deviceJid: string, keyIndex: number }` | A companion successfully linked via `linkCompanion` / `linkCompanionByCode`. |
+| `companion_host_revoked` | `{ deviceJid: string }` | A hosted companion was removed — via `revokeCompanion` / `revokeAllCompanions`, or dropped during a `reconcileCompanions()` sweep after the user unlinked it from another surface. |
+| `companion_host_error` | `Error` | A link or background provisioning step failed. |
 
 ## Failures
 

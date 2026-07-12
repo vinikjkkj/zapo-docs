@@ -59,7 +59,8 @@ Veja [Reconexão](/pt-br/guides/reconnection) para o padrão de tratamento.
 
 | Evento | Payload | Descrição |
 | --- | --- | --- |
-| `message` | `WaIncomingMessageEvent` | Uma mensagem de entrada (ou enviada por você mesmo). |
+| `message` | `WaIncomingMessageEvent` | Uma stanza `<message>` inbound foi descriptografada. |
+| `message_send` | `WaOutgoingMessageEvent` | Uma mensagem outbound que este client está enviando, com o `Proto.IMessage` descriptografado — a contrapartida simétrica do `message`. Permite que plugins / loggers observem forwards, reações, polls, mídia que a stanza de wire esconde. |
 | `message_addon` | `WaIncomingAddonEvent` | Reações, votos em enquetes, comentários (addons descriptografados). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Mensagens de protocolo (edições, revogações, …). |
 | `message_bot_chunk` | `WaIncomingBotChunkEvent` | Chunks de resposta de bot em stream. |
@@ -110,7 +111,8 @@ Não há payload `message` — o corpo realmente sumiu (ou nunca foi criptografa
 
 | Evento | Payload | Descrição |
 | --- | --- | --- |
-| `mutation` | `WaAppStateMutationEvent` | Mutation de app-state (silenciar, fixar, arquivar, …) sincronizada de outro dispositivo. |
+| `mutation` | `WaAppStateMutationEvent` | Mutation de app-state (silenciar, fixar, arquivar, …) **sincronizada de outro dispositivo**. Somente inbound; ações outbound deste próprio client aparecem em `mutation_send`. |
+| `mutation_send` | `WaAppStateMutationEvent` | Uma ação de app-state que este client está enviando — a contrapartida outbound do `mutation`, simétrica a como `message_send` faz par com `message`. `event.source` é sempre `'local'`. **Otimista**: emitido no momento em que a mutation é enfileirada, antes do flush do servidor confirmar. |
 | `history_sync_chunk` | `WaHistorySyncChunkEvent` | Um chunk de histórico de mensagens sincronizado (bootstrap inicial ou backfill via `message.requestHistorySync`). Pulado apenas quando `history.enabled` é explicitamente `false`. |
 | `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. |
 | `mex_notification` | `WaMexNotificationEvent` | Notificações MEX (GraphQL): nome de usuário, status, mudanças de LID, capping. |
@@ -153,6 +155,16 @@ client.on('mex_notification', (event) => {
 <Note>
   Os kinds `*_hint` (`username_update_hint`, `text_status_update_hint`) trazem apenas um `contactHash`, não o valor novo — o servidor está dizendo "algo mudou para esse bucket" e o client é responsável por refetch pelo caminho normal de perfil / status.
 </Note>
+
+## Companion host (mobile-primary) {#companion-host-mobile-primary}
+
+Emitidos pelo coordinator [`client.mobile`](/pt-br/concepts/mobile#hosting-companion-devices) quando uma sessão mobile-primary linka, revoga ou falha ao provisionar um device companion. Os três só disparam em sessão mobile-primary.
+
+| Evento | Payload | Descrição |
+| --- | --- | --- |
+| `companion_host_linked` | `{ deviceJid: string, keyIndex: number }` | Um companion linkado com sucesso via `linkCompanion` / `linkCompanionByCode`. |
+| `companion_host_revoked` | `{ deviceJid: string }` | Um companion hospedado foi removido — via `revokeCompanion` / `revokeAllCompanions`, ou dropado durante uma varredura de `reconcileCompanions()` depois que o usuário desvinculou de outra surface. |
+| `companion_host_error` | `Error` | Um passo de link ou de provisioning em background falhou. |
 
 ## Falhas {#failures}
 
