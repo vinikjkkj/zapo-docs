@@ -87,16 +87,25 @@ To resolve LIDs for a set of phone numbers, use the profile coordinator:
 ```ts
 const results = await client.profile.getLidsByPhoneNumbers([
   '5511999999999',
-  '5511888888888'
+  '551188888888'
 ])
 
 for (const r of results) {
-  // SignalLidSyncResult: { phoneJid, lidJid, exists }
-  console.log(r.phoneJid, '→', r.lidJid, '(exists:', r.exists, ')')
+  // SignalLidSyncResult: { queriedJid, phoneJid, lidJid, exists, invalid }
+  console.log(r.queriedJid, '→', r.phoneJid, '→', r.lidJid,
+    '(exists:', r.exists, 'invalid:', r.invalid, ')')
 }
 ```
 
-`lidJid` is `null` when the server has no LID mapping for that number.
+Each `SignalLidSyncResult` carries five fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `queriedJid` | `string` | The normalized JID you asked about — equal to `phoneJid` unless the server corrected it. Use this to correlate results back to your input **by value** rather than array position. |
+| `phoneJid` | `string` | The server's canonical form of the number. Differs from `queriedJid` when the server applied a fix like the Brazilian 9th digit (`551188888888` → `5511988888888`). |
+| `lidJid` | `string \| null` | The LID for this account. `null` when the server has no LID mapping. |
+| `exists` | `boolean` | The number is a well-formed WhatsApp account. |
+| `invalid` | `boolean` | The server rejected the number as malformed — distinct from a well-formed number that simply has no WhatsApp account (`exists: false`, `invalid: false`). |
 
 ## LID changes
 

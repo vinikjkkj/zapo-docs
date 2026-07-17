@@ -128,6 +128,77 @@ await client.message.send(jid, {
 })
 ```
 
+## Pré-upload e reuso {#pre-upload-and-reuse}
+
+Às vezes você quer encriptar e uploadar mídia **uma vez** e depois referenciar o mesmo descriptor em múltiplos envios — um asset de broadcast, uma resposta pronta, ou pra construir um payload proto bruto na mão. `client.message.upload(source, options)` roda o fluxo de encrypt / `media_conn` / upload CDN / parse que o send usa, mas retorna o descriptor sem enviar nada.
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+const media = await client.message.upload(await readFile('./photo.jpg'), {
+  type: 'image',
+  mimetype: 'image/jpeg'
+})
+
+// Envia como uma mensagem de imagem espalhando o descriptor no proto:
+await client.message.send(jid, {
+  imageMessage: {
+    url: media.url,
+    directPath: media.directPath,
+    mediaKey: media.mediaKey,
+    fileSha256: media.fileSha256,
+    fileEncSha256: media.fileEncSha256,
+    fileLength: media.fileLength,
+    mediaKeyTimestamp: media.mediaKeyTimestamp,
+    mimetype: media.mimetype
+  }
+})
+```
+
+O upload roda contra sua sessão conectada (o host token vem de um IQ `media_conn`). Sources `Uint8Array` pegam o fast path de zero-temp-file; um path de arquivo ou stream `Readable` é encaminhado por temp file pra que o pass de encrypt consiga hashear deterministicamente.
+
+### `WaUploadMediaOptions` {#waoploadmediaoptions}
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `type` | `'image' \| 'video' \| 'audio' \| 'document' \| 'sticker' \| 'ptv' \| 'gif' \| 'ptt'` | **Obrigatório.** Define o contexto de criptografia e o path de upload no CDN. Tipos desconhecidos lançam erro antes de a encryption rodar. |
+| `mimetype` | `string` | `Content-Type` para o upload, ecoado no resultado pro proto da mensagem. |
+| `mediaKey` | `Uint8Array` | Reutiliza uma media key de 32 bytes existente em vez de gerar uma nova. |
+| `sidecar` | `boolean` | Sobrescreve o streaming sidecar. Default `true` pra `video` / `ptv` / `audio` / `gif` / `ptt`, off pro resto. |
+| `firstFrameLength` | `number` | Tamanho do primeiro frame de sticker animado; necessário pra computar o sidecar do primeiro frame. |
+| `timeoutMs` | `number` | Sobrescrita de timeout de transfer por upload. |
+| `signal` | `AbortSignal` | Signal de cancelamento encaminhado pra request do CDN. |
+
+### `WaMediaUploadResult` {#wamediauploadresult}
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `url` | `string` | URL absoluta do ciphertext no CDN. |
+| `directPath` | `string` | Path host-relativo — casa com um media host ou alimenta [`downloadMediaMessage`](#without-a-connected-client). |
+| `mediaKey` | `Uint8Array` | A media key de 32 bytes usada pra encriptar. Reutilize num call subsequente ao `upload` se quer um descriptor estável. |
+| `fileSha256` | `Uint8Array` | SHA-256 do plaintext. |
+| `fileEncSha256` | `Uint8Array` | SHA-256 do `ciphertext‖mac` encriptado. |
+| `fileLength` | `number` | Tamanho em bytes do plaintext. |
+| `mediaKeyTimestamp` | `number` | Segundos Unix quando a media key foi cunhada; pertence ao proto da mensagem. |
+| `mimetype` | `string?` | Echo da opção quando informada. |
+| `metadataUrl` | `string?` | URL de metadata do server (video). |
+| `streamingSidecar` | `Uint8Array?` | Streaming sidecar pra playback com seek, quando computado. |
+| `firstFrameSidecar` / `firstFrameLength` | `Uint8Array?` / `number?` | Echoes de sidecar do primeiro frame de sticker animado. |
+
+<Warning>
+  `mediaKey` é material sensível — trate como senha. Não logue, não envie pra terceiros, e não persista em store sem criptografia. Qualquer um com a key consegue decifrar o blob no CDN.
+</Warning>
+
+### Crypto & transfer standalone {#standalone-crypto--transfer}
+
+Pra fluxos que precisam rodar encrypt/decrypt fora de uma sessão — um worker em background processando ciphertext armazenado, um relay custom — `WaMediaCrypto` e `WaMediaTransferClient` (mais seus tipos de result e options) são re-exportados da raiz do package:
+
+```ts
+import { WaMediaCrypto, WaMediaTransferClient } from 'zapo-js'
+```
+
+Mesmas primitivas que os fluxos de `upload` / `download` usam; o método do coordinator só as encapsula com o handshake `media_conn` amarrado à sessão.
+
 ## Baixando mídia recebida {#downloading-incoming-media}
 
 O coordinator de mensagens descriptografa e baixa a mídia de um evento recebido. Três variantes estão disponíveis — **prefira as de streaming**:

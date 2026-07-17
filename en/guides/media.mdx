@@ -128,6 +128,77 @@ await client.message.send(jid, {
 })
 ```
 
+## Pre-upload and reuse
+
+Sometimes you want to encrypt and upload media **once** and then reference the same descriptor across multiple sends — a broadcast asset, a stock reply, or building a raw proto payload yourself. `client.message.upload(source, options)` runs the encrypt / `media_conn` / CDN upload / parse flow the send path uses, but returns the descriptor without sending anything.
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+const media = await client.message.upload(await readFile('./photo.jpg'), {
+  type: 'image',
+  mimetype: 'image/jpeg'
+})
+
+// Send it as an image message by spreading the descriptor onto the proto:
+await client.message.send(jid, {
+  imageMessage: {
+    url: media.url,
+    directPath: media.directPath,
+    mediaKey: media.mediaKey,
+    fileSha256: media.fileSha256,
+    fileEncSha256: media.fileEncSha256,
+    fileLength: media.fileLength,
+    mediaKeyTimestamp: media.mediaKeyTimestamp,
+    mimetype: media.mimetype
+  }
+})
+```
+
+The upload runs against your connected session (the host token comes from a `media_conn` IQ). `Uint8Array` sources take a zero-temp-file fast path; a file path or `Readable` stream is staged to a temp file so the encrypt pass can hash it deterministically.
+
+### `WaUploadMediaOptions`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `'image' \| 'video' \| 'audio' \| 'document' \| 'sticker' \| 'ptv' \| 'gif' \| 'ptt'` | **Required.** Sets the encryption context and CDN upload path. Unknown types throw before encryption runs. |
+| `mimetype` | `string` | `Content-Type` for the upload, echoed back on the result for the message proto. |
+| `mediaKey` | `Uint8Array` | Reuse an existing 32-byte media key instead of generating a fresh one. |
+| `sidecar` | `boolean` | Override the streaming sidecar. Default `true` for `video` / `ptv` / `audio` / `gif` / `ptt`, off for the rest. |
+| `firstFrameLength` | `number` | Animated-sticker first-frame length; needed to compute the first-frame sidecar. |
+| `timeoutMs` | `number` | Per-upload transfer timeout override. |
+| `signal` | `AbortSignal` | Cancellation signal forwarded to the CDN request. |
+
+### `WaMediaUploadResult`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `url` | `string` | Absolute CDN URL of the uploaded ciphertext. |
+| `directPath` | `string` | Host-relative path — pairs with a media host or feeds [`downloadMediaMessage`](#without-a-connected-client). |
+| `mediaKey` | `Uint8Array` | The 32-byte media key used to encrypt. Reuse it in a follow-up call to `upload` if you want a stable descriptor. |
+| `fileSha256` | `Uint8Array` | SHA-256 of the plaintext. |
+| `fileEncSha256` | `Uint8Array` | SHA-256 of the encrypted `ciphertext‖mac`. |
+| `fileLength` | `number` | Plaintext byte length. |
+| `mediaKeyTimestamp` | `number` | Unix seconds the media key was minted; belongs on the message proto. |
+| `mimetype` | `string?` | Echo of the option, when provided. |
+| `metadataUrl` | `string?` | Server metadata URL (video). |
+| `streamingSidecar` | `Uint8Array?` | Streaming sidecar for seekable playback, when computed. |
+| `firstFrameSidecar` / `firstFrameLength` | `Uint8Array?` / `number?` | Animated-sticker first-frame sidecar echoes. |
+
+<Warning>
+  `mediaKey` is sensitive key material — treat it like a password. Don't log it, ship it to third parties, or persist it in unencrypted stores. Anyone with the key can decrypt the CDN blob.
+</Warning>
+
+### Standalone crypto & transfer
+
+For workflows that need to run encryption/decryption outside a session — a background worker crunching stored ciphertext, a custom relay — `WaMediaCrypto` and `WaMediaTransferClient` (plus their result and option types) are re-exported from the package root:
+
+```ts
+import { WaMediaCrypto, WaMediaTransferClient } from 'zapo-js'
+```
+
+Same primitives the `upload` / `download` paths use; the coordinator method just wraps them with the session-bound `media_conn` handshake.
+
 ## Downloading incoming media
 
 The message coordinator decrypts and downloads media from an incoming event. Three flavors are available — **prefer the streaming ones**:

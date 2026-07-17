@@ -121,7 +121,7 @@ client.wam.commit('UiAction', { uiActionType: 'CHAT_OPEN' })
 ```
 
 <Note>
-  Batches só sobem enquanto o client está conectado. Uma batch produzida offline é dropada no flush — o plugin loga um trace e segue em frente. Reconecte, e batches futuras sobem normalmente.
+  Batches só sobem enquanto o client está conectado **e** a conta terminou de registrar (`credentials.meJid` populado). Uma batch produzida offline, ou durante a janela pré-login em um pareamento novo, é dropada no flush — o plugin loga um trace e segue em frente. Uma vez que a sessão está totalmente logada, batches futuras sobem normalmente.
 </Note>
 
 ## O que o pipeline faz {#what-the-pipeline-does}

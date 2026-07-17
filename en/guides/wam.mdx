@@ -121,7 +121,7 @@ client.wam.commit('UiAction', { uiActionType: 'CHAT_OPEN' })
 ```
 
 <Note>
-  Batches only upload while the client is connected. A batch produced while offline is dropped on flush — the plugin logs a trace and moves on. Reconnect, and future batches upload normally.
+  Batches only upload while the client is connected **and** the account has finished registering (`credentials.meJid` populated). A batch produced while offline, or during the pre-login window on a fresh pair, is dropped on flush — the plugin logs a trace and moves on. Once the session is fully logged in, future batches upload normally.
 </Note>
 
 ## What the pipeline does
