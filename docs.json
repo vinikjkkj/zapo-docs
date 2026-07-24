@@ -65,23 +65,49 @@
             "group": "Guides",
             "icon": "map",
             "pages": [
-              "en/guides/sending-messages",
-              "en/guides/media",
-              "en/guides/interactive-messages",
-              "en/guides/receiving-messages",
-              "en/guides/chats",
-              "en/guides/groups",
-              "en/guides/newsletters",
-              "en/guides/broadcast-lists",
-              "en/guides/bots",
-              "en/guides/presence-status",
-              "en/guides/profile-privacy",
-              "en/guides/reconnection",
-              "en/guides/errors",
-              "en/guides/multi-session",
-              "en/guides/production",
-              "en/troubleshooting",
-              "en/guides/recipes"
+              {
+                "group": "Messaging",
+                "pages": [
+                  "en/guides/sending-messages",
+                  "en/guides/media",
+                  "en/guides/interactive-messages",
+                  "en/guides/receiving-messages"
+                ]
+              },
+              {
+                "group": "Conversations",
+                "pages": [
+                  "en/guides/chats",
+                  "en/guides/groups",
+                  "en/guides/newsletters",
+                  "en/guides/broadcast-lists"
+                ]
+              },
+              {
+                "group": "Peers & profile",
+                "pages": [
+                  "en/guides/bots",
+                  "en/guides/presence-status",
+                  "en/guides/profile-privacy"
+                ]
+              },
+              {
+                "group": "Operations",
+                "pages": [
+                  "en/guides/reconnection",
+                  "en/guides/errors",
+                  "en/guides/multi-session",
+                  "en/guides/production",
+                  "en/guides/e2e-testing"
+                ]
+              },
+              {
+                "group": "Extras",
+                "pages": [
+                  "en/troubleshooting",
+                  "en/guides/recipes"
+                ]
+              }
             ]
           },
           {
@@ -159,23 +185,49 @@
             "group": "Guias",
             "icon": "map",
             "pages": [
-              "pt-br/guides/sending-messages",
-              "pt-br/guides/media",
-              "pt-br/guides/interactive-messages",
-              "pt-br/guides/receiving-messages",
-              "pt-br/guides/chats",
-              "pt-br/guides/groups",
-              "pt-br/guides/newsletters",
-              "pt-br/guides/broadcast-lists",
-              "pt-br/guides/bots",
-              "pt-br/guides/presence-status",
-              "pt-br/guides/profile-privacy",
-              "pt-br/guides/reconnection",
-              "pt-br/guides/errors",
-              "pt-br/guides/multi-session",
-              "pt-br/guides/production",
-              "pt-br/troubleshooting",
-              "pt-br/guides/recipes"
+              {
+                "group": "Mensageria",
+                "pages": [
+                  "pt-br/guides/sending-messages",
+                  "pt-br/guides/media",
+                  "pt-br/guides/interactive-messages",
+                  "pt-br/guides/receiving-messages"
+                ]
+              },
+              {
+                "group": "Conversas",
+                "pages": [
+                  "pt-br/guides/chats",
+                  "pt-br/guides/groups",
+                  "pt-br/guides/newsletters",
+                  "pt-br/guides/broadcast-lists"
+                ]
+              },
+              {
+                "group": "Contatos & perfil",
+                "pages": [
+                  "pt-br/guides/bots",
+                  "pt-br/guides/presence-status",
+                  "pt-br/guides/profile-privacy"
+                ]
+              },
+              {
+                "group": "Operações",
+                "pages": [
+                  "pt-br/guides/reconnection",
+                  "pt-br/guides/errors",
+                  "pt-br/guides/multi-session",
+                  "pt-br/guides/production",
+                  "pt-br/guides/e2e-testing"
+                ]
+              },
+              {
+                "group": "Extras",
+                "pages": [
+                  "pt-br/troubleshooting",
+                  "pt-br/guides/recipes"
+                ]
+              }
             ]
           },
           {

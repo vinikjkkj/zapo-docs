@@ -9,7 +9,7 @@ tag: "Dev"
 O `zapo` traz dois pacotes opcionais voltados puramente a **desenvolvimento e testes** — nenhum é para produção:
 
 - [**Servidor MCP**](#mcp-server) (`@zapo-js/mcp-server`) — expõe um `WaClient` ao vivo a um agente de IA (Claude Code, Cursor) para conectar, parear, enviar e inspecionar o estado de forma interativa.
-- [**Fake server**](#fake-server) (`@zapo-js/fake-server`) — um servidor WhatsApp Web falso in-process que dirige o `WaClient` real ponta-a-ponta, para você testar de forma determinística sem tocar nos servidores do WhatsApp.
+- [**Fake server**](#fake-server) (`@zapo-js/fake-server`) — um servidor WhatsApp falso in-process usado para benchmarks e cross-check tests da lib. Para os testes E2E **do seu próprio app**, veja o guia [Testes end-to-end](/pt-br/guides/e2e-testing).
 
 ---
 
@@ -85,47 +85,9 @@ Um `WaClient` por processo (multi-sessão exige múltiplos servidores com `MCP_A
 
 ## Fake server {#fake-server}
 
-O `@zapo-js/fake-server` é um **servidor WhatsApp Web falso in-process** que dirige o `WaClient` real ponta-a-ponta — handshake Noise XX/IK completo, pareamento por QR, Signal Protocol (X3DH + Double Ratchet), SenderKey de grupo, upload/download de mídia sobre HTTPS auto-assinado e sincronização de app-state — tudo sem tocar nos servidores do WhatsApp. Ele alimenta a própria suíte de testes cross-check e os benchmarks da biblioteca, e você pode usá-lo para testar sua integração de forma determinística.
+O `@zapo-js/fake-server` é o servidor WhatsApp Web falso in-process que a lib usa para testes cross-check e benchmarks. Também é o caminho recomendado para rodar **testes end-to-end do seu próprio app** sem tocar no WhatsApp — veja o guia dedicado [Testes end-to-end](/pt-br/guides/e2e-testing), que cobre install, API programática, fixtures `FakePeer`, isolamento multi-sessão e recipes de CI.
 
-### Início rápido {#quick-start}
-
-```ts
-import { FakeWaServer } from '@zapo-js/fake-server'
-import { createStore, WaClient } from 'zapo-js'
-
-const server = await FakeWaServer.start()
-
-const client = new WaClient({
-  store: createStore({
-    providers: { auth: 'memory', signal: 'memory', senderKey: 'memory', appState: 'memory' }
-  }),
-  sessionId: 'test',
-  chatSocketUrls: [server.url],
-  testHooks: { noiseRootCa: server.noiseRootCa },
-  proxy: { mediaUpload: server.mediaProxyAgent, mediaDownload: server.mediaProxyAgent }
-})
-
-await client.connect()
-const pipeline = await server.waitForAuthenticatedPipeline()
-// conduza o pareamento, crie peers, envie/receba mensagens, valide os dois lados
-await server.stop()
-```
-
-A ligação usa três [opções do client](/pt-br/concepts/configuration) feitas exatamente para isso: `chatSocketUrls` (aponta para o WebSocket falso), `testHooks.noiseRootCa` (confia no certificado do servidor falso **sem** burlar a verificação — a checagem completa da cadeia ainda roda) e `proxy.mediaUpload` / `proxy.mediaDownload` (roteia a mídia para o servidor HTTPS falso).
-
-### O que ele simula {#what-it-simulates}
-
-- **`FakeWaServer`** — o listener WebSocket, o handshake Noise, um roteador de IQ que responde a cada IQ que a lib emite na operação normal (upload/fetch de prekey, usync, `media-conn`, sincronização de app-state, grupos, privacidade, perfil, blocklist, …), além de registries de estado para peers e grupos.
-- **`FakePeer`** — um contato simulado com cripto Signal real: `peer.sendConversation(text)` / `peer.sendGroupConversation(groupJid, text)` empurram mensagens para o client, e `peer.expectMessage()` captura e descriptografa o que o client envia.
-- **Pareamento** — `server.runPairing(pipeline, { deviceJid }, materialFn)` conduz o handshake completo de pareamento por QR; depois a lib reconecta com o handshake IK (capture-o via `waitForNextAuthenticatedPipeline()`).
-
-### CLI standalone {#standalone-cli}
-
-Rode como um servidor standalone para experimentos manuais:
-
-```bash
-npm --workspace=@zapo-js/fake-server run cli -- --port 5222 --peer 5511888@s.whatsapp.net --log
-```
+O resto desta seção é limitado ao uso interno da lib — benchmarking.
 
 ### Benchmarking {#benchmarking}
 

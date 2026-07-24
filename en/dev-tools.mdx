@@ -9,7 +9,7 @@ tag: "Dev"
 `zapo` ships two optional packages aimed purely at **development and testing** — neither is meant for production:
 
 - [**MCP server**](#mcp-server) (`@zapo-js/mcp-server`) — expose a live `WaClient` to an AI agent (Claude Code, Cursor) so it can connect, pair, send, and inspect state interactively.
-- [**Fake server**](#fake-server) (`@zapo-js/fake-server`) — an in-process fake WhatsApp Web server that drives the real `WaClient` end-to-end, so you can test deterministically without touching WhatsApp's servers.
+- [**Fake server**](#fake-server) (`@zapo-js/fake-server`) — an in-process fake WhatsApp server used for library-internal benchmarks and cross-check tests. For **your own app's** E2E tests, see the [End-to-end testing](/en/guides/e2e-testing) guide.
 
 ---
 
@@ -85,47 +85,9 @@ One `WaClient` per process (multi-session needs multiple servers with distinct `
 
 ## Fake server
 
-`@zapo-js/fake-server` is an **in-process fake WhatsApp Web server** that drives the real `zapo-js` `WaClient` end-to-end — full Noise XX/IK handshake, QR pairing, Signal Protocol (X3DH + Double Ratchet), group SenderKey, media upload/download over self-signed HTTPS, and app-state sync — all without touching WhatsApp's servers. It powers the library's own cross-check test suite and benchmarks, and you can use it to test your integration deterministically.
+`@zapo-js/fake-server` is the in-process fake WhatsApp Web server the library uses for cross-check tests and benchmarks. It's also the recommended way to run **end-to-end tests for your own app** without touching WhatsApp — see the dedicated [End-to-end testing](/en/guides/e2e-testing) guide, which covers install, programmatic API, `FakePeer` fixtures, multi-session isolation, and CI recipes.
 
-### Quick start
-
-```ts
-import { FakeWaServer } from '@zapo-js/fake-server'
-import { createStore, WaClient } from 'zapo-js'
-
-const server = await FakeWaServer.start()
-
-const client = new WaClient({
-  store: createStore({
-    providers: { auth: 'memory', signal: 'memory', senderKey: 'memory', appState: 'memory' }
-  }),
-  sessionId: 'test',
-  chatSocketUrls: [server.url],
-  testHooks: { noiseRootCa: server.noiseRootCa },
-  proxy: { mediaUpload: server.mediaProxyAgent, mediaDownload: server.mediaProxyAgent }
-})
-
-await client.connect()
-const pipeline = await server.waitForAuthenticatedPipeline()
-// drive pairing, create peers, send/receive messages, assert on both sides
-await server.stop()
-```
-
-The wiring uses three [client options](/en/concepts/configuration) built for exactly this: `chatSocketUrls` (point at the fake WebSocket), `testHooks.noiseRootCa` (trust the fake server's certificate **without** bypassing verification — the full cert-chain check still runs), and `proxy.mediaUpload` / `proxy.mediaDownload` (route media to the fake HTTPS server).
-
-### What it simulates
-
-- **`FakeWaServer`** — the WebSocket listener, Noise handshake, an IQ router that answers every IQ the lib emits during normal operation (prekey upload/fetch, usync, `media-conn`, app-state sync, groups, privacy, profile, blocklist, …), plus state registries for peers and groups.
-- **`FakePeer`** — a simulated contact with real Signal crypto: `peer.sendConversation(text)` / `peer.sendGroupConversation(groupJid, text)` push messages to the client, and `peer.expectMessage()` captures and decrypts what the client sends.
-- **Pairing** — `server.runPairing(pipeline, { deviceJid }, materialFn)` drives the full QR-pairing handshake; afterward the lib reconnects with the IK handshake (capture it via `waitForNextAuthenticatedPipeline()`).
-
-### Standalone CLI
-
-Run it as a standalone server for manual experiments:
-
-```bash
-npm --workspace=@zapo-js/fake-server run cli -- --port 5222 --peer 5511888@s.whatsapp.net --log
-```
+The rest of this section is scoped to the library-internal use — benchmarking.
 
 ### Benchmarking
 

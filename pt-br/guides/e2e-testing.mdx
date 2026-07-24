@@ -1,0 +1,181 @@
+---
+title: "Testes end-to-end sem WhatsApp"
+description: "Rode seu bot / CRM / pipeline de notificação contra o @zapo-js/fake-server — um servidor Noise / Signal / protocolo WhatsApp real in-process, sem número real ocupado, sem risco pra conta de produção. Funciona com qualquer client conforme (zapo, Baileys, whatsmeow)."
+icon: "flask-vial"
+---
+
+O `@zapo-js/fake-server` é um servidor WhatsApp Web falso in-process que fala Noise XX/IK, X3DH + Double Ratchet, SenderKey de grupo, sincronização de app-state e upload/download de mídia sobre HTTPS auto-assinado — tudo o que um client conforme real vê no wire. Ele existe para você testar **seu app end-to-end** sem tocar no WhatsApp: sem número real ocupado, sem risco pra conta de produção, sem flakiness de rede real, CI-friendly.
+
+<Note>
+  Este guia tem como público **autores de app** — bots, CRMs, serviços de notificação, integrações — independente de a lib WhatsApp abaixo ser `zapo-js`, Baileys, whatsmeow ou outro client conforme. Para o uso interno da lib (suíte cross-check, benchmarks) veja [Dev tools](/pt-br/dev-tools).
+</Note>
+
+## Funciona com qualquer lib WhatsApp {#works-with-any-whatsapp-library}
+
+O fake server é uma implementação **em nível de wire** do protocolo WhatsApp. Não tem dependência de runtime em `zapo-js` — fala os mesmos bytes de Noise / Signal / app-state que os edges do próprio WhatsApp. Clients estritos (forks de Baileys, whatsmeow, entre outros) funcionam contra ele de saída:
+
+- A cadeia de cert Noise define `notBefore` / `notAfter` para clients que validam validade aceitarem como não-expirado.
+- O IQ de passive-set e a query `<count>` de prekey no encrypt são respondidos por default (clients não-`zapo` bloqueiam nos dois).
+- Após todo login o server envia `<ib><offline count="0"/></ib>` para clients de evento bufferizado darem flush.
+- Ids de mensagem do `FakePeer` são hex WA-style — sem `@` que decoders binários estritos tokenizariam como JID.
+
+Se seu app roda contra um edge WA real, deve rodar contra o falso trocando só URL / cert.
+
+## Instalação {#install}
+
+```bash
+npm install --save-dev @zapo-js/fake-server zapo-js
+```
+
+`zapo-js` é **peer dependency** do fake server (importa as primitivas de Noise / Signal / crypto / proto por baixo em runtime), então precisa estar presente na árvore mesmo quando seu app é construído em cima de outra lib WhatsApp. Node.js `>= 20.9.0`.
+
+## Início rápido (programático) {#quick-start-programmatic}
+
+A ligação `zapo-js` abaixo é como um app `zapo-js` se parece; para Baileys / whatsmeow, mantenha seu setup de client existente e sobrescreva apenas a URL do socket, o proxy de mídia e o Noise root CA para apontar pro fake server.
+
+```ts
+import { FakeWaServer } from '@zapo-js/fake-server'
+import { createStore, WaClient } from 'zapo-js'
+
+const server = await FakeWaServer.start()
+
+const client = new WaClient({
+  store: createStore({
+    providers: { auth: 'memory', signal: 'memory', senderKey: 'memory', appState: 'memory' }
+  }),
+  sessionId: 'test',
+  chatSocketUrls: [server.url],
+  testHooks: { noiseRootCa: server.noiseRootCa },
+  proxy: { mediaUpload: server.mediaProxyAgent, mediaDownload: server.mediaProxyAgent }
+})
+
+await client.connect()
+const pipeline = await server.waitForAuthenticatedPipeline()
+// ...dirija o fluxo, valide os dois lados...
+await server.stop()
+```
+
+`testHooks.noiseRootCa` confia no certificado do fake server **sem** burlar a verificação — a checagem completa da cadeia continua rodando.
+
+## Simulando um peer {#simulating-a-peer}
+
+`createFakePeer` te dá um contato simulado com cripto Signal real. Empurre mensagens pro seu client com `sendConversation` / `sendGroupConversation`, e capture o que o seu client envia com `expectMessage`:
+
+```ts
+const alice = await server.createFakePeer('5511999999999@s.whatsapp.net')
+
+// Seu app recebe isto como uma mensagem inbound normal:
+await alice.sendConversation('hello from Alice')
+
+// Seu app manda uma resposta; valide no conteúdo descriptografado:
+const outbound = await alice.expectMessage({ timeoutMs: 5_000 })
+expect(outbound.message?.conversation).toBe('hi Alice')
+```
+
+O peer executa um handshake X3DH real, faz ratchet a cada mensagem e valida MACs — então um bug no seu handling Signal aparece do mesmo jeito que apareceria contra o próprio WhatsApp.
+
+## Validando stanzas outbound {#asserting-on-outbound-stanzas}
+
+Para asserts que não precisam do ponto de vista de um peer (um `<presence>` que seu app enviou, um `<receipt>` que ele ackeou, um IQ que ele fez) inscreva-se em stanzas capturadas:
+
+```ts
+const stanzas: BinaryNode[] = []
+server.onCapturedStanza((node) => stanzas.push(node))
+
+await client.presence.send('available')
+
+expect(stanzas.some((n) => n.tag === 'presence' && n.attrs.type === 'available')).toBe(true)
+```
+
+`onCapturedStanza` retorna uma função de unsubscribe; chame em `afterEach` para manter os testes isolados.
+
+## Isolamento multi-sessão {#multi-session-isolation}
+
+Rode **muitas** instâncias de app contra um único server sem cross-talk. Forneça um resolver `sessionKey` — o fake server roteia cada conexão autenticada pro próprio `FakeServerSession` (peers, grupos, prekeys, app-state, stanzas capturadas isolados):
+
+```ts
+const server = await FakeWaServer.start({
+  sessionKey: ({ clientPayload }) =>
+    clientPayload.kind === 'login' ? clientPayload.username : 'pending'
+})
+
+// Spawn dois apps contra o mesmo server (sessionIds diferentes → sessões diferentes):
+await appA.connect() // → session '<userA>'
+await appB.connect() // → session '<userB>'
+
+// Operações escopadas por sessão:
+const alice = await server.sessionFor(pipelineA).createFakePeer(aliceJid)
+// ou por key:
+const bob = await server.session('<userB>').createFakePeer(bobJid)
+```
+
+O resolver roda uma vez por conexão, logo após a autenticação, então `info.clientPayload` está disponível para chavear por identidade de login. Handlers server-wide (`server.registerIqHandler`) continuam aplicando a toda sessão; os escopados por sessão (`session.registerIqHandler`) ficam locais.
+
+## Config programática {#programmatic-config}
+
+`FakeWaServer.start(options)` aceita:
+
+| Opção | Propósito |
+| --- | --- |
+| `port` / `path` | Sobrescrita do endereço de bind. |
+| `successNodeAttributes` | Atributos estampados no node `<success/>` pós-handshake (lid, display name, versões de props, …). |
+| `defaultIqHandlers` | `false` inicia com um router **vazio** — ligue toda resposta você mesmo via `registerIqHandler`. Default `true`. |
+| `sessionKey` | Resolver multi-sessão (veja acima). |
+
+`onPipeline(listener)` fanout pra múltiplos subscribers e retorna uma função de unsubscribe; o `clientPayload` parseado da pipeline é exposto em `WaFakeConnectionPipeline` pra checagens de identidade. IQ handlers podem retornar `null` pra **fall through** pro próximo handler que casa (observe-then-delegate).
+
+## CLI standalone {#standalone-cli}
+
+O pacote traz um binário `fake-wa-server`. Rode uma vez que a dev dep estiver instalada:
+
+```bash
+npx fake-wa-server --port 5222 --peer 5511888@s.whatsapp.net --log
+```
+
+O modo `--pair <jid>` conduz o pareamento QR pedindo no stdin o payload QR que o client mostra — pareie uma vez, depois reconecte contra o mesmo fake server para iterar.
+
+## Recipe de CI {#ci-recipe}
+
+Suba um server por arquivo de teste (ou por suíte), derrube no final. Providers `memory` no client mantêm cada teste hermético:
+
+```ts
+import { FakeWaServer } from '@zapo-js/fake-server'
+import { afterAll, beforeAll, test } from 'vitest'
+
+let server: FakeWaServer
+
+beforeAll(async () => {
+  server = await FakeWaServer.start()
+})
+
+afterAll(async () => {
+  await server.stop()
+})
+
+test('bot replies to inbound message', async () => {
+  const app = await startYourApp({
+    socketUrl: server.url,
+    noiseRootCa: server.noiseRootCa,
+    mediaProxy: server.mediaProxyAgent
+  })
+  const alice = await server.createFakePeer('5511999999999@s.whatsapp.net')
+  await alice.sendConversation('hi')
+  const reply = await alice.expectMessage({ timeoutMs: 5_000 })
+  expect(reply.message?.conversation).toBe('hello, human')
+})
+```
+
+<Note>
+  Combine o fake server com stores in-memory no client. Cada teste reseta — sem estado de pareamento vazando, sem malabarismo de fixture em disco.
+</Note>
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Dev tools" icon="wrench" href="/pt-br/dev-tools" arrow>
+    Benchmarks, suíte cross-check e o MCP dev-server — tooling interno da lib.
+  </Card>
+  <Card title="README do fake server" icon="github" href="https://github.com/vinikjkkj/zapo/blob/master/packages/fake-server/README.md" arrow>
+    Referência completa de CLI e superfície de API.
+  </Card>
+</CardGroup>
