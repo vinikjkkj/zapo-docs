@@ -111,6 +111,54 @@ const bob = await server.session('<userB>').createFakePeer(bobJid)
 
 O resolver roda uma vez por conexão, logo após a autenticação, então `info.clientPayload` está disponível para chavear por identidade de login. Handlers server-wide (`server.registerIqHandler`) continuam aplicando a toda sessão; os escopados por sessão (`session.registerIqHandler`) ficam locais.
 
+## Mobile-primary + companion hosting {#mobile-primary--companion-hosting}
+
+Para testar uma sessão mobile-primary — o papel do [`client.mobile`](/pt-br/concepts/mobile#hosting-companion-devices), onde o zapo hospeda companions — inicie o server com o listener TCP raw que o transporte mobile disca, e semeie um primary registrado no store. O registro mobile acontece out-of-band contra os endpoints HTTP do WhatsApp, então o fake server não consegue rodá-lo; o `seedFakeMobilePrimary` grava as credentials diretamente.
+
+```ts
+import { FakeWaServer, seedFakeMobilePrimary } from '@zapo-js/fake-server'
+import { createStore, WaClient } from 'zapo-js'
+
+const server = await FakeWaServer.start({ tcp: true })
+
+const store = createStore({})
+const primary = await seedFakeMobilePrimary(store, 'mobile-primary', {
+  phoneNumber: '5511999999999'
+})
+
+const client = new WaClient({
+  store,
+  sessionId: 'mobile-primary',
+  mobileTransport: {
+    deviceInfo: primary.deviceInfo,
+    tcpUrl: server.tcpUrl
+  },
+  testHooks: { noiseRootCa: server.noiseRootCa }
+})
+await client.connect()
+```
+
+Para dirigir o link de companion contra esse primary, conecte um **segundo** client como companion e entregue as refs via `server.offerCompanionPairing(companionPipeline)` — o inverso do `runPairing`. O primary assina a identidade de verdade; o server só relay:
+
+```ts
+const companion = new WaClient({ store: companionStore, sessionId: 'companion', /* ... */ })
+await companion.connect()
+const companionPipeline = await server.waitForAuthenticatedPipeline()
+
+// Empurra as refs que o companion vira num QR:
+const refs = await server.offerCompanionPairing(companionPipeline)
+
+// No lado do primary, alimente a string QR em client.mobile.linkCompanion(qr).
+// O primary assina e uploada pair-device; o server relay o pair-success
+// de volta pro companion.
+```
+
+Isso exercita o handshake completo `client.mobile.linkCompanion` / `linkCompanionByCode` — assinatura, ADV epoch, republish da key-index list, evento `companion_host_linked` — end to end.
+
+<Note>
+  Pareamento por código roda entre os dois clients com o server no meio; o fake server relay cada estágio. `parseClientPayload` no pipeline classifica o login como web ou mobile e expõe a identidade do phone (manufacturer, model, os, app version, phone id) pra asserts.
+</Note>
+
 ## Config programática {#programmatic-config}
 
 `FakeWaServer.start(options)` aceita:
@@ -118,6 +166,7 @@ O resolver roda uma vez por conexão, logo após a autenticação, então `info.
 | Opção | Propósito |
 | --- | --- |
 | `port` / `path` | Sobrescrita do endereço de bind. |
+| `tcp` | `true` também sobe um listener TCP raw ao lado do WebSocket; um client de transporte mobile disca ele via `server.tcpUrl`. Default `false`. |
 | `successNodeAttributes` | Atributos estampados no node `<success/>` pós-handshake (lid, display name, versões de props, …). |
 | `defaultIqHandlers` | `false` inicia com um router **vazio** — ligue toda resposta você mesmo via `registerIqHandler`. Default `true`. |
 | `sessionKey` | Resolver multi-sessão (veja acima). |

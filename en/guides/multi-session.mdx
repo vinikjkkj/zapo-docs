@@ -72,14 +72,17 @@ function spawn(sessionId: string): WaClient {
 
 ### Removing tenants
 
-There is **no** `store.removeSession(id)` API. The in-store session map is only cleared by `store.destroy()`. For long-running multi-tenant processes:
+For long-running multi-tenant processes, three options — each with a different scope:
 
-- **Logout, keep the entry.** `await client.logout()` wipes the persistent state for that `sessionId` (subject to [`logoutStoreClear`](/en/concepts/configuration#logoutStoreClear)). The `WaStoreSession` bundle stays in the in-store map — inert, but holding the per-domain stores until the process restarts. Acceptable when tenant churn is low relative to total memory.
-- **Restart the process** when you need to reclaim every byte (e.g. after deprovisioning many tenants at once). Destroy the store and rebuild.
+- **`await client.logout()`** — logical removal. Wipes the persistent state for that `sessionId` (subject to [`logoutStoreClear`](/en/concepts/configuration#logoutStoreClear)) and unlinks the device server-side. The bundle stays in the in-store map until you destroy it or the process ends; a subsequent `WaClient({ store, sessionId })` on the same id reuses the same bundle.
+- **`await storeSession.destroy()`** — mid-process reclaim. Tears down the session's per-domain stores **and evicts the bundle from the in-store map** (the `sessionId` is released as destruction starts), so a concurrent or later `store.session(id)` builds a **fresh** bundle. The teardown is idempotent — repeat calls await the same in-flight promise — and teardown failures are logged, never thrown.
+- **`await store.destroy()`** — process shutdown. Tears down every live session and the registered backends. `store.session()` throws afterwards; the store is single-shot.
 
-<Warning>
-  Avoid calling `await storeSession.destroy()` on a live process. It tears down that session's per-domain stores, but the entry **stays in the store's session map** — a later `store.session(id)` call returns the destroyed bundle, and subsequent reads/writes throw. Use `client.logout()` (logical removal) or `store.destroy()` (process shutdown) instead.
-</Warning>
+For a bounded reset that keeps the session alive, `await storeSession.destroyCaches()` swaps the cache domains (`retry` / `groupMetadata` / `deviceList` / `messageSecret`) for freshly-built instances instead of closing them — useful when you want to drop stale entries from a persistent cache backend without losing the session. Concurrent resets are serialized and cache references captured before the call reject afterwards, so **recreate the client to pick up the fresh cache stores**.
+
+<Note>
+  `session(id)` returns the **same** bundle instance while it's alive — so a `WaClient` holding a stale reference before you destroyed the session keeps hitting the closed bundle. In practice: destroy the client's connection first (`client.disconnect()`), then `session.destroy()`, then build a new client if you want the same `sessionId` back.
+</Note>
 
 ## Process ownership
 

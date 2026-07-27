@@ -72,14 +72,17 @@ function spawn(sessionId: string): WaClient {
 
 ### Removendo tenants {#removing-tenants}
 
-**Não** existe API `store.removeSession(id)`. O map interno de sessões da store só é limpo por `store.destroy()`. Para processos multi-tenant longos:
+Para processos multi-tenant longos, três opções — cada uma com escopo diferente:
 
-- **Logout, mantém a entry.** `await client.logout()` apaga o estado persistente daquele `sessionId` (sujeito a [`logoutStoreClear`](/pt-br/concepts/configuration#logoutStoreClear)). O bundle `WaStoreSession` continua no map interno da store — inerte, mas segurando as stores por domínio até o processo reiniciar. Aceitável quando o churn de tenants é baixo em relação à memória total.
-- **Reiniciar o processo** quando você precisa reclamar cada byte (ex.: depois de desprovisionar muitos tenants de uma vez). Destrói a store e reconstrói.
+- **`await client.logout()`** — remoção lógica. Apaga o estado persistente daquele `sessionId` (sujeito a [`logoutStoreClear`](/pt-br/concepts/configuration#logoutStoreClear)) e desvincula o device no servidor. O bundle continua no map interno da store até você destruí-lo ou o processo terminar; um `WaClient({ store, sessionId })` posterior com o mesmo id reutiliza o mesmo bundle.
+- **`await storeSession.destroy()`** — reclaim mid-process. Derruba as stores por domínio da sessão **e evicta o bundle do map interno** (o `sessionId` é liberado assim que a destruição começa), então um `store.session(id)` concorrente ou posterior constrói um bundle **fresco**. O teardown é idempotente — chamadas repetidas aguardam o mesmo promise in-flight — e falhas de teardown são logadas, nunca lançadas.
+- **`await store.destroy()`** — shutdown do processo. Derruba toda sessão viva e os backends registrados. `store.session()` lança erro depois; a store é single-shot.
 
-<Warning>
-  Evite chamar `await storeSession.destroy()` em um processo vivo. Ele derruba as stores por domínio dessa sessão, mas a entry **continua no map de sessões da store** — uma chamada posterior a `store.session(id)` retorna o bundle destruído, e as leituras/escritas seguintes lançam erro. Use `client.logout()` (remoção lógica) ou `store.destroy()` (shutdown do processo) no lugar.
-</Warning>
+Para um reset limitado que mantém a sessão viva, `await storeSession.destroyCaches()` troca os domínios de cache (`retry` / `groupMetadata` / `deviceList` / `messageSecret`) por instâncias frescas em vez de fechá-los — útil quando você quer dropar entries stale de um backend de cache persistente sem perder a sessão. Resets concorrentes são serializados e referências de cache capturadas antes da chamada rejeitam depois, então **recrie o client para pegar os novos cache stores**.
+
+<Note>
+  `session(id)` retorna a **mesma** instância de bundle enquanto ele está vivo — então um `WaClient` segurando uma referência stale antes de você destruir a sessão continua batendo no bundle fechado. Na prática: destrua a conexão do client primeiro (`client.disconnect()`), depois `session.destroy()`, depois construa um novo client se você quer o mesmo `sessionId` de volta.
+</Note>
 
 ## Propriedade entre processos {#process-ownership}
 
