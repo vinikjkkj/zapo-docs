@@ -75,11 +75,12 @@ O conjunto completo de constantes de protocolo é exportado como objetos `WA_*` 
 | --- | --- |
 | `WA_DEFAULTS` | Timeouts padrão, o JID de status-broadcast, o navegador de dispositivo padrão, … |
 | `WA_BROWSERS` | Identificadores de navegador para o fingerprint do dispositivo. |
-| `WA_PRIVACY_CATEGORIES` / `WA_PRIVACY_VALUES` | Nomes de configurações de privacidade e valores permitidos. |
+| `WA_PRIVACY_CATEGORIES` / `WA_PRIVACY_VALUES` / `WA_PRIVACY_SETTING_VALUES` / `WA_PRIVACY_ACCOUNT_SYNC_DISALLOWED_LISTS` / `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` | Nomes de configurações de privacidade, valores permitidos por setting, as quatro categorias de disallowed list refetched em account-sync e as categorias elegíveis para deny-list. |
 | `WA_DISCONNECT_REASONS` / `WA_LOGOUT_REASONS` | Strings de motivo nos eventos de conexão. |
 | `WA_MESSAGE_TYPES` / `WA_MESSAGE_TAGS` | Classificação de mensagens. |
 | `WA_NODE_TAGS` / `WA_XMLNS` | Node tags de protocolo e namespaces XML. |
 | `WA_APP_STATE_COLLECTIONS` | Nomes de coleções de app-state. |
+| `WA_ABPROPS` / `WA_ABPROPS_BY_CODE` / `WA_GROUP_ABPROPS` / `WA_GROUP_ABPROPS_BY_CODE` | Catálogo completo de AB-props vendorizado do bundle do WA Web (2151 user props + 14 group props). Cada entrada carrega `code`, `type` (`'bool' \| 'int' \| 'float' \| 'string'`), `defaultValue` e `debugDefaultValue`. |
 
 ```ts
 import { WA_DEFAULTS, WA_LOGOUT_REASONS } from 'zapo-js'
@@ -87,7 +88,16 @@ import { WA_DEFAULTS, WA_LOGOUT_REASONS } from 'zapo-js'
 await client.logout(WA_LOGOUT_REASONS.USER_INITIATED)
 ```
 
-**Tipos** literais de string associados também são exportados para anotação: `WaPrivacyCategory`, `WaPrivacySettingName`, `WaPrivacyValue`, `WaDisconnectReason`, `WaLogoutReason`, `WaConnectionCode`, `WaStreamErrorCode`, `WaFailureReasonCode` e `ParsedJid`.
+**Tipos** literais de string associados também são exportados para anotação: `WaPrivacyCategory`, `WaPrivacySettingName`, `WaPrivacyValue`, `WaDisconnectReason`, `WaLogoutReason`, `WaConnectionCode`, `WaStreamErrorCode`, `WaFailureReasonCode`, `WaAbPropName`, `WaAbPropType`, `WaAbPropValue`, `WaAbPropValueByName`, `WaGroupAbPropName`, `WaGroupAbPropValueByName` e `ParsedJid`.
+
+### Aliases AB-props deprecadas {#deprecated-ab-props-aliases}
+
+A tabela hand-maintained de 133 entradas anterior se foi, mas a surface antiga continua exportada de `zapo-js/protocol` como uma view de compatibilidade sobre o catálogo vendorizado:
+
+- `AB_PROP_CONFIGS` — uma view sobre `WA_ABPROPS` que mantém o nome histórico `configCode` (aliased para `code`) com tipos literais preservados.
+- `AbPropName` / `AbPropType` / `AbPropValue` — aliases de `WaAbPropName` / `WaAbPropType` / `WaAbPropValue`. `AbPropType` agora também cobre `'float'`.
+
+Prefira os nomes `Wa*` para código novo. A lookup do catálogo por wire id é `resolveAbPropNameByCode(code)`.
 
 ## Helpers de mensagem {#message-helpers}
 

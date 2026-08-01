@@ -140,6 +140,7 @@ client.ignoreKey((m) => {
 | `send` | `(to, content: WaSendMessageContent, options?: WaSendMessageOptions) => Promise<WaMessagePublishResult>` | Sends any [content type](/en/reference/message-types); handles device fanout and per-send retries. Returns the stanza id + ack metadata. |
 | `sendReceipt` | `(event\|events, options?)` / `(jid, ids, options?) => Promise<void>` | Sends a delivery/read/played/inactive receipt. Delivery is auto-acked on decrypt; use this for manual read/played. |
 | `requestHistorySync` | `(input: WaRequestHistorySyncInput) => Promise<{ messageId }>` | Asks the server to backfill older messages for a chat. Resolves once dispatched — the backlog arrives later as `history_sync_chunk`. See [Requesting older history](/en/guides/receiving-messages#requesting-older-history). |
+| `shareGroupHistory` | `(groupJid, input: WaShareGroupHistoryInput) => Promise<WaShareGroupHistoryResult>` | Shares recent group history with newly added members. Fans the encrypted bundle out only to `input.toJids` plus this account, then sends a group-wide notice. Gated by the `group_history_send` AB prop — throws when the account is not allowed to share. See [Groups → sharing group history](/en/guides/groups#sharing-group-history). |
 | `upload` | `(source: WaUploadMediaSource, options: WaUploadMediaOptions) => Promise<WaMediaUploadResult>` | Encrypts and uploads standalone media to the WhatsApp CDN and returns the reusable descriptor (`url`, `directPath`, `mediaKey`, hashes, sidecars, `mediaKeyTimestamp`, `mimetype`) **without sending a message**. Spread the result onto the matching proto to send it. See [Pre-upload and reuse](/en/guides/media#pre-upload-and-reuse). |
 | `download` | `(source, options?) => Promise<Readable>` | Streams decrypted media (MAC + SHA-256 verified as consumed). Cancel via `options.signal`. |
 | `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Streams decrypted media to a file. |
@@ -291,10 +292,12 @@ client.ignoreKey((m) => {
 
 | Method | Signature | Description |
 | --- | --- | --- |
-| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` | Current value of every privacy category. |
-| `setPrivacySetting` | `(setting, value) => Promise<void>` | Update one category. A `contact_blacklist`-style value flips the mode only — populate the list separately via the disallowed-list + app-state. |
-| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` | Per-category excluded JIDs. |
-| `getBlocklist` | `() => Promise<WaBlocklistResult>` | Account-wide blocklist. |
+| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` | Current value of every privacy category. A change made on another device also surfaces on the `privacy` event, so polling this is only needed for the initial read. |
+| `setPrivacySetting` | `(setting, value) => Promise<string \| null>` | Update one category. Returns the `dhash` the server echoes back — the version stamp of the category's disallowed list, present only while the category sits on `'contact_blacklist'` (`null` otherwise). A `'contact_blacklist'` value flips the **mode** only; populate the list with `setDisallowedList`. |
+| `setDisallowedList` | `(category: WaPrivacyDisallowedListSettingName, input: { add?: readonly string[], remove?: readonly string[] }) => Promise<string \| null>` | Adds/removes JIDs on a category's disallowed list, switching the category to `'contact_blacklist'` in the same stanza. Resolves a stale `dhash` (`409`) by refetching and retrying once; returns the new `dhash`. |
+| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` | Per-category excluded JIDs. Returns an empty list when the category is not on `'contact_blacklist'`. |
+| `refreshFromAccountSync` | `() => Promise<WaPrivacyAccountSyncResult>` | Refetch everything an account-sync update covers — the full category set plus the disallowed lists of `WA_PRIVACY_ACCOUNT_SYNC_DISALLOWED_LISTS`. The result is emitted as the `privacy` event too. Concurrent calls are deduplicated. |
+| `getBlocklist` | `() => Promise<WaBlocklistResult>` | Account-wide blocklist. Changes made on another device also surface on the `blocklist` event. |
 | `blockUser` / `unblockUser` | `(jid) => Promise<void>` | Block / unblock. A block stops the peer messaging/calling you and hides your last-seen/online/photo/status from them. |
 
 ---

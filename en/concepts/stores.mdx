@@ -118,12 +118,13 @@ These accept `'none'` to disable persistence entirely:
 
 Configured under `cacheProviders` and default to bounded memory with TTLs:
 
-| Domain | Holds |
-| --- | --- |
-| `retry` | Outbound message retry queue. |
-| `groupMetadata` | Group metadata cache. |
-| `deviceList` | Device list cache. |
-| `messageSecret` | Message-secret cache for addons. |
+| Domain | Holds | Default |
+| --- | --- | --- |
+| `retry` | Outbound message retry queue. | `'memory'` |
+| `groupMetadata` | Group metadata cache. | `'memory'` |
+| `chatMetadata` | Protocol-derived per-chat state (disappearing-message settings). Read on every 1:1 send to stamp `contextInfo`; rebuilt from history sync, `EPHEMERAL_SETTING` messages and incoming `ContextInfo`, so losing it costs freshness rather than data. | `'memory'` |
+| `deviceList` | Device list cache. | `'memory'` |
+| `messageSecret` | Message-secret cache for addons. | `'memory'` |
 
 ```ts
 createStore({
@@ -242,4 +243,35 @@ const client = new WaClient({ store, sessionId: 'test' }, logger)
 
 <Warning>
   A memory-only store loses all credentials on restart, so you re-pair every boot. Use a durable backend for anything long-lived.
+</Warning>
+
+## Custom backends
+
+The backend contract is `WaStoreBackend<S, C>`, parametrized by the persistence domains (`S extends WaStoreDomain`) and cache domains (`C extends WaCacheDomain`) the bundle actually implements. Both default to the full matrix, so a bare `WaStoreBackend` still means every domain — that's what every in-tree `@zapo-js/store-*` package ships.
+
+To cover part of the matrix, name the domains you implement:
+
+```ts
+import type { WaStoreBackend } from 'zapo-js'
+
+const vault = {
+  stores: { auth: (sessionId: string) => new MyAuthStore(sessionId) },
+  caches: {}
+} satisfies WaStoreBackend<'auth', never>
+
+createStore({
+  backends: { vault, sqlite },
+  providers: {
+    auth: 'vault',       // ok — vault declares 'auth'
+    signal: 'sqlite',
+    // signal: 'vault',  // compile error — vault does not declare 'signal'
+    // ...
+  }
+})
+```
+
+`createStore()` now infers the backend map (not just the backend names), so routing an undeclared domain — or misspelling a backend name — **fails at compile time** instead of throwing `does not provide <kind>.<domain>` on the first `session()`. The mandatory coverage of every persistence domain once `backends` is set is unchanged, and `'none'` still resolves to the noop store.
+
+<Warning>
+  A hand-written **full** backend has to declare the new `chatMetadata` cache alongside the other cache domains, or narrow itself with `WaStoreBackend<S, C>`. A bare `satisfies WaStoreBackend` without the cache factory no longer compiles.
 </Warning>

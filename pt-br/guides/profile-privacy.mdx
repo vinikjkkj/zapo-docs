@@ -100,10 +100,15 @@ O `client.privacy` ([`WaPrivacyCoordinator`](/pt-br/reference/client#privacy)) c
 const settings = await client.privacy.getPrivacySettings()
 
 // Atualizar uma única configuração
-await client.privacy.setPrivacySetting('last', 'contacts')
+const dhash = await client.privacy.setPrivacySetting('lastSeen', 'contacts')
 ```
 
-Os nomes e valores das configurações vêm das constantes `WA_PRIVACY_*` (`last`, `online`, `profile`, `status`, `readreceipts`, `groupadd`, …). Veja a [referência de JID e constantes](/pt-br/reference/jid-helpers#constants).
+Nomes de setting vivem em `WA_PRIVACY_SETTING_TO_CATEGORY`, valores permitidos por setting em `WA_PRIVACY_SETTING_VALUES` — cada setting aceita apenas os valores que o WhatsApp Web aceita para ele. A lista completa: `lastSeen`, `online`, `profilePicture`, `about`, `readReceipts`, `groupAdd`, `callAdd`, `messages`, `defenseMode`, `linkedProfiles`, `pix`.
+
+- **`linkedProfiles`** controla quem pode ver os perfis do Accounts Center vinculados a esta conta. Aceita os mesmos valores de visibilidade que `lastSeen` / `profilePicture` (`'all' | 'contacts' | 'contact_blacklist' | 'none'`), deny-list incluída.
+- **`pix`** controla quem pode ver a chave Pix no perfil (surface de pagamentos, só Brasil). Mesmos valores de visibilidade que `lastSeen`.
+
+`setPrivacySetting` retorna o `dhash` que o servidor ecoa — o carimbo de versão da disallowed list dessa categoria, presente apenas enquanto a categoria estiver em `'contact_blacklist'` (`null` caso contrário). Definir uma categoria como `'contact_blacklist'` aqui apenas alterna o **modo**; popule a lista com `setDisallowedList`.
 
 ### Lista de bloqueios {#blocklist}
 
@@ -119,8 +124,37 @@ await client.privacy.unblockUser(jid)
 Para configurações escopadas a uma lista específica de contatos (por exemplo, "compartilhar com todos, exceto…"):
 
 ```ts
-const result = await client.privacy.getDisallowedList(category)
+// Ler a deny-list atual de uma categoria
+const { jids, dhash } = await client.privacy.getDisallowedList('lastSeen')
+
+// Popular ou editar (também muda a categoria para 'contact_blacklist')
+await client.privacy.setDisallowedList('lastSeen', {
+  add: ['5511999999999@s.whatsapp.net'],
+  remove: ['5511888888888@s.whatsapp.net']
+})
 ```
+
+`setDisallowedList(category, input)` carrega a mudança de modo e as entradas em uma única stanza (o servidor não tem endpoint separado para deny-list). Inputs aceitam phone jids, LID jids ou números puros e são resolvidos para as duas formas de endereçamento, do mesmo modo que `blockUser`. O write é versionado por um `dhash` lido logo antes do envio; se outro device mutou a lista no meio, o servidor responde `409` e a chamada refetch o carimbo e retenta uma vez. As categorias elegíveis são expostas em `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` (`about`, `groupAdd`, `lastSeen`, `profilePicture`, `linkedProfiles`, `pix`).
+
+### Reagindo a mudanças em outros devices {#reacting-to-changes-on-other-devices}
+
+Uma mudança de privacidade feita no primário (ou em outro companion) aparece no evento `privacy` com o conjunto inteiro de categorias já atualizado, mais qualquer disallowed list que o servidor reportou como alterada. Os valores vêm de uma leitura fresca — nunca do payload da notificação — e uma rajada de mudanças no celular colapsa em um único evento, debounced 1s.
+
+```ts
+client.on('privacy', (event) => {
+  console.log('privacy refreshed:', event.settings)
+  for (const list of event.disallowedLists) {
+    console.log(list.setting, 'deny-list:', list.jids)
+  }
+})
+
+// Mesma história para o blocklist
+client.on('blocklist', ({ jids }) => {
+  console.log('blocklist now', jids.length, 'entries')
+})
+```
+
+Chame `client.privacy.refreshFromAccountSync()` para forçar um refresh você mesmo — o resultado é tanto retornado quanto re-emitido como evento `privacy`, então a view do client fica consistente independentemente de quem disparou. Chamadas concorrentes são deduplicadas.
 
 ## Business {#business}
 

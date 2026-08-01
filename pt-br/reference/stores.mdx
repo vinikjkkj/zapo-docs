@@ -6,6 +6,8 @@ icon: "database"
 
 Cada pacote de backend exporta uma factory `create*Store` que você passa para uma entrada de `backends` do [`createStore`](/pt-br/concepts/stores). Todos os backends implementam os mesmos contratos de store por domínio, então trocar de backend é uma mudança de config, não de código.
 
+O tipo do backend é `WaStoreBackend<S, C>` — os dois parâmetros assumem por padrão a matriz completa de domínios (todo domínio de persistência mais todo domínio de cache). Todo pacote `@zapo-js/store-*` incluído entrega um backend completo; um backend parcial escrito à mão se estreita com `WaStoreBackend<S, C>` e o `createStore()` recusa domínios não declarados em tempo de compilação. Veja [Backends customizados](/pt-br/concepts/stores#custom-backends).
+
 ## SQLite {#sqlite}
 
 `@zapo-js/store-sqlite` — `createSqliteStore(config)`.
@@ -27,7 +29,7 @@ const sqlite = createSqliteStore({
 | `pragmas` | `Record<string, string \| number>` | Pragmas do SQLite. Ignorado quando `connection` é informado. |
 | `tableNames` | `WaSqliteTableNameOverrides` | Sobrescreve os nomes das tabelas. Ignorado quando `connection` é informado. |
 | `batchSizes` | `WaSqliteBatchSizeSelection` | Ajusta os tamanhos de lote. |
-| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | TTLs de cache. |
+| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, chatMetadataMs?, deviceListMs?, messageSecretMs? }` | TTLs de cache. |
 
 Informe exatamente um entre `path` e `connection`. Com `path`, a biblioteca abre (e faz ref-count d)e sua própria connection e a fecha em `store.destroy()`. Com `connection`, você é dono do ciclo de vida — `store.destroy()` mantém a connection aberta para você continuar usando em outros lugares.
 
@@ -203,7 +205,7 @@ Escritas em lote usam `{ ordered: false }` para que upserts independentes rodem 
 
 ## Expiração e limpeza de cache {#cache-expiry-and-cleanup}
 
-Os quatro domínios de cache (`retry`, `groupMetadata`, `deviceList`, `messageSecret`) usam um TTL definido em `cacheTtlMs`. A forma como entradas expiradas são *removidas* varia por backend:
+Os cinco domínios de cache (`retry`, `groupMetadata`, `chatMetadata`, `deviceList`, `messageSecret`) usam um TTL definido em `cacheTtlMs`. A forma como entradas expiradas são *removidas* varia por backend:
 
 | Backend | Mecanismo | Ação necessária |
 | --- | --- | --- |

@@ -60,6 +60,7 @@ new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
 
   - `enabled?: boolean` — process incoming history chunks. **Default `true`.** Set to `false` to drop them silently (useful when you don't persist mailbox/threads/contacts and the conversation download would just burn bandwidth). The lib still acks the chunk so the server stops re-sending it, matching wa-web.
   - `requireFullSync?: boolean` — request the full archive instead of just recent chats.
+  - `groupBundles?: boolean` — opt into downloading the group-history bundle a member may share after somebody joins a group; emits [`group_history_bundle`](/en/concepts/events#state-history--mex). **Off by default** — a bundle is media a third party pushes at this account unprompted, so fetching it is opt-in. Bundles addressed to other members are dropped either way. See [Groups → sharing group history](/en/guides/groups#sharing-group-history).
 </ParamField>
 
 ```ts

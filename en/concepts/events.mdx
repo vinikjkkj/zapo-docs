@@ -71,23 +71,25 @@ See [Receiving messages](/en/guides/receiving-messages) for payload details and 
 
 ### Unavailable messages
 
-Some incoming `<message>` stanzas carry an `<unavailable/>` marker instead of an encrypted body — a view-once whose contents have already been consumed, or a hosted/bot message the server could not fan out. There is nothing to decrypt, but the arrival itself is still useful information (audit logs, "this message is no longer available" UI rows). The lib acks them and emits a typed `message_unavailable` event with a `kind` discriminator:
+Some incoming `<message>` stanzas carry an `<unavailable/>` marker instead of an encrypted body — a view-once whose contents have already been consumed, a hosted/bot message the server could not fan out, or a plain fanout placeholder the primary device can still resend. There is nothing to decrypt on the stanza itself, but the arrival is useful information (audit logs, a "this message is no longer available" UI row, or waiting for the resend to land). The lib acks them and emits a typed `message_unavailable` event with a `kind` discriminator:
 
 ```ts
 client.on('message_unavailable', (event) => {
-  // event.kind: 'view_once' | 'hosted' | 'other'
-  console.log('unavailable', event.kind, 'from', event.key.remoteJid, 'id', event.key.id)
+  // event.kind: 'view_once' | 'hosted' | 'bot' | 'other'
+  console.log('unavailable', event.kind, 'resendRequested?', event.resendRequested,
+    'from', event.key.remoteJid, 'id', event.key.id)
 })
 ```
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `kind` | `'view_once' \| 'hosted' \| 'other'` | Which flavor of content the server signalled as unavailable. |
+| `kind` | `'view_once' \| 'hosted' \| 'bot' \| 'other'` | Which flavor the server signalled. `'other'` is a plain fanout placeholder — the only recoverable kind. |
+| `resendRequested` | `boolean` | `true` when the lib queued a `PLACEHOLDER_MESSAGE_RESEND` peer request; the payload then arrives later as a `message` event with the same `key.id`. `false` for the unrecoverable kinds, messages past the AB-props age window, and mobile-primary sessions. |
 | `key` | `WaIncomingMessageKey` | Same shape the `message` event carries — store or correlate it like any other message id. |
 | `timestampSeconds` | `number?` | From the stanza's `t` attr. |
 | `pushName` | `string?` | Sender's display name from the stanza's `notify` attr. |
 
-There is no `message` payload — the body is genuinely gone (or was never encrypted to this device).
+Resend requests are best-effort — like wa-web, they are not persisted, so a failed peer request is not retried. See [Receiving messages → Recovering unavailable messages](/en/guides/receiving-messages#recovering-unavailable-messages) for the details.
 
 ## Presence & chat-state
 
@@ -106,6 +108,8 @@ There is no `message` payload — the body is genuinely gone (or was never encry
 | `newsletter_message_update` | `WaIncomingNewsletterMessageUpdateEvent` | Edits/reactions/poll updates on newsletter messages. |
 | `business` | `WaBusinessEvent` | Business profile changes. |
 | `picture` | `WaPictureEvent` | Profile/group picture changes. |
+| `privacy` | `WaPrivacyAccountSyncResult` | The account's privacy was changed on the primary or another companion — the full category set plus any disallowed list the server reported. Debounced 1s, so a burst of changes on the phone collapses into one refresh. Values always come from a fresh read, never from the notification payload. |
+| `blocklist` | `WaBlocklistResult` | The account blocklist after a block/unblock made on another device. Same refetch path as `privacy`; the payload is the full list, never a delta. |
 
 ## State, history & MEX
 
@@ -114,7 +118,9 @@ There is no `message` payload — the body is genuinely gone (or was never encry
 | `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) **synced from another device**. Inbound only; this client's own outbound actions surface on `mutation_send`. |
 | `mutation_send` | `WaAppStateMutationEvent` | An app-state action this client is sending — the outbound counterpart to `mutation`, symmetric to how `message_send` pairs with `message`. `event.source` is always `'local'`. **Optimistic**: emitted as the mutation is enqueued, before the server flush confirms it. |
 | `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. |
+| `group_history_bundle` | `WaGroupHistoryBundleEvent` | A group-history bundle another member shared with this account after it joined a group, already downloaded, filtered and persisted. Requires `history.groupBundles: true` — the fetch is opt-in because a third party triggers it. See [Groups → receiving](/en/guides/groups#receiving). |
 | `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
+| `offline_thread_metadata` | `WaOfflineThreadMetadataEvent` | Preview manifest of the offline queue (per-thread latest-stanza timestamps, optional per-thread read watermarks, optional pending status / notification backlog counts). Sent just before the flush; not guaranteed to arrive. **Use `offline_resume` for progress**, never this. |
 | `mex_notification` | `WaMexNotificationEvent` | MEX (GraphQL) notifications: username, status, LID changes, capping. |
 
 ### MEX notification kinds

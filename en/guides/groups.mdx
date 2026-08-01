@@ -183,6 +183,59 @@ const everyone = await client.group.queryLinkedGroupsParticipants(community.jid)
 
 Other community operations include `deactivateCommunity`, `transferCommunityOwnership`, and `fetchSubgroupSuggestions`.
 
+## Sharing group history
+
+When a new member joins a group whose `memberShareGroupHistoryMode` exposes the backlog, any existing member can push the recent messages to them directly. Both sides live on `client.message`.
+
+### Sending
+
+```ts
+const result = await client.message.shareGroupHistory('12036@g.us', {
+  toJids: ['5511999999999@s.whatsapp.net'],
+  count: 50 // default: group_history_message_count_limit (100)
+})
+
+console.log(result.bundleMessageId, result.messagesCount)
+```
+
+`shareGroupHistory(groupJid, input)` resolves `toJids` against the live participant list, uploads the zlib-compressed `GroupHistory` payload, and fans the bundle out **only to those receivers plus this account** — members who are not receiving it never see the stanza. A group-wide notice message follows so other clients can render the "history was shared" marker.
+
+Input fields:
+
+- `toJids` — required. Written in the group's own addressing mode (a LID-addressed group only matches `@lid` entries; a PN one only matches `@s.whatsapp.net`). Read the mode off `client.group.queryGroupMetadata()`, whose participants carry both forms. Anything else throws.
+- `count?: number` — how many of the most recent messages to read from the `messages` mailbox store. Ignored when `messages` is supplied.
+- `sinceMs?: number` — only read messages at or after this ms timestamp from the store. Ignored when `messages` is supplied.
+- `messages?: readonly Proto.IWebMessageInfo[]` — supply the messages directly, bypassing the mailbox store. Required when the `messages` store domain is `'none'` (the default) — there is nothing to read back.
+- `outOfWindowPinnedMessages?: readonly Proto.IWebMessageInfo[]` — pinned messages older than the shared window; the receiver injects these regardless of the age cutoff.
+
+`WaShareGroupHistoryResult` returns `bundleMessageId`, `noticeMessageId?` (absent when the notice failed to send after the bundle was already delivered — do not retry the share), `messagesCount`, `historyReceivers`, and `nonHistoryReceivers`.
+
+<Note>
+  The sender side is gated per account by the `group_history_send` AB prop. When it is off, the server rejects the stanza with `SMAX_INVALID` **after** the upload is spent, so the client checks the prop up front and throws before uploading. Admin-only groups (`memberShareGroupHistoryMode: 'admin_share'`) reject a share from a regular member server-side — check the mode with `queryGroupMetadata` first.
+</Note>
+
+### Receiving
+
+Downloading a bundle is opt-in — a bundle is media a third party pushes at this account unprompted. Enable it in the client config:
+
+```ts
+new WaClient({
+  store,
+  sessionId: 'default',
+  history: { groupBundles: true }
+}, logger)
+
+client.on('group_history_bundle', (event) => {
+  console.log('history bundle for', event.groupJid,
+    '+', event.messagesCount, 'msgs',
+    '(dropped', event.droppedCount, ')')
+})
+```
+
+The receiver verifies this account is in `historyReceivers` before spending a CDN fetch, drops stubs / foreign-chat / age-expired / ephemeral-expired entries, persists the rest, and emits `group_history_bundle`. Out-of-window pins ride along exempt from the age cutoff. Window limits come from the server-synced AB props, not hardcoded defaults.
+
+Bundles derive their media keys from a `Group History` HKDF context — distinct from history sync's `WhatsApp History Keys`. Bundles addressed to other members are dropped either way.
+
 ## Group events
 
 Changes made by others (subject, participants, settings) arrive on the `group` event:

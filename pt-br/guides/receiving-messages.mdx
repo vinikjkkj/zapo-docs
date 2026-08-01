@@ -156,6 +156,23 @@ client.on('message', async (event) => {
 })
 ```
 
+## Recuperando mensagens indisponíveis {#recovering-unavailable-messages}
+
+Algumas stanzas `<message>` chegam como placeholder `<unavailable/>` em vez de corpo criptografado — uma view-once consumida, uma mensagem hosted ou bot que o servidor não conseguiu fazer fanout, ou um placeholder de fanout simples cujo primário ainda tem o plaintext. As quatro variantes aparecem no evento [`message_unavailable`](/pt-br/concepts/events#unavailable-messages) com discriminador `kind`.
+
+Placeholders de fanout simples (`kind === 'other'`) são **recuperáveis**: a lib enfileira uma peer request `PLACEHOLDER_MESSAGE_RESEND` ao device primário, e o payload recuperado chega depois como evento `message` normal, com o mesmo `key.id`. Os consumidores sabem que precisam esperar por ele via `resendRequested`:
+
+```ts
+client.on('message_unavailable', (event) => {
+  if (event.resendRequested) {
+    console.log('waiting for primary to resend', event.key.id)
+    // Um evento `message` com o mesmo key.id virá em seguida (best-effort)
+  }
+})
+```
+
+A recuperação é best-effort — a request enfileirada não é persistida, então uma peer message que falha não é retentada. `resendRequested` é `false` para os kinds não recuperáveis (`'view_once'`, `'hosted'`, `'bot'`), para stanzas além da janela de idade do servidor (dirigida pela AB prop `placeholder_message_resend_maximum_days_limit`, não pelos 30 dias hardcoded de antes) e em sessões mobile-primary (não há outro device para pedir). A lib **não** dá timeout no resend pendente — um primário de verdade pode responder além do padrão de 30s de peer-request; o wa-web se comporta do mesmo jeito.
+
 ## Mensagens de protocolo {#protocol-messages}
 
 Edições, revogações e outras atualizações em nível de protocolo chegam em `message_protocol` como `WaIncomingProtocolMessageEvent` (que estende o evento de mensagem com um campo `protocolMessage`):

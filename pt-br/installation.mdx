@@ -154,6 +154,27 @@ A única peer dependency é `zapo-js`. O registry de eventos WAM (`@vinikjkkj/wa
 
 Veja o [guia WAM](/pt-br/guides/wam) para saber como conectar `wamPlugin()` ao client. É opt-in: pule-o a menos que você especificamente queira a paridade.
 
+## Acelerador de crypto nativo {#native-crypto-accelerator}
+
+Instale [`@zapo-js/native`](https://www.npmjs.com/package/@zapo-js/native) para tirar o hot path de crypto de mensageria do JavaScript puro — sign/verify XEdDSA (que domina o SKDM sign no fanout de grupo) e ECDH scalar mult X25519 (evitando o round-trip DER do `node:crypto.diffieHellman`) — para um core em Rust distribuído como build WebAssembly. Sem toolchain, sem compile pós-install.
+
+```bash
+npm install @zapo-js/native
+```
+
+O `zapo-js` faz `try-require` do binding no carregamento do módulo; quando o pacote (ou seu binário nativo) está ausente, o path JS puro assume e o client funciona sem alteração. Instalá-lo é sempre seguro.
+
+<Note>
+  Requer **Node.js `>= 20.19.0`**: carregar o glue WASM depende de `require(esm)`, disponível sem flag apenas em 20.19+ / 22.12+. Em runtimes mais antigos o client silenciosamente cai de volta para o path JS puro.
+</Note>
+
+Duas variáveis de ambiente forçam o path JS por primitiva, úteis para medir A/B ou como kill switch:
+
+- `ZAPO_XEDDSA_FORCE_JS=1` — força JS para XEdDSA sign/verify.
+- `ZAPO_X25519_FORCE_JS=1` — força JS para X25519 scalar mult.
+
+Para desabilitar o acelerador por completo, defina `ZAPO_NATIVE_BACKEND=js` antes do processo iniciar. Veja o [README](https://www.npmjs.com/package/@zapo-js/native) do pacote para detalhes da seleção de backend.
+
 ## Verifique sua configuração {#verify-your-setup}
 
 ```ts

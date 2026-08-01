@@ -156,6 +156,23 @@ client.on('message', async (event) => {
 })
 ```
 
+## Recovering unavailable messages
+
+Some `<message>` stanzas arrive as an `<unavailable/>` placeholder rather than an encrypted body — a consumed view-once, a hosted or bot message the server could not fan out, or a plain fanout placeholder the primary still holds the plaintext for. All four flavors surface as the [`message_unavailable`](/en/concepts/events#unavailable-messages) event with a `kind` discriminator.
+
+Plain fanout placeholders (`kind === 'other'`) are **recoverable**: the lib queues a `PLACEHOLDER_MESSAGE_RESEND` peer request to the primary device, and the recovered payload arrives later as a regular `message` event with the same `key.id`. Consumers know to wait for it via `resendRequested`:
+
+```ts
+client.on('message_unavailable', (event) => {
+  if (event.resendRequested) {
+    console.log('waiting for primary to resend', event.key.id)
+    // A `message` event with the same key.id will follow (best-effort)
+  }
+})
+```
+
+The recovery is best-effort — the queued request is not persisted, so a failed peer message is not retried. `resendRequested` is `false` for the unrecoverable kinds (`'view_once'`, `'hosted'`, `'bot'`), for stanzas past the server age window (driven by the `placeholder_message_resend_maximum_days_limit` AB prop, not a hardcoded 30 days), and on mobile-primary sessions (there is no other device to ask). The lib does **not** time the pending resend out — a real primary can answer past the 30s peer-request default; wa-web behaves the same way.
+
 ## Protocol messages
 
 Edits, revokes, and other protocol-level updates arrive on `message_protocol` as `WaIncomingProtocolMessageEvent` (it extends the message event with a `protocolMessage` field):

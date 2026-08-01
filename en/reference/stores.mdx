@@ -6,6 +6,8 @@ icon: "database"
 
 Each backend package exports a `create*Store` factory you pass into a `backends` entry of [`createStore`](/en/concepts/stores). All backends implement the same per-domain store contracts, so switching backends is a config change, not a code change.
 
+The backend type is `WaStoreBackend<S, C>` — both parameters default to the full domain matrix (every persistence domain plus every cache domain). Every bundled `@zapo-js/store-*` package ships a full backend; a hand-written partial backend narrows itself with `WaStoreBackend<S, C>` and `createStore()` refuses undeclared domains at compile time. See [Custom backends](/en/concepts/stores#custom-backends).
+
 ## SQLite
 
 `@zapo-js/store-sqlite` — `createSqliteStore(config)`.
@@ -27,7 +29,7 @@ const sqlite = createSqliteStore({
 | `pragmas` | `Record<string, string \| number>` | SQLite pragmas. Ignored when `connection` is set. |
 | `tableNames` | `WaSqliteTableNameOverrides` | Override table names. Ignored when `connection` is set. |
 | `batchSizes` | `WaSqliteBatchSizeSelection` | Tune batch sizes. |
-| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, deviceListMs?, messageSecretMs? }` | Cache TTLs. |
+| `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, chatMetadataMs?, deviceListMs?, messageSecretMs? }` | Cache TTLs. |
 
 Provide exactly one of `path` or `connection`. With `path`, the library opens (and ref-counts) its own connection and closes it on `store.destroy()`. With `connection`, you own the lifecycle — `store.destroy()` leaves it open so you can keep using it elsewhere.
 
@@ -203,7 +205,7 @@ Bulk writes use `{ ordered: false }` so independent upserts run in parallel — 
 
 ## Cache expiry and cleanup
 
-The four cache domains (`retry`, `groupMetadata`, `deviceList`, `messageSecret`) carry a TTL set through `cacheTtlMs`. How expired entries are *evicted* differs per backend:
+The five cache domains (`retry`, `groupMetadata`, `chatMetadata`, `deviceList`, `messageSecret`) carry a TTL set through `cacheTtlMs`. How expired entries are *evicted* differs per backend:
 
 | Backend | Mechanism | Action required |
 | --- | --- | --- |

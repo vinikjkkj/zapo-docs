@@ -140,6 +140,7 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `send` | `(to, content: WaSendMessageContent, options?: WaSendMessageOptions) => Promise<WaMessagePublishResult>` | Envia qualquer [tipo de conteúdo](/pt-br/reference/message-types); lida com o fanout de dispositivos e retries por envio. Retorna o id da stanza + metadados de ack. |
 | `sendReceipt` | `(event\|events, options?)` / `(jid, ids, options?) => Promise<void>` | Envia um recibo de entrega/leitura/reprodução/inatividade. A entrega recebe ack automático ao descriptografar; use isto para leitura/reprodução manual. |
 | `requestHistorySync` | `(input: WaRequestHistorySyncInput) => Promise<{ messageId }>` | Pede ao servidor para baixar mensagens mais antigas de um chat. Resolve assim que despachado — o backlog chega depois como `history_sync_chunk`. Veja [Solicitando histórico antigo](/pt-br/guides/receiving-messages#requesting-older-history). |
+| `shareGroupHistory` | `(groupJid, input: WaShareGroupHistoryInput) => Promise<WaShareGroupHistoryResult>` | Compartilha histórico recente de grupo com membros recém adicionados. Faz o fanout do bundle criptografado apenas para `input.toJids` mais esta conta, e depois envia um aviso para todo o grupo. Gated pela AB prop `group_history_send` — lança quando a conta não pode compartilhar. Veja [Grupos → compartilhando histórico do grupo](/pt-br/guides/groups#sharing-group-history). |
 | `upload` | `(source: WaUploadMediaSource, options: WaUploadMediaOptions) => Promise<WaMediaUploadResult>` | Encripta e faz upload de mídia standalone no CDN do WhatsApp e retorna o descriptor reutilizável (`url`, `directPath`, `mediaKey`, hashes, sidecars, `mediaKeyTimestamp`, `mimetype`) **sem enviar mensagem**. Espalhe o resultado no proto correspondente para enviar. Veja [Pré-upload e reuso](/pt-br/guides/media#pre-upload-and-reuse). |
 | `download` | `(source, options?) => Promise<Readable>` | Faz streaming de mídia descriptografada (MAC + SHA-256 verificados conforme consumida). Cancele via `options.signal`. |
 | `downloadToFile` | `(source, filePath, options?) => Promise<void>` | Faz streaming de mídia descriptografada para um arquivo. |
@@ -291,10 +292,12 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 
 | Method | Signature | Description |
 | --- | --- | --- |
-| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` | Valor atual de cada categoria de privacidade. |
-| `setPrivacySetting` | `(setting, value) => Promise<void>` | Atualiza uma categoria. Um valor no estilo `contact_blacklist` apenas alterna o modo — popule a lista separadamente via disallowed-list + app-state. |
-| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` | JIDs excluídos por categoria. |
-| `getBlocklist` | `() => Promise<WaBlocklistResult>` | Lista de bloqueio de toda a conta. |
+| `getPrivacySettings` | `() => Promise<WaPrivacySettings>` | Valor atual de cada categoria de privacidade. Uma mudança feita em outro device também aparece no evento `privacy`, então dar poll só é preciso para a leitura inicial. |
+| `setPrivacySetting` | `(setting, value) => Promise<string \| null>` | Atualiza uma categoria. Retorna o `dhash` que o servidor ecoa — o carimbo de versão da disallowed list dessa categoria, presente apenas enquanto a categoria estiver em `'contact_blacklist'` (`null` caso contrário). Um valor `'contact_blacklist'` alterna apenas o **modo**; popule a lista com `setDisallowedList`. |
+| `setDisallowedList` | `(category: WaPrivacyDisallowedListSettingName, input: { add?: readonly string[], remove?: readonly string[] }) => Promise<string \| null>` | Adiciona/remove JIDs na disallowed list de uma categoria, mudando a categoria para `'contact_blacklist'` na mesma stanza. Resolve um `dhash` velho (`409`) refetching e retentando uma vez; retorna o novo `dhash`. |
+| `getDisallowedList` | `(category) => Promise<WaPrivacyDisallowedListResult>` | JIDs excluídos por categoria. Retorna lista vazia quando a categoria não está em `'contact_blacklist'`. |
+| `refreshFromAccountSync` | `() => Promise<WaPrivacyAccountSyncResult>` | Refetch de tudo que uma atualização de account-sync cobre — o conjunto inteiro de categorias mais as disallowed lists de `WA_PRIVACY_ACCOUNT_SYNC_DISALLOWED_LISTS`. O resultado também é emitido como o evento `privacy`. Chamadas concorrentes são deduplicadas. |
+| `getBlocklist` | `() => Promise<WaBlocklistResult>` | Lista de bloqueio de toda a conta. Mudanças feitas em outro device também aparecem no evento `blocklist`. |
 | `blockUser` / `unblockUser` | `(jid) => Promise<void>` | Bloqueia / desbloqueia. Um bloqueio impede o peer de mandar mensagem/ligar para você e oculta seu visto-por-último/online/foto/status dele. |
 
 ---
