@@ -57,6 +57,30 @@ await server.stop()
 
 `testHooks.noiseRootCa` trusts the fake server's certificate **without** bypassing verification — the full cert-chain check still runs.
 
+### Pinning across processes
+
+`listen()` mints a fresh random root CA per start and exposes the public half on `server.noiseRootCa` — perfect for the in-process test above, where the client is built after the server is listening. A client in a **separate process** has to pin the trust anchor before it dials, and at that point the server is not yet listening: there's nothing to read back.
+
+Pass a `noiseRootCa` derived from a shared seed instead, so both sides can compute the same CA ahead of time:
+
+```ts
+import { FakeWaServer, type FakeNoiseRootCa } from '@zapo-js/fake-server'
+import { deriveRootCaFromSeed } from './my-test-seed' // your own deterministic derivation
+
+const noiseRootCa: FakeNoiseRootCa = await deriveRootCaFromSeed(process.env.TEST_SEED!)
+
+// Server process
+const server = await FakeWaServer.start({ noiseRootCa })
+
+// Client process — pins the same anchor before dialling
+const client = new WaClient({
+  /* ... */,
+  testHooks: { noiseRootCa: { publicKey: noiseRootCa.publicKey, serial: noiseRootCa.serial } }
+})
+```
+
+`FakeNoiseRootCa` carries the **signing half** — the server needs it to sign its cert chain — while the client only ever holds the public counterpart. It signs a chain no real WhatsApp client trusts, so it is test material rather than a real secret, but a seed committed beside the tests is the intended source, not one shared with anything that matters. Omitting the option keeps the previous behaviour: a fresh random CA per `listen()`.
+
 ## Simulating a peer
 
 `createFakePeer` gives you a simulated contact backed by real Signal crypto. Push messages to your client with `sendConversation` / `sendGroupConversation`, and capture what your client sends with `expectMessage`:

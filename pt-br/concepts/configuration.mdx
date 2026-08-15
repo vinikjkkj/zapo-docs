@@ -49,9 +49,27 @@ Estes controlam como o dispositivo aparece em **Dispositivos conectados** no cel
   Sobrescrita do id numérico de plataforma companion (`WA_COMPANION_PLATFORM_IDS`). Inferido de `deviceBrowser` quando omitido; defina explicitamente para plataformas não-navegador.
 </ParamField>
 
+<ParamField path="deviceOsDisplayName" type="string">
+  Nome legível do OS mostrado em *Dispositivos conectados* (`'Windows'`, `'Mac OS'`, `'Linux'`, …). Default: o OS atual do runtime.
+</ParamField>
+
+<ParamField path="deviceOsVersion" type="string">
+  Versão do OS anunciada em `DeviceProps.version` (`'10'`, `'14.6'`, …). Default: a versão detectada do OS de runtime. Defina junto com `deviceOsDisplayName` quando anunciar um OS que o processo **não** está rodando, para o nome e a versão baterem. Valores que não são dotted-numeric deixam o campo em branco — igual ao próprio WhatsApp Web.
+</ParamField>
+
 ```ts
-new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
+new WaClient({
+  store,
+  sessionId: 'default',
+  deviceBrowser: 'Chrome',
+  deviceOsDisplayName: 'Mac OS',
+  deviceOsVersion: '14.6'
+}, logger)
 ```
+
+<Note>
+  Para o [MCP server](/pt-br/dev-tools#mcp-server) as mesmas sobrescritas ficam disponíveis como as variáveis de ambiente `MCP_DEVICE_OS_DISPLAY` / `MCP_DEVICE_OS_VERSION` — quando só a versão é setada o display name ainda é derivado do host, então fixe os dois pra manter o par anunciado consistente.
+</Note>
 
 ## Sincronização de histórico {#history-sync}
 

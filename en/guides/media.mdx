@@ -260,6 +260,38 @@ Returns `null` when the message has no downloadable media, or when the proto car
   `payload.mediaKey` is the AES/MAC seed for the encrypted blob — treat it like a secret. Don't log it, don't put it in error messages, and don't ship it to a third-party service unless that's the whole point of your pipeline.
 </Warning>
 
+### Requesting a reupload
+
+The CDN drops old media blobs — a `download*` on a message surfaced by history sync can answer 404/410 well after the original send. `client.message.requestMediaReupload()` runs the round-trip WhatsApp Web uses to recover: encrypt a `server-error` receipt with the message's media key, send it as an ack, and await the `mediaretry` notification the sender's primary device answers with. On `success` only the `directPath` changes — the media key, hashes, and length of the original message stay valid, so downloading with a spread of the new path works.
+
+```ts
+client.on('message', async (event) => {
+  const image = event.message?.imageMessage
+  if (!image) return
+
+  try {
+    await client.message.downloadToFile(event, './incoming.jpg')
+  } catch {
+    // Old blob expired — ask the sender to re-serve it
+    const retry = await client.message.requestMediaReupload(event)
+    if (retry.result !== 'success') {
+      console.warn('reupload', retry.result) // 'not_found' | 'decryption_error' | 'general_error'
+      return
+    }
+    await client.message.downloadToFile(
+      { imageMessage: { ...image, directPath: retry.directPath } },
+      './incoming.jpg'
+    )
+  }
+})
+```
+
+Pass an explicit `WaMediaRetryRequest` (`{ messageId, chatJid, mediaKey, fromMe, participant? }`) when you hold the ids and the media key but not the decoded message — the event form pulls those out for you and rejects newsletter messages plus messages with no downloadable media. `options.timeoutMs` bounds the wait for the notification; the coordinator does **not** throw on `not_found` / `general_error` (the sender no longer holds the file, or the primary could not re-seal it) — check `result.result` for one of `'success' | 'not_found' | 'decryption_error' | 'general_error'`.
+
+<Note>
+  Requests are deduplicated by `messageId`: concurrent calls for the same message share one round-trip and one `server-error` receipt.
+</Note>
+
 ## Media processing
 
 For proper media, use a **media processor**. Install `@zapo-js/media-utils` and pass one through the `media` client option — it probes and processes media (dimensions, duration, thumbnails, waveforms, voice-note normalization) before upload. Without it, media still uploads but lacks this processing:

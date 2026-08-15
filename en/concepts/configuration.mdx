@@ -49,9 +49,27 @@ These control how the device appears under **Linked devices** on the phone:
   Numeric companion platform id override (`WA_COMPANION_PLATFORM_IDS`). Inferred from `deviceBrowser` when omitted; set explicitly for non-browser platforms.
 </ParamField>
 
+<ParamField path="deviceOsDisplayName" type="string">
+  Human-readable OS name shown under *Linked devices* (`'Windows'`, `'Mac OS'`, `'Linux'`, …). Defaults to the current runtime's OS.
+</ParamField>
+
+<ParamField path="deviceOsVersion" type="string">
+  OS version advertised in `DeviceProps.version` (`'10'`, `'14.6'`, …). Defaults to the detected runtime OS version. Set this alongside `deviceOsDisplayName` when advertising an OS the process is **not** running on, so the name and version stay a matching pair. Values that are not dotted-numeric leave the field unset — matching how WhatsApp Web itself behaves.
+</ParamField>
+
 ```ts
-new WaClient({ store, sessionId: 'default', deviceBrowser: 'Chrome' }, logger)
+new WaClient({
+  store,
+  sessionId: 'default',
+  deviceBrowser: 'Chrome',
+  deviceOsDisplayName: 'Mac OS',
+  deviceOsVersion: '14.6'
+}, logger)
 ```
+
+<Note>
+  For the [MCP server](/en/dev-tools#mcp-server) the same overrides are available as `MCP_DEVICE_OS_DISPLAY` / `MCP_DEVICE_OS_VERSION` environment variables — when only the version is set the display name is still derived from the host, so pin both to keep the advertised pair consistent.
+</Note>
 
 ## History sync
 

@@ -260,6 +260,38 @@ Retorna `null` quando a mensagem não tem mídia para download, ou quando o prot
   `payload.mediaKey` é a seed AES/MAC do blob encriptado — trate como segredo. Não logue, não inclua em mensagens de erro, e não envie para serviço de terceiros a menos que esse seja o ponto inteiro do seu pipeline.
 </Warning>
 
+### Pedindo um reupload {#requesting-a-reupload}
+
+O CDN dropa blobs antigos de mídia — um `download*` numa mensagem que veio de history sync pode responder 404/410 bem depois do envio original. `client.message.requestMediaReupload()` roda o round-trip que o WhatsApp Web usa pra recuperar: encripta um recibo `server-error` com a media key da mensagem, envia como ack e espera a notificação `mediaretry` que o device primário do remetente responde. No `success` só o `directPath` muda — media key, hashes e length da mensagem original continuam válidos, então baixar com o novo path espalhado funciona.
+
+```ts
+client.on('message', async (event) => {
+  const image = event.message?.imageMessage
+  if (!image) return
+
+  try {
+    await client.message.downloadToFile(event, './incoming.jpg')
+  } catch {
+    // Blob antigo expirou — pede pro remetente re-servir
+    const retry = await client.message.requestMediaReupload(event)
+    if (retry.result !== 'success') {
+      console.warn('reupload', retry.result) // 'not_found' | 'decryption_error' | 'general_error'
+      return
+    }
+    await client.message.downloadToFile(
+      { imageMessage: { ...image, directPath: retry.directPath } },
+      './incoming.jpg'
+    )
+  }
+})
+```
+
+Passe uma `WaMediaRetryRequest` explícita (`{ messageId, chatJid, mediaKey, fromMe, participant? }`) quando você tem os ids e a media key mas não a mensagem decodada — a forma com evento extrai isso pra você e rejeita mensagens de newsletter mais mensagens sem mídia baixável. `options.timeoutMs` limita a espera pela notificação; o coordinator **não** lança em `not_found` / `general_error` (o remetente não tem mais o arquivo, ou o primário não conseguiu re-selar) — cheque `result.result` em `'success' | 'not_found' | 'decryption_error' | 'general_error'`.
+
+<Note>
+  Requests são deduplicados por `messageId`: chamadas concorrentes pra mesma mensagem compartilham um único round-trip e um único recibo `server-error`.
+</Note>
+
 ## Processamento de mídia {#media-processing}
 
 Para mídia adequada, use um **processador de mídia**. Instale `@zapo-js/media-utils` e passe um através da opção de client `media` — ele sonda e processa a mídia (dimensões, duração, miniaturas, waveforms, normalização de notas de voz) antes do upload. Sem ele, a mídia ainda faz upload mas sem esse processamento:

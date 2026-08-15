@@ -188,6 +188,25 @@ client.on('debug_transport_node_in', ({ node }) => console.dir(node, { depth: nu
 client.on('debug_client_error', ({ error }) => console.error(error))
 ```
 
+### debug_decrypted_payload
+
+The plaintext of every decrypted `<enc>` in the stanza, emitted between the unpad and the `proto.Message.decode` step. Fires **whether or not** decoding then succeeds — which is what makes the failing case observable at all. Without this hook, a payload that decrypts but does not decode (a proto field the library does not yet know about, a malformed body) is otherwise lost: `decode` throws, the stanza is reported through `debug_unhandled_stanza`, and the bytes go with it — while the decryption has already advanced the ratchet, so the same ciphertext will never decrypt again.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `encIndex` | `number` | Which `<enc>` of the stanza produced these bytes, counting from zero. A message addressed to several devices carries several `<enc>` nodes whose ciphertexts are unrelated — attributing a payload to the wrong index attributes it to the wrong sender. |
+| `encType` | `string` | The `<enc>` node's `type` attribute: `msg`, `pkmsg`, `skmsg`, … |
+| `plaintext` | `Uint8Array` | The unpadded plaintext. A **copy**, so mutating it cannot alter the message the library then delivers. |
+
+```ts
+client.on('debug_decrypted_payload', ({ encIndex, encType, plaintext }) => {
+  fs.appendFileSync('payloads.bin', plaintext)
+  console.log('captured', encType, 'idx', encIndex, plaintext.length, 'bytes')
+})
+```
+
+Costs nothing when nobody is subscribed — the plaintext copy is only built when at least one listener is attached. Useful for recording traffic for faithful replay (re-encoding a decoded message does not reproduce the original bytes), or decoding with a newer protobuf than the library carries. A listener that throws is swallowed and logged, so a buggy observer cannot poison delivery.
+
 <Note>
   Mobile-registration events (`mobile_registration_code`, `mobile_account_takeover_notice`) exist for the mobile-registration path and are not part of the standard companion flow.
 </Note>

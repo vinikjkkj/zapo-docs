@@ -188,6 +188,25 @@ client.on('debug_transport_node_in', ({ node }) => console.dir(node, { depth: nu
 client.on('debug_client_error', ({ error }) => console.error(error))
 ```
 
+### debug_decrypted_payload {#debug_decrypted_payload}
+
+O plaintext de cada `<enc>` descriptografado da stanza, emitido entre o unpad e o `proto.Message.decode`. Dispara **quer o decode dê certo ou não** — o que torna o caso de falha observável. Sem esse hook, um payload que descriptografa mas não decodifica (um campo proto que a lib ainda não conhece, um corpo malformado) se perde: `decode` lança, a stanza é reportada em `debug_unhandled_stanza`, e os bytes vão junto — enquanto a decriptação já avançou o ratchet, então esse mesmo ciphertext nunca vai decifrar de novo.
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `encIndex` | `number` | Qual `<enc>` da stanza produziu esses bytes, contando de zero. Uma mensagem endereçada a vários dispositivos carrega vários `<enc>` cujos ciphertexts são independentes — atribuir um payload ao índice errado atribui ao remetente errado. |
+| `encType` | `string` | O atributo `type` do `<enc>`: `msg`, `pkmsg`, `skmsg`, … |
+| `plaintext` | `Uint8Array` | O plaintext sem padding. Uma **cópia**, então mutar não altera a mensagem que a lib então entrega. |
+
+```ts
+client.on('debug_decrypted_payload', ({ encIndex, encType, plaintext }) => {
+  fs.appendFileSync('payloads.bin', plaintext)
+  console.log('captured', encType, 'idx', encIndex, plaintext.length, 'bytes')
+})
+```
+
+Não custa nada quando ninguém está inscrito — a cópia do plaintext só é construída quando existe pelo menos um listener. Útil para gravar tráfego para replay fiel (re-encodar uma mensagem decodada não reproduz os bytes originais), ou decodificar com um protobuf mais novo do que a lib carrega. Um listener que lança é engolido e logado, então um observer buggy não pode envenenar a entrega.
+
 <Note>
   Os eventos de registro mobile (`mobile_registration_code`, `mobile_account_takeover_notice`) existem para o caminho de registro mobile e não fazem parte do fluxo companion padrão.
 </Note>

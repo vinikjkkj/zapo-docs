@@ -196,3 +196,109 @@ await client.message.send(jid, {
   contactMessage: { displayName: 'Jane', vcard: 'BEGIN:VCARD\n...\nEND:VCARD' }
 })
 ```
+
+## Payments (PIX & review-and-pay)
+
+Send WhatsApp Business payment cards — static PIX (`payment_info`) and order checkout (`review_and_pay`) — as raw `interactiveMessage` / `nativeFlowMessage` payloads through `client.message.send`. There is no typed builder for them yet, so build the shape yourself the same way as the locations/contacts cards above. The library relays the interactive native-flow buttons; the WhatsApp clients render the card UI.
+
+<Warning>
+  Payment cards are a **Business / native-flow** feature. Rendering differs between WhatsApp mobile and WhatsApp Web — prefer the flow that matches the UI you want (`payment_info` for a PIX-only card, `review_and_pay` for the "Nº da cobrança" / order card) and verify on both clients.
+</Warning>
+
+Amounts are integer minor units plus an `offset` divisor: `{ value: 1000, offset: 100 }` renders as **R$ 10,00**. PIX `key_type` is one of `EVP` (chave aleatória), `EMAIL`, `PHONE` (E.164 preferred), `CPF`, `CNPJ`.
+
+### PIX card (`payment_info`)
+
+Renders the **PIX payment** card (key / merchant). Use this for a static PIX key without an order card.
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    nativeFlowMessage: {
+      messageVersion: 1,
+      buttons: [
+        {
+          name: 'payment_info',
+          buttonParamsJson: JSON.stringify({
+            currency: 'BRL',
+            total_amount: { value: 0, offset: 100 },
+            reference_id: `PIX${Date.now()}`,
+            type: 'physical-goods',
+            order: {
+              status: 'pending',
+              subtotal: { value: 0, offset: 100 },
+              order_type: 'ORDER',
+              items: [
+                { name: '', amount: { value: 0, offset: 100 }, quantity: 0, sale_amount: { value: 0, offset: 100 } }
+              ]
+            },
+            payment_settings: [
+              {
+                type: 'pix_static_code',
+                pix_static_code: {
+                  merchant_name: 'Loja Exemplo',
+                  key: 'pix@loja.com',
+                  key_type: 'EMAIL'
+                }
+              }
+            ],
+            share_payment_status: false,
+            is_soft_deleted: false,
+            referral: 'chat_attachment'
+            // display_text: 'Pagar com PIX' // optional
+          })
+        }
+      ]
+    }
+  }
+})
+```
+
+### Review-and-pay card (`review_and_pay`)
+
+Renders the **order / cobrança** card (reference number, items, total). Use this for a checkout-style summary.
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    body: { text: 'Olá! Sua fatura está disponível.' },
+    footer: { text: 'Se já pagou, desconsidere.' },
+    nativeFlowMessage: {
+      messageVersion: 1,
+      buttons: [
+        {
+          name: 'review_and_pay',
+          buttonParamsJson: JSON.stringify({
+            currency: 'BRL',
+            reference_id: 'PGT-PIX-001',
+            type: 'physical-goods',
+            total_amount: { value: 10000, offset: 100 }, // R$ 100,00
+            payment_settings: [
+              {
+                type: 'pix_static_code',
+                pix_static_code: {
+                  merchant_name: 'Loja Exemplo',
+                  key: 'pix@loja.com',
+                  key_type: 'EMAIL'
+                }
+              }
+            ],
+            order: {
+              status: 'payment_requested',
+              subtotal: { value: 10000, offset: 100 },
+              order_type: 'ORDER',
+              items: [
+                { name: 'Fatura', amount: { value: 10000, offset: 100 }, quantity: 1 }
+              ]
+              // discount: { value: 500, offset: 100 }
+            }
+            // additional_note: 'Pagamento até o vencimento'
+          })
+        }
+      ]
+    }
+  }
+})
+```
+
+`buttonParamsJson` **must** be a JSON string — build the object in code and stringify it. `body` / `footer` on `interactiveMessage` are optional. Don't mix `payment_info` and `review_and_pay` expecting the same UI — they render different cards, and adding extra `cta_copy` / CTA buttons in the same `nativeFlowMessage` can render differently on mobile vs Web.
