@@ -90,6 +90,26 @@ await client.profile.setUsername({ username: 'myhandle' })
 await client.profile.deleteUsername()
 ```
 
+`setUsername`, `setUsernameKey` e `resolveUsername` rodam as mesmas regras locais que o WhatsApp aplica (comprimento, caracteres permitidos, formato de 4 dígitos para a chave) e **lançam** em falha antes de bater na rede — uma chamada que retorna sem lançar passou pela validação local, então um `setUsername` que retorna `false` estreita a causa a uma resposta do servidor (em uso, rate-limited).
+
+Resolva um handle para o LID com `resolveUsername`. O resultado é uma union discriminada: `'found'` traz o JID (mais `isBusiness` / `pnJid` quando aplicável), `'key-required'` significa que o servidor reteve o JID até você fornecer a chave de 4 dígitos, e `'not-found'` é terminal.
+
+```ts
+// '@name' e um sufixo de chave 'name:1234' no handle são aceitos
+let result = await client.profile.resolveUsername({ username: '@alice' })
+
+if (result.status === 'key-required') {
+  const usernameKey = await askUserForFourDigitKey() // sua UI
+  result = await client.profile.resolveUsername({ username: '@alice', usernameKey })
+}
+
+if (result.status === 'found') {
+  console.log(result.jid, result.isBusiness, result.pnJid)
+} else if (result.status === 'not-found') {
+  console.log('no such handle')
+}
+```
+
 ## Privacidade {#privacy}
 
 O `client.privacy` ([`WaPrivacyCoordinator`](/pt-br/reference/client#privacy)) controla as categorias de privacidade e a lista de bloqueios.
@@ -113,11 +133,13 @@ Nomes de setting vivem em `WA_PRIVACY_SETTING_TO_CATEGORY`, valores permitidos p
 ### Lista de bloqueios {#blocklist}
 
 ```ts
-const { jids } = await client.privacy.getBlocklist()
+const { jids, entries } = await client.privacy.getBlocklist()
 
 await client.privacy.blockUser(jid)
 await client.privacy.unblockUser(jid)
 ```
+
+O `WaBlocklistResult` agora carrega `entries: readonly WaPrivacyListEntry[]` ao lado de `jids` — mesma composição, com um handle `username?: string` por entrada, preenchido apenas quando o servidor identificou a entrada assim. Escritas de `block` / `unblock` conseguem endereçar um contato migrado por `username` ou `display_name` (a entrada resolve pelo mesmo caminho de lookup de identificador), em vez de cair no fallback `unknown_identifier`.
 
 ### Listas de exceção {#disallowed-lists}
 
@@ -134,7 +156,9 @@ await client.privacy.setDisallowedList('lastSeen', {
 })
 ```
 
-`setDisallowedList(category, input)` carrega a mudança de modo e as entradas em uma única stanza (o servidor não tem endpoint separado para deny-list). Inputs aceitam phone jids, LID jids ou números puros e são resolvidos para as duas formas de endereçamento, do mesmo modo que `blockUser`. O write é versionado por um `dhash` lido logo antes do envio; se outro device mutou a lista no meio, o servidor responde `409` e a chamada refetch o carimbo e retenta uma vez. As categorias elegíveis são expostas em `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` (`about`, `groupAdd`, `lastSeen`, `profilePicture`, `linkedProfiles`, `pix`).
+`setDisallowedList(category, input)` carrega a mudança de modo e as entradas em uma única stanza (o servidor não tem endpoint separado para deny-list). Inputs aceitam phone jids, LID jids ou números puros e são resolvidos para as duas formas de endereçamento, do mesmo modo que `blockUser`. Um contato migrado pode ser endereçado por `username` ou `display_name` (via a resolução de identificador da própria entrada) em vez de cair no fallback `unknown_identifier`. O write é versionado por um `dhash` lido logo antes do envio; se outro device mutou a lista no meio, o servidor responde `409` e a chamada refetch o carimbo e retenta uma vez. As categorias elegíveis são expostas em `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` (`about`, `groupAdd`, `lastSeen`, `profilePicture`, `linkedProfiles`, `pix`).
+
+O `WaPrivacyDisallowedListResult` espelha o `WaBlocklistResult`: `entries: readonly WaPrivacyListEntry[]` acompanha `jids` com a mesma composição, adicionando um `username?: string` por entrada quando o servidor identificou a entrada assim.
 
 ### Reagindo a mudanças em outros devices {#reacting-to-changes-on-other-devices}
 

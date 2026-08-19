@@ -90,6 +90,26 @@ await client.profile.setUsername({ username: 'myhandle' })
 await client.profile.deleteUsername()
 ```
 
+`setUsername`, `setUsernameKey`, and `resolveUsername` all run the same local rules that WhatsApp applies (length, allowed characters, 4-digit key shape) and **throw** on failure before hitting the network — a call that returns without throwing has passed local validation, so `setUsername` returning `false` narrows the cause to a server-side outcome (taken, rate-limited).
+
+Resolve a handle to its LID with `resolveUsername`. The result is a discriminated union: `'found'` gives you the JID (plus `isBusiness` / `pnJid` when applicable), `'key-required'` means the server withheld the JID until you supply the 4-digit lookup key, and `'not-found'` is terminal.
+
+```ts
+// '@name' and a 'name:1234' key suffix in the handle are accepted
+let result = await client.profile.resolveUsername({ username: '@alice' })
+
+if (result.status === 'key-required') {
+  const usernameKey = await askUserForFourDigitKey() // your UI
+  result = await client.profile.resolveUsername({ username: '@alice', usernameKey })
+}
+
+if (result.status === 'found') {
+  console.log(result.jid, result.isBusiness, result.pnJid)
+} else if (result.status === 'not-found') {
+  console.log('no such handle')
+}
+```
+
 ## Privacy
 
 `client.privacy` ([`WaPrivacyCoordinator`](/en/reference/client#privacy)) controls privacy categories and the blocklist.
@@ -113,11 +133,13 @@ Setting names live on `WA_PRIVACY_SETTING_TO_CATEGORY`, allowed values per setti
 ### Blocklist
 
 ```ts
-const { jids } = await client.privacy.getBlocklist()
+const { jids, entries } = await client.privacy.getBlocklist()
 
 await client.privacy.blockUser(jid)
 await client.privacy.unblockUser(jid)
 ```
+
+`WaBlocklistResult` now carries `entries: readonly WaPrivacyListEntry[]` alongside `jids` — same membership, with a per-entry `username?: string` handle set only when the server identified the entry that way. `block` / `unblock` writes can address a migrated contact by `username` or `display_name` (the entry resolves through the same identifier lookup), instead of falling back to `unknown_identifier`.
 
 ### Disallowed lists
 
@@ -134,7 +156,9 @@ await client.privacy.setDisallowedList('lastSeen', {
 })
 ```
 
-`setDisallowedList(category, input)` carries the mode change and the entries in one stanza (the server has no separate deny-list endpoint). Inputs accept phone jids, LID jids, or bare phone numbers and are resolved to both addressing forms, the same way `blockUser` does. The write is versioned by a `dhash` read right before sending; if another device mutated the list in between, the server answers `409` and the call refetches the stamp and retries once. The eligible categories are exposed as `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` (`about`, `groupAdd`, `lastSeen`, `profilePicture`, `linkedProfiles`, `pix`).
+`setDisallowedList(category, input)` carries the mode change and the entries in one stanza (the server has no separate deny-list endpoint). Inputs accept phone jids, LID jids, or bare phone numbers and are resolved to both addressing forms, the same way `blockUser` does. A migrated contact may be addressed by `username` or `display_name` (via the entry's own identifier resolution) rather than falling back to `unknown_identifier`. The write is versioned by a `dhash` read right before sending; if another device mutated the list in between, the server answers `409` and the call refetches the stamp and retries once. The eligible categories are exposed as `WA_PRIVACY_DISALLOWED_LIST_CATEGORIES` (`about`, `groupAdd`, `lastSeen`, `profilePicture`, `linkedProfiles`, `pix`).
+
+`WaPrivacyDisallowedListResult` mirrors `WaBlocklistResult`: `entries: readonly WaPrivacyListEntry[]` accompanies `jids` with the same membership, adding a per-entry `username?: string` when the server identified the entry that way.
 
 ### Reacting to changes on other devices
 

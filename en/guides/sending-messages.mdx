@@ -120,6 +120,45 @@ await client.message.send(jid, content, { forward: { score: 4 } })
   To send a single message with **no** expiration into a group with disappearing-mode on, prefer `disableGroupEphemeralAutoInject: true` over `expirationSeconds: 0` — the latter still writes `expiration=0` into the outgoing `contextInfo`. Same story for `disableDirectEphemeralAutoInject` in 1:1 chats.
 </Tip>
 
+## Sending to a username
+
+A username handle (`@alice`) is not an addressable JID on its own. Resolve it to the account's LID with `client.profile.resolveUsername` first, then send to that JID — the send API takes the JID exactly like any other 1:1 recipient.
+
+`resolveUsername` returns a discriminated union you have to switch on. Every case has a next step:
+
+```ts
+const result = await client.profile.resolveUsername({ username: '@alice' })
+
+switch (result.status) {
+  case 'found':
+    // result.jid is the LID (@lid) to address; result.pnJid is the phone-jid
+    // form when the server knows it, and result.isBusiness flags a business
+    // account. result.username is the canonical handle the server echoes back.
+    await client.message.send(result.jid, 'hi')
+    break
+
+  case 'key-required': {
+    // The server withheld the JID until the 4-digit recovery key is supplied.
+    // Ask the user for it (out of band — WhatsApp UI shows it as "@handle:1234")
+    // and retry with the key. A one-off '@user:1234' input works too:
+    // resolveUsername parses the ':1234' suffix into usernameKey for you.
+    const usernameKey = await askUserForFourDigitKey() // your UI
+    const retry = await client.profile.resolveUsername({ username: '@alice', usernameKey })
+    if (retry.status === 'found') await client.message.send(retry.jid, 'hi')
+    else if (retry.status === 'key-required') console.log('wrong key')
+    else console.log('no such handle')
+    break
+  }
+
+  case 'not-found':
+    // Terminal — the handle is not registered on WhatsApp. No retry recovers it.
+    console.log('no such handle')
+    break
+}
+```
+
+`resolveUsername` **throws** before any round-trip when the handle or the key fails local validation (bad characters, wrong length, reserved word, key that is not exactly 4 digits) — so a call that returns has passed local rules and the `status` reflects the server-side outcome.
+
 ## The content union
 
 `content` accepts any `WaSendMessageContent`. The typed variants are documented across these guides:
@@ -143,41 +182,6 @@ await client.message.send(jid, {
 })
 ```
 
-### Location and contact
-
-Message types without a typed builder are sent as raw `Proto.IMessage` fields — for example **location** and **contact**:
-
-```ts
-// Location
-await client.message.send(jid, {
-  locationMessage: {
-    degreesLatitude: -23.5613,
-    degreesLongitude: -46.6565,
-    name: 'Av. Paulista',
-    address: 'São Paulo, BR'
-  }
-})
-
-// Contact (vCard)
-const vcard = [
-  'BEGIN:VCARD',
-  'VERSION:3.0',
-  'FN:Jeff Singh',
-  'TEL;type=CELL;type=VOICE;waid=5511999999999:+55 11 99999-9999',
-  'END:VCARD'
-].join('\n')
-
-await client.message.send(jid, {
-  contactMessage: { displayName: 'Jeff', vcard }
-})
-
-// Multiple contacts
-await client.message.send(jid, {
-  contactsArrayMessage: {
-    displayName: '2 contacts',
-    contacts: [{ displayName: 'Jeff', vcard }]
-  }
-})
-```
+Content types without a typed builder yet — locations, contact vCards, and Business PIX / review-and-pay payment cards — are documented in [Raw proto sends](/en/guides/raw-sends).
 
 The full set of recognized `Proto.IMessage` fields (location, live location, contacts, group invite, product, order, …) is listed in the [message types reference](/en/reference/message-types).

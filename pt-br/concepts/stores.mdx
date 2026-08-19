@@ -275,3 +275,7 @@ createStore({
 <Warning>
   Um backend **completo** escrito à mão precisa declarar o novo cache `chatMetadata` junto com os outros domínios de cache, ou se estreitar com `WaStoreBackend<S, C>`. Um `satisfies WaStoreBackend` puro sem o factory do cache não compila mais.
 </Warning>
+
+<Warning>
+  Um `WaContactStore` escrito à mão precisa ler e gravar o novo campo `WaStoredContactRecord.username` — o handle do contato sem o `@` de exibição, preenchido quando o servidor expõe um. Os pacotes in-tree `@zapo-js/store-*` migram seus schemas automaticamente ao conectar (via `ensurePgMigrations` e seus equivalentes por backend), então consumidores desses pacotes não precisam fazer nada.
+</Warning>

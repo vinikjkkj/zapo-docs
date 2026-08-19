@@ -120,6 +120,45 @@ await client.message.send(jid, content, { forward: { score: 4 } })
   Para enviar uma única mensagem **sem** expiração para um grupo com disappearing-mode ligado, prefira `disableGroupEphemeralAutoInject: true` em vez de `expirationSeconds: 0` — o último ainda grava `expiration=0` no `contextInfo` de saída. Mesma história para `disableDirectEphemeralAutoInject` em chats 1:1.
 </Tip>
 
+## Enviando pra um username {#sending-to-a-username}
+
+Um handle de username (`@alice`) não é um JID endereçável sozinho. Resolva pro LID da conta com `client.profile.resolveUsername` primeiro, e depois envie pra esse JID — a API de envio recebe o JID exatamente como qualquer outro destinatário 1:1.
+
+`resolveUsername` retorna uma union discriminada em que você tem que switchar. Cada caso tem um próximo passo:
+
+```ts
+const result = await client.profile.resolveUsername({ username: '@alice' })
+
+switch (result.status) {
+  case 'found':
+    // result.jid é o LID (@lid) pra endereçar; result.pnJid é a forma phone-jid
+    // quando o servidor a conhece, e result.isBusiness sinaliza uma conta business.
+    // result.username é o handle canônico que o servidor ecoa de volta.
+    await client.message.send(result.jid, 'oi')
+    break
+
+  case 'key-required': {
+    // O servidor segurou o JID até a chave de recuperação de 4 dígitos ser
+    // fornecida. Peça ao usuário (fora de banda — a UI do WhatsApp mostra
+    // como "@handle:1234") e retente com a chave. Um input pontual '@user:1234'
+    // também funciona: resolveUsername parseia o sufixo ':1234' pra usernameKey.
+    const usernameKey = await askUserForFourDigitKey() // sua UI
+    const retry = await client.profile.resolveUsername({ username: '@alice', usernameKey })
+    if (retry.status === 'found') await client.message.send(retry.jid, 'oi')
+    else if (retry.status === 'key-required') console.log('chave errada')
+    else console.log('handle inexistente')
+    break
+  }
+
+  case 'not-found':
+    // Terminal — o handle não está registrado no WhatsApp. Nenhum retry recupera.
+    console.log('handle inexistente')
+    break
+}
+```
+
+`resolveUsername` **lança** antes de qualquer round-trip quando o handle ou a chave falham na validação local (caracteres inválidos, comprimento errado, palavra reservada, chave que não tem exatamente 4 dígitos) — então uma chamada que retorna passou nas regras locais, e o `status` reflete o resultado do servidor.
+
 ## A union de conteúdo {#the-content-union}
 
 `content` aceita qualquer `WaSendMessageContent`. As variantes tipadas estão documentadas ao longo destes guias:
@@ -143,41 +182,6 @@ await client.message.send(jid, {
 })
 ```
 
-### Localização e contato {#location-and-contact}
-
-Tipos de mensagem sem um builder tipado são enviados como campos `Proto.IMessage` brutos — por exemplo **localização** e **contato**:
-
-```ts
-// Localização
-await client.message.send(jid, {
-  locationMessage: {
-    degreesLatitude: -23.5613,
-    degreesLongitude: -46.6565,
-    name: 'Av. Paulista',
-    address: 'São Paulo, BR'
-  }
-})
-
-// Contato (vCard)
-const vcard = [
-  'BEGIN:VCARD',
-  'VERSION:3.0',
-  'FN:Jeff Singh',
-  'TEL;type=CELL;type=VOICE;waid=5511999999999:+55 11 99999-9999',
-  'END:VCARD'
-].join('\n')
-
-await client.message.send(jid, {
-  contactMessage: { displayName: 'Jeff', vcard }
-})
-
-// Múltiplos contatos
-await client.message.send(jid, {
-  contactsArrayMessage: {
-    displayName: '2 contacts',
-    contacts: [{ displayName: 'Jeff', vcard }]
-  }
-})
-```
+Tipos de conteúdo sem um builder tipado ainda — localizações, cartões de contato vCard e cards de pagamento Business PIX / review-and-pay — estão documentados em [Envios proto brutos](/pt-br/guides/raw-sends).
 
 O conjunto completo de campos `Proto.IMessage` reconhecidos (localização, localização ao vivo, contatos, convite de grupo, produto, pedido, …) está na [referência de tipos de mensagem](/pt-br/reference/message-types).

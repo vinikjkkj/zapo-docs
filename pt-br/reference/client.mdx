@@ -320,11 +320,12 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `getTextStatuses` | `(jids) => Promise<readonly WaTextStatusResult[]>` | Status de texto moderno em lote (emoji + texto). |
 | `setTextStatus` | `(input) => Promise<void>` | Define seu status de texto moderno; `text: null`/`''` o limpa. |
 | `getUsernames` | `(jids) => Promise<readonly WaUsernameResult[]>` | Consulta de username em lote. |
+| `resolveUsername` | `(input: WaResolveUsernameInput) => Promise<WaUsernameLookupResult>` | Resolve um handle para o LID via usync. Um `@` inicial e um sufixo de chave `:1234` em `input.username` são aceitos; `input.usernameKey` sobrescreve uma chave extraída do handle. Retorna uma union discriminada: `{ status: 'found', jid, username, isBusiness, pnJid }`, `{ status: 'key-required', username }` (retente com `usernameKey`) ou `{ status: 'not-found' }`. Lança em falha de validação local antes de qualquer round-trip. |
 | `getOwnUsername` | `() => Promise<WaOwnUsernameResult>` | Seu registro de username (valor, estado, pin de recuperação). |
-| `setUsername` | `(input) => Promise<boolean>` | Reserva um username. Retorna `true` apenas em `SUCCESS`; caso contrário `false` (em uso/inválido/rate-limited) sem lançar. |
+| `setUsername` | `(input) => Promise<boolean>` | Reserva um username. Lança em falha de validação local antes de qualquer round-trip. Retorna `true` apenas em `SUCCESS`; caso contrário `false` (em uso/rate-limited) sem lançar. |
 | `deleteUsername` | `() => Promise<boolean>` | Exclui seu username. |
 | `checkUsernameAvailability` | `(username) => Promise<WaUsernameAvailabilityResult>` | Disponibilidade + sugestões. |
-| `setUsernameKey` | `(pin) => Promise<boolean>` | Define o PIN de recuperação do username. |
+| `setUsernameKey` | `(pin) => Promise<boolean>` | Define o PIN de recuperação do username. Lança antes de qualquer round-trip quando `pin` não tem exatamente 4 dígitos. |
 | `getAboutStatus` | `(jid) => Promise<string \| null>` | Texto "Sobre" via MEX. |
 | `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/pt-br/concepts/identities#mapping-a-phone-number-to-its-lid) para números de telefone. |
 

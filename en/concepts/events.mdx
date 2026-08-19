@@ -110,6 +110,7 @@ Resend requests are best-effort — like wa-web, they are not persisted, so a fa
 | `picture` | `WaPictureEvent` | Profile/group picture changes. |
 | `privacy` | `WaPrivacyAccountSyncResult` | The account's privacy was changed on the primary or another companion — the full category set plus any disallowed list the server reported. Debounced 1s, so a burst of changes on the phone collapses into one refresh. Values always come from a fresh read, never from the notification payload. |
 | `blocklist` | `WaBlocklistResult` | The account blocklist after a block/unblock made on another device. Same refetch path as `privacy`; the payload is the full list, never a delta. |
+| `own_username` | `WaOwnUsernameNotificationEvent` | The account's username was set / deleted / modified on the primary or another companion. `kind` discriminates the change; `username` is populated only for `kind: 'set'`. |
 
 ## State, history & MEX
 
@@ -117,7 +118,7 @@ Resend requests are best-effort — like wa-web, they are not persisted, so a fa
 | --- | --- | --- |
 | `mutation` | `WaAppStateMutationEvent` | App-state mutation (mute, pin, archive, …) **synced from another device**. Inbound only; this client's own outbound actions surface on `mutation_send`. |
 | `mutation_send` | `WaAppStateMutationEvent` | An app-state action this client is sending — the outbound counterpart to `mutation`, symmetric to how `message_send` pairs with `message`. `event.source` is always `'local'`. **Optimistic**: emitted as the mutation is enqueued, before the server flush confirms it. |
-| `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. |
+| `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. Ingestion is **streamed** — the proto reader descends into `conversations` one message at a time, so ingest peak memory stays flat regardless of chunk size. `messagesCount` counts written records, not read ones; a chunk whose bounded park of messages waiting on `Conversation.id` overflows fails and stays unacked (the primary resends), rather than completing with silent drops. |
 | `group_history_bundle` | `WaGroupHistoryBundleEvent` | A group-history bundle another member shared with this account after it joined a group, already downloaded, filtered and persisted. Requires `history.groupBundles: true` — the fetch is opt-in because a third party triggers it. See [Groups → receiving](/en/guides/groups#receiving). |
 | `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
 | `offline_thread_metadata` | `WaOfflineThreadMetadataEvent` | Preview manifest of the offline queue (per-thread latest-stanza timestamps, optional per-thread read watermarks, optional pending status / notification backlog counts). Sent just before the flush; not guaranteed to arrive. **Use `offline_resume` for progress**, never this. |

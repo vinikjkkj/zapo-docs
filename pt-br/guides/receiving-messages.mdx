@@ -28,7 +28,8 @@ client.on('message', (event: WaIncomingMessageEvent) => {
 | `key.remoteJidAlt` | `string?` | O endereçamento alternativo de `remoteJid` (PN se endereçado por LID, ou vice-versa) em chats 1:1. |
 | `key.participantAlt` | `string?` | O endereçamento alternativo de `participant` em chats em grupo. |
 | `key.senderDevice` | `number` | Id do device do remetente; `0` quando o JID de origem não tem segmento `:device`. |
-| `key.senderUsername` | `string?` | Username do remetente quando o servidor o anexa. |
+| `key.senderUsername` | `string?` | Handle do autor, sem o `@`. **Ausente em stanzas 1:1 auto-enviadas** — o handle do peer aparece em `key.recipientUsername` no lugar. |
+| `key.recipientUsername` | `string?` | Handle do peer, sem o `@`. Preenchido em stanzas 1:1 auto-enviadas (onde `senderUsername` é ausente) e em qualquer mensagem que carregue `recipient_username` / `peer_recipient_username`. |
 | `key.recipientJid` / `key.recipientAlt` | `string?` | Seu JID receptor e sua forma alternativa. |
 | `key.serverId` | `number?` | Id da mensagem atribuído pelo servidor para mensagens de newsletter / canal. |
 | `message` | `Proto.IMessage` | O conteúdo descriptografado da mensagem. |
@@ -223,6 +224,8 @@ client.on('receipt', (event) => {
 ```
 
 `event.messageIds` é o conjunto completo de stanza ids que este recibo confirma. O WhatsApp agrupa recibos de read/delivery em um único `<receipt>` carregando um bloco `<list><item id=…/>` — `messageIds` espelha o `externalIds` do wa-web: itens da lista primeiro, depois `event.stanzaId` anexado por último. Recibos de mensagem única contêm apenas `[event.stanzaId]`.
+
+O `WaIncomingReceiptEvent` também carrega `participantUsername?: string` — o handle do participante sem o `@`, lido do atributo `participant_username` da stanza quando presente.
 
 <Note>
   Eventos `receipt` ainda expõem `stanzaId` / `chatJid` diretamente (eles estendem `WaIncomingBaseEvent`); a renomeação se aplica somente aos payloads de `message`, `message_addon` e `message_bot_chunk`, que agora usam `event.key`. O `event.stanzaId` ainda é o **último** id do batch — itere `messageIds` para cobrir o resto.

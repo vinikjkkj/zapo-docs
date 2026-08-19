@@ -69,6 +69,7 @@
                 "group": "Messaging",
                 "pages": [
                   "en/guides/sending-messages",
+                  "en/guides/raw-sends",
                   "en/guides/media",
                   "en/guides/interactive-messages",
                   "en/guides/receiving-messages"
@@ -189,6 +190,7 @@
                 "group": "Mensageria",
                 "pages": [
                   "pt-br/guides/sending-messages",
+                  "pt-br/guides/raw-sends",
                   "pt-br/guides/media",
                   "pt-br/guides/interactive-messages",
                   "pt-br/guides/receiving-messages"

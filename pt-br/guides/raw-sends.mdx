@@ -1,0 +1,366 @@
+---
+title: "Envios proto brutos"
+description: "Envie tipos de conteúdo que o WhatsApp suporta mas o zapo ainda não tem builder tipado — localizações, cartões de contato vCard, convites de grupo, botões, menus de lista, interactive native flow, produtos, pedidos, convites de admin de newsletter, alternância ephemeral, solicitações de número de telefone e cards de pagamento Business PIX / review-and-pay — como payloads Proto.IMessage brutos."
+icon: "file-code"
+---
+
+Para tipos de conteúdo que o WhatsApp suporta mas o zapo ainda não empacota num builder tipado, o `client.message.send` também aceita um `Proto.IMessage` bruto. Preencha o campo que nomeia o tipo — `locationMessage`, `contactMessage`, `contactsArrayMessage`, `interactiveMessage`, e assim por diante — e a lib encoda literalmente.
+
+Tipos que já têm um builder tipado — enquetes, reações, edições, revogações, fixação, manter no chat, wrapping view-once e citações / menções / previews de link — pertencem a [Enviando mensagens](/pt-br/guides/sending-messages) e [Mensagens interativas](/pt-br/guides/interactive-messages). Esta página é para os tipos que só existem em modo bruto.
+
+O conjunto completo de campos `Proto.IMessage` reconhecidos (localização, localização ao vivo, contatos, convite de grupo, produto, pedido, …) está na [referência de tipos de mensagem](/pt-br/reference/message-types). Alguns exemplos abaixo usam valores de enum do namespace `proto`:
+
+```ts
+import { proto } from 'zapo-js'
+```
+
+## Localizações {#locations}
+
+```ts
+await client.message.send(jid, {
+  locationMessage: {
+    degreesLatitude: -23.5613,
+    degreesLongitude: -46.6565,
+    name: 'Av. Paulista',
+    address: 'São Paulo, BR'
+  }
+})
+```
+
+`name` e `address` são opcionais.
+
+Para uma mensagem de live location, use o campo `liveLocationMessage` — ele carrega os metadados de movimento (`accuracyInMeters`, `speedInMps`, `sequenceNumber`).
+
+```ts
+await client.message.send(jid, {
+  liveLocationMessage: {
+    degreesLatitude: -23.5505,
+    degreesLongitude: -46.6333,
+    accuracyInMeters: 50,
+    speedInMps: 0,
+    caption: 'On my way',
+    sequenceNumber: 1
+  }
+})
+```
+
+## Contatos {#contacts}
+
+Um cartão de contato único é um `contactMessage` com uma string vCard:
+
+```ts
+const vcard = [
+  'BEGIN:VCARD',
+  'VERSION:3.0',
+  'FN:Jeff Singh',
+  'TEL;type=CELL;type=VOICE;waid=5511999999999:+55 11 99999-9999',
+  'END:VCARD'
+].join('\n')
+
+await client.message.send(jid, {
+  contactMessage: { displayName: 'Jeff', vcard }
+})
+```
+
+O parâmetro `waid=<digits>` na linha `TEL` é o que permite ao cliente WhatsApp vincular o cartão a uma conta WhatsApp — use o telefone E.164 do destinatário sem o `+`.
+
+Para vários cartões de uma vez, use `contactsArrayMessage`:
+
+```ts
+await client.message.send(jid, {
+  contactsArrayMessage: {
+    displayName: '2 contacts',
+    contacts: [
+      { displayName: 'Jeff', vcard },
+      { displayName: 'Jane', vcard: janeVcard }
+    ]
+  }
+})
+```
+
+## Convite de grupo {#group-invite}
+
+```ts
+await client.message.send(jid, {
+  groupInviteMessage: {
+    groupJid: '123456789-987654@g.us',
+    inviteCode: 'AbCdEf123',
+    inviteExpiration: Math.floor(Date.now() / 1000) + 86_400,
+    groupName: 'My group',
+    caption: 'Join us!'
+  }
+})
+```
+
+## Botões {#buttons}
+
+Até três botões de quick-reply. O header é um `oneof` — escolha texto, imagem, vídeo, localização ou documento (pré-upload para mídia):
+
+```ts
+await client.message.send(jid, {
+  buttonsMessage: {
+    contentText: 'Order placed — what next?',
+    footerText: 'Reply within 24h',
+    headerType: proto.Message.ButtonsMessage.HeaderType.TEXT,
+    text: 'Order #1234',
+    buttons: [
+      {
+        buttonId: 'track',
+        buttonText: { displayText: 'Track' },
+        type: proto.Message.ButtonsMessage.Button.Type.RESPONSE
+      },
+      {
+        buttonId: 'cancel',
+        buttonText: { displayText: 'Cancel' },
+        type: proto.Message.ButtonsMessage.Button.Type.RESPONSE
+      }
+    ]
+  }
+})
+```
+
+## Menu de lista {#list-menu}
+
+Uma lista single-select de rows agrupadas em sections:
+
+```ts
+await client.message.send(jid, {
+  listMessage: {
+    title: 'Menu',
+    description: 'Choose an item',
+    buttonText: 'View menu',
+    footerText: 'Open 9–18',
+    listType: proto.Message.ListMessage.ListType.SINGLE_SELECT,
+    sections: [
+      {
+        title: 'Pizzas',
+        rows: [
+          { rowId: 'pizza-margherita', title: 'Margherita', description: 'Tomato, mozzarella, basil' },
+          { rowId: 'pizza-pepperoni',  title: 'Pepperoni',  description: 'Tomato, cheese, pepperoni' }
+        ]
+      },
+      {
+        title: 'Drinks',
+        rows: [{ rowId: 'drink-cola', title: 'Cola' }]
+      }
+    ]
+  }
+})
+```
+
+## Interactive native flow (cta_url) {#interactive-native-flow-cta_url}
+
+A superfície interativa moderna — botões cujos parâmetros são payloads ad-hoc codificados em JSON:
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    body: { text: 'Tap below to open the form' },
+    footer: { text: 'Powered by your bot' },
+    nativeFlowMessage: {
+      buttons: [
+        {
+          name: 'cta_url',
+          buttonParamsJson: JSON.stringify({
+            display_text: 'Open form',
+            url: 'https://example.com/form'
+          })
+        }
+      ],
+      messageVersion: 1
+    }
+  }
+})
+```
+
+É o mesmo formato de wire dos cards PIX / review-and-pay em [Pagamentos](#payments-pix--review-and-pay) abaixo — só o `name` do botão e o `buttonParamsJson` mudam.
+
+## Produto {#product}
+
+Envie um produto do catálogo. O `productImage` interno precisa estar pré-uploadado:
+
+```ts
+await client.message.send(jid, {
+  productMessage: {
+    businessOwnerJid: '5511999999999@s.whatsapp.net',
+    body: 'Take a look at this',
+    footer: 'In stock',
+    product: {
+      productId: '12345',
+      title: 'Hat',
+      description: 'One size, adjustable',
+      currencyCode: 'BRL',
+      priceAmount1000: 49_900, // 49.90 BRL — price × 1000
+      retailerId: 'sku-001',
+      url: 'https://example.com/p/12345',
+      productImage: { /* pre-uploaded image fields */ }
+    }
+  }
+})
+```
+
+## Pedido {#order}
+
+Confirmação / consulta de pedido:
+
+```ts
+await client.message.send(jid, {
+  orderMessage: {
+    orderId: 'ord-abc',
+    orderTitle: 'Sample order',
+    itemCount: 3,
+    status: proto.Message.OrderMessage.OrderStatus.INQUIRY,   // or ACCEPTED / DECLINED
+    surface: proto.Message.OrderMessage.OrderSurface.CATALOG,
+    sellerJid: '5511888888888@s.whatsapp.net',
+    totalAmount1000: 149_700, // 149.70 BRL — total × 1000
+    totalCurrencyCode: 'BRL',
+    message: 'Order details'
+  }
+})
+```
+
+## Convite de admin de newsletter {#newsletter-admin-invite}
+
+Convide um contato para ser co-admin de uma das suas newsletters:
+
+```ts
+await client.message.send(contactJid, {
+  newsletterAdminInviteMessage: {
+    newsletterJid: '120363xxxxxxxxxxxxxx@newsletter',
+    newsletterName: 'My Newsletter',
+    caption: 'Become a co-admin',
+    inviteExpiration: Math.floor(Date.now() / 1000) + 7 * 86_400
+  }
+})
+```
+
+## Alternar mensagens temporárias (configuração ephemeral) {#toggle-disappearing-messages-ephemeral-setting}
+
+Alternância do timer para o **chat inteiro** — diferente da [opção de envio `expirationSeconds`](/pt-br/guides/sending-messages#send-options-reference) (uma mensagem) e do [wrapper `ephemeralMessage`](/pt-br/reference/message-types#disappearing-wrapper-ephemeralmessage) (uma mensagem herdando o timer do chat).
+
+```ts
+await client.message.send(jid, {
+  protocolMessage: {
+    type: proto.Message.ProtocolMessage.Type.EPHEMERAL_SETTING,
+    ephemeralExpiration: 7 * 24 * 3600 // seconds; 0 disables
+  }
+})
+```
+
+## Solicitar número de telefone {#request-a-phone-number}
+
+```ts
+await client.message.send(jid, { requestPhoneNumberMessage: {} })
+```
+
+## Pagamentos (PIX e review-and-pay) {#payments-pix--review-and-pay}
+
+Envie cards de pagamento do WhatsApp Business — PIX estático (`payment_info`) e checkout de pedido (`review_and_pay`) — como payloads brutos `interactiveMessage` / `nativeFlowMessage` via `client.message.send`. Ainda não existe builder tipado, então monte o shape você mesmo do mesmo jeito que os cards de localização/contato acima. A lib apenas relaya os botões native-flow interativos; os clientes WhatsApp renderizam a UI do card.
+
+<Warning>
+  Cards de pagamento são um recurso **Business / native-flow**. A renderização difere entre WhatsApp mobile e WhatsApp Web — prefira o flow que combina com a UI que você quer (`payment_info` para o card só-PIX, `review_and_pay` para o card "Nº da cobrança" / pedido) e valide nos dois clients.
+</Warning>
+
+Valores são unidades monetárias inteiras mais um divisor `offset`: `{ value: 1000, offset: 100 }` renderiza como **R$ 10,00**. `key_type` do PIX é um de `EVP` (chave aleatória), `EMAIL`, `PHONE` (E.164 preferido), `CPF`, `CNPJ`.
+
+### Card PIX (`payment_info`) {#pix-card-payment_info}
+
+Renderiza o card **PIX** (chave / merchant). Use para uma chave PIX estática sem card de pedido.
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    nativeFlowMessage: {
+      messageVersion: 1,
+      buttons: [
+        {
+          name: 'payment_info',
+          buttonParamsJson: JSON.stringify({
+            currency: 'BRL',
+            total_amount: { value: 0, offset: 100 },
+            reference_id: `PIX${Date.now()}`,
+            type: 'physical-goods',
+            order: {
+              status: 'pending',
+              subtotal: { value: 0, offset: 100 },
+              order_type: 'ORDER',
+              items: [
+                { name: '', amount: { value: 0, offset: 100 }, quantity: 0, sale_amount: { value: 0, offset: 100 } }
+              ]
+            },
+            payment_settings: [
+              {
+                type: 'pix_static_code',
+                pix_static_code: {
+                  merchant_name: 'Loja Exemplo',
+                  key: 'pix@loja.com',
+                  key_type: 'EMAIL'
+                }
+              }
+            ],
+            share_payment_status: false,
+            is_soft_deleted: false,
+            referral: 'chat_attachment'
+            // display_text: 'Pagar com PIX' // optional
+          })
+        }
+      ]
+    }
+  }
+})
+```
+
+### Card review-and-pay (`review_and_pay`) {#review-and-pay-card-review_and_pay}
+
+Renderiza o card de **pedido / cobrança** (número, itens, total). Use para um resumo estilo checkout.
+
+```ts
+await client.message.send(jid, {
+  interactiveMessage: {
+    body: { text: 'Olá! Sua fatura está disponível.' },
+    footer: { text: 'Se já pagou, desconsidere.' },
+    nativeFlowMessage: {
+      messageVersion: 1,
+      buttons: [
+        {
+          name: 'review_and_pay',
+          buttonParamsJson: JSON.stringify({
+            currency: 'BRL',
+            reference_id: 'PGT-PIX-001',
+            type: 'physical-goods',
+            total_amount: { value: 10000, offset: 100 }, // R$ 100,00
+            payment_settings: [
+              {
+                type: 'pix_static_code',
+                pix_static_code: {
+                  merchant_name: 'Loja Exemplo',
+                  key: 'pix@loja.com',
+                  key_type: 'EMAIL'
+                }
+              }
+            ],
+            order: {
+              status: 'payment_requested',
+              subtotal: { value: 10000, offset: 100 },
+              order_type: 'ORDER',
+              items: [
+                { name: 'Fatura', amount: { value: 10000, offset: 100 }, quantity: 1 }
+              ]
+              // discount: { value: 500, offset: 100 }
+            }
+            // additional_note: 'Pagamento até o vencimento'
+          })
+        }
+      ]
+    }
+  }
+})
+```
+
+`buttonParamsJson` **precisa** ser uma string JSON — monte o objeto em código e faça o stringify. `body` / `footer` em `interactiveMessage` são opcionais. Não misture `payment_info` e `review_and_pay` esperando a mesma UI — eles renderizam cards diferentes, e adicionar `cta_copy` / botões CTA extras no mesmo `nativeFlowMessage` pode renderizar diferente no mobile vs Web.
+
+## Veja também {#see-also}
+
+- [Enviando mensagens](/pt-br/guides/sending-messages) — a API base `client.message.send`, opções e variantes de conteúdo tipadas.
+- [Mensagens interativas](/pt-br/guides/interactive-messages) — builders tipados para enquetes, reações, edições, revogações, fixar e manter no chat.
+- [Referência de tipos de mensagem](/pt-br/reference/message-types) — todos os campos `Proto.IMessage` reconhecidos e seu tipo resolvido.

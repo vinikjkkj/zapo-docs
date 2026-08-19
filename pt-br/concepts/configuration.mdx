@@ -79,6 +79,8 @@ new WaClient({
   - `enabled?: boolean` — processa os chunks de histórico recebidos. **Padrão `true`.** Defina como `false` para descartá-los silenciosamente (útil quando você não persiste mailbox/threads/contacts e o download da conversa só gastaria banda). A lib ainda envia ack do chunk para o servidor parar de re-enviar, igual ao wa-web.
   - `requireFullSync?: boolean` — solicita o arquivo completo em vez de apenas os chats recentes.
   - `groupBundles?: boolean` — opta por baixar o bundle de histórico de grupo que um membro pode compartilhar depois que alguém entra em um grupo; emite [`group_history_bundle`](/pt-br/concepts/events#state-history--mex). **Off por padrão** — um bundle é mídia que um terceiro empurra para esta conta sem solicitação, então o fetch é opt-in. Bundles endereçados a outros membros são descartados de qualquer forma. Veja [Grupos → compartilhando histórico do grupo](/pt-br/guides/groups#sharing-group-history).
+
+  Os chunks são descriptografados, inflados e parseados **incrementalmente** — uma mensagem por vez fica viva enquanto o stream proto desce em `conversations`, então um chat grande que materializaria em centenas de MB de objetos JS fica plano. Bundles de histórico de grupo passam pelo mesmo tratamento. Não tem knob voltado ao consumidor; o pico de memória durante o ingest simplesmente deixou de acompanhar o tamanho do chunk.
 </ParamField>
 
 ```ts

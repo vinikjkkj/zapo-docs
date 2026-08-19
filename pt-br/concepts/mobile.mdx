@@ -60,7 +60,9 @@ await client.connect()
 
 ### `WaMobileTransportDeviceInfo` {#wamobiletransportdeviceinfo}
 
-`manufacturer`, `device`, `osVersion`, `osBuildNumber`, `appVersion` são obrigatórios; `mcc`, `mnc`, `localeLanguageIso6391`, `localeCountryIso31661Alpha2`, `phoneId`, `deviceBoard`, `deviceModelType` são opcionais. Um fingerprint **estável** entre execuções importa — persista-o e reutilize os mesmos valores.
+`manufacturer`, `device`, `osVersion`, `osBuildNumber`, `appVersion` são obrigatórios; `mcc`, `mnc`, `localeLanguageIso6391`, `localeCountryIso31661Alpha2`, `phoneId`, `deviceBoard`, `deviceModelType`, `business` são opcionais. Um fingerprint **estável** entre execuções importa — persista-o e reutilize os mesmos valores.
+
+Passe `business: true` para uma conta WhatsApp Business — o payload de login então anuncia a plataforma `SMB_ANDROID` no `userAgent` em vez do `ANDROID` do consumidor. Sem isso, contas Business são rejeitadas com `<failure reason='401'>` logo após o handshake noise, porque o login sempre reivindicava a plataforma consumidor.
 
 ## Credenciais {#credentials}
 

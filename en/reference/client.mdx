@@ -320,11 +320,12 @@ client.ignoreKey((m) => {
 | `getTextStatuses` | `(jids) => Promise<readonly WaTextStatusResult[]>` | Batched modern text status (emoji + text). |
 | `setTextStatus` | `(input) => Promise<void>` | Set your modern text status; `text: null`/`''` clears it. |
 | `getUsernames` | `(jids) => Promise<readonly WaUsernameResult[]>` | Batched username lookup. |
+| `resolveUsername` | `(input: WaResolveUsernameInput) => Promise<WaUsernameLookupResult>` | Resolve a handle to its LID via usync. A leading `@` and a `:1234` key suffix in `input.username` are accepted; `input.usernameKey` overrides a key parsed out of the handle. Returns a discriminated union: `{ status: 'found', jid, username, isBusiness, pnJid }`, `{ status: 'key-required', username }` (retry with `usernameKey`), or `{ status: 'not-found' }`. Throws on local-validation failure before any round-trip. |
 | `getOwnUsername` | `() => Promise<WaOwnUsernameResult>` | Your username record (value, state, recovery pin). |
-| `setUsername` | `(input) => Promise<boolean>` | Reserve a username. Returns `true` only on `SUCCESS`; otherwise `false` (taken/invalid/rate-limited) without throwing. |
+| `setUsername` | `(input) => Promise<boolean>` | Reserve a username. Throws on local-validation failure before any round-trip. Returns `true` only on `SUCCESS`; otherwise `false` (taken/rate-limited) without throwing. |
 | `deleteUsername` | `() => Promise<boolean>` | Delete your username. |
 | `checkUsernameAvailability` | `(username) => Promise<WaUsernameAvailabilityResult>` | Availability + suggestions. |
-| `setUsernameKey` | `(pin) => Promise<boolean>` | Set the username recovery PIN. |
+| `setUsernameKey` | `(pin) => Promise<boolean>` | Set the username recovery PIN. Throws before any round-trip when `pin` is not exactly 4 digits. |
 | `getAboutStatus` | `(jid) => Promise<string \| null>` | "About" text via MEX. |
 | `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/en/concepts/identities#mapping-a-phone-number-to-its-lid) for phone numbers. |
 

@@ -28,7 +28,8 @@ client.on('message', (event: WaIncomingMessageEvent) => {
 | `key.remoteJidAlt` | `string?` | The `remoteJid`'s alternate addressing (PN if addressed by LID, or vice-versa) in 1:1 chats. |
 | `key.participantAlt` | `string?` | The `participant`'s alternate addressing in group chats. |
 | `key.senderDevice` | `number` | Sender's device id; `0` when the source JID has no `:device` segment. |
-| `key.senderUsername` | `string?` | Sender's username when the server attached it. |
+| `key.senderUsername` | `string?` | Author's handle, without the `@`. **Absent on self-authored 1:1 stanzas** — the peer's handle surfaces as `key.recipientUsername` instead. |
+| `key.recipientUsername` | `string?` | Peer's handle, without the `@`. Populated on self-authored 1:1 stanzas (where `senderUsername` is absent) and on any message that carries `recipient_username` / `peer_recipient_username`. |
 | `key.recipientJid` / `key.recipientAlt` | `string?` | Your receiving JID and its alternate form. |
 | `key.serverId` | `number?` | Server-assigned message id for newsletter / channel messages. |
 | `message` | `Proto.IMessage` | The decrypted message content. |
@@ -223,6 +224,8 @@ client.on('receipt', (event) => {
 ```
 
 `event.messageIds` is the full set of stanza ids this receipt acknowledges. WhatsApp batches read/delivery receipts into a single `<receipt>` carrying a `<list><item id=…/>` block — `messageIds` mirrors wa-web's `externalIds`: list items first, then `event.stanzaId` appended last. Single-message receipts contain just `[event.stanzaId]`.
+
+`WaIncomingReceiptEvent` also carries `participantUsername?: string` — the participant's handle without the `@`, read from the stanza's `participant_username` attribute when present.
 
 <Note>
   `receipt` events still expose `stanzaId` / `chatJid` directly (they extend `WaIncomingBaseEvent`); the rename only applies to `message`, `message_addon`, and `message_bot_chunk` payloads, which now use `event.key`. `event.stanzaId` is still the **last** id in the batch — iterate `messageIds` to cover the rest.
