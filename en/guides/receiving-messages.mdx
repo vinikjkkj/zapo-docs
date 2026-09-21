@@ -174,6 +174,20 @@ client.on('message_unavailable', (event) => {
 
 The recovery is best-effort — the queued request is not persisted, so a failed peer message is not retried. `resendRequested` is `false` for the unrecoverable kinds (`'view_once'`, `'hosted'`, `'bot'`), for stanzas past the server age window (driven by the `placeholder_message_resend_maximum_days_limit` AB prop, not a hardcoded 30 days), and on mobile-primary sessions (there is no other device to ask). The lib does **not** time the pending resend out — a real primary can answer past the 30s peer-request default; wa-web behaves the same way.
 
+### The retry ladder comes first
+
+A message that fails to *decrypt* is not handed straight to the placeholder resend. zapo first climbs the Signal retry ladder, because the sender only rebuilds its session once the receipt count goes high enough:
+
+| Receipt count | What the sender does |
+| --- | --- |
+| 1–2 | Re-encrypts on the existing session. Count 2 records the session base key. |
+| 3 | Compares the base key and, when unchanged, **drops the session** — the next copy arrives as a `pkmsg` on a fresh one. |
+| 4 | zapo stops sending retry receipts and delegates to the placeholder resend. |
+
+<Note>
+  Before **1.8.1** the handoff happened at count 3, which consumed that attempt and suppressed its receipt: the ladder stopped at 2, the peer kept re-encrypting on the same broken session, and the peer-data response came back over it and failed to decrypt too — leaving the message unrecoverable behind a *message too far in future* error. Moving the handoff to count 4 lets the session rebuild actually happen.
+</Note>
+
 ## Protocol messages
 
 Edits, revokes, and other protocol-level updates arrive on `message_protocol` as `WaIncomingProtocolMessageEvent` (it extends the message event with a `protocolMessage` field):

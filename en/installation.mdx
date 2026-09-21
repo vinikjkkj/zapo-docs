@@ -42,7 +42,7 @@ The core package has **no mandatory runtime dependencies**. Everything else — 
     <Tree.File name="@zapo-js/store-redis — Redis backend" />
     <Tree.File name="@zapo-js/store-mongo — MongoDB backend" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
-    <Tree.File name="@zapo-js/voip — WhatsApp voice calls" />
+    <Tree.File name="@zapo-js/voip — WhatsApp voice and video calls" />
     <Tree.File name="@zapo-js/wam — WhatsApp Web telemetry parity (analytics)" />
     <Tree.File name="@zapo-js/native — optional Rust NAPI + WASM crypto accelerator" />
     <Tree.File name="@zapo-js/mcp-server — dev tool: drive from an AI agent" />
@@ -56,7 +56,7 @@ The core package has **no mandatory runtime dependencies**. Everything else — 
 
 | Package | Backend | Best for |
 | --- | --- | --- |
-| `@zapo-js/store-sqlite` | SQLite (via `better-sqlite3`) | Local / single-process |
+| `@zapo-js/store-sqlite` | SQLite (`better-sqlite3`, `bun:sqlite`, or the built-in `node:sqlite`) | Local / single-process |
 | `@zapo-js/store-postgres` | PostgreSQL | Distributed, relational |
 | `@zapo-js/store-mysql` | MySQL | Distributed, relational |
 | `@zapo-js/store-redis` | Redis | Cache + persistence |
@@ -66,6 +66,10 @@ The core package has **no mandatory runtime dependencies**. Everything else — 
 
 ```bash SQLite
 npm install @zapo-js/store-sqlite better-sqlite3
+```
+
+```bash SQLite (no native addon)
+npm install @zapo-js/store-sqlite
 ```
 
 ```bash PostgreSQL
@@ -85,6 +89,10 @@ npm install @zapo-js/store-mongo mongodb
 ```
 
 </CodeGroup>
+
+<Note>
+  `better-sqlite3` is an **optional** peer dependency. Skip it and the store falls back to `node:sqlite`, which ships with Node 22.13+ and Bun 1.4+, so nothing has to be compiled — useful on Termux, musl without prebuilds, or locked-down CI. Install it when you can: it's faster on wide or multi-row reads. Either way the database file is the same. See [choosing a driver](/en/reference/stores#choosing-a-driver).
+</Note>
 
 <Note>
   You can also run with no backend at all — the built-in **memory** store works out of the box and is great for tests. It just does not survive a process restart, so you would re-pair on every boot.
@@ -130,9 +138,9 @@ It shells out to `ffmpeg`/`ffprobe` and uses `sharp`, so make sure those binarie
   `@zapo-js/media-utils` also lists [`file-type`](https://github.com/sindresorhus/file-type) (`^19`) as an **optional** peer dependency. Install it (`npm install file-type`) to enable automatic mimetype detection — without it, the [media guide's mimetype resolution](/en/guides/media#mimetype-resolution) falls back to requiring an explicit `mimetype` on each send.
 </Note>
 
-## Voice calls
+## Voice and video calls {#voice-calls}
 
-Install [`@zapo-js/voip`](/en/guides/voip) to place and receive WhatsApp voice calls. It ships as a `WaClient` plugin and pulls two peer dependencies of its own:
+Install [`@zapo-js/voip`](/en/guides/voip) to place and receive WhatsApp voice and video calls. It ships as a `WaClient` plugin and pulls two peer dependencies of its own:
 
 ```bash
 npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm

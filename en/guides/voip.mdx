@@ -1,14 +1,14 @@
 ---
-title: "Voice calls (VoIP)"
-description: "Place and answer WhatsApp voice calls with @zapo-js/voip — a plugin that exposes a coordinator at client.voip, decodes inbound PCM, and lets you feed live outbound audio with backpressure."
+title: "Calls (VoIP)"
+description: "Place and answer WhatsApp voice and video calls with @zapo-js/voip — a plugin that exposes a coordinator at client.voip, decodes inbound PCM and H.264 frames, and lets you feed live outbound media with backpressure."
 icon: "phone"
 ---
 
-`@zapo-js/voip` is the official voice-calling plugin for `zapo-js`. It rides on the [plugin system](/en/concepts/plugins), exposes a `WaVoipCoordinator` at `client.voip`, and emits `voip_*` events on the host client.
+`@zapo-js/voip` is the official calling plugin for `zapo-js`. It rides on the [plugin system](/en/concepts/plugins), exposes a `WaVoipCoordinator` at `client.voip`, and emits `voip_*` events on the host client.
 
-<Warning>
-  Only **audio** media is implemented. You may flag a call as video in the signaling (see `CallOfferOptions.isVideo`), but no video media is encoded or transported.
-</Warning>
+<Note>
+  Since **`@zapo-js/voip` 1.1.0**, calls are bidirectional in both media types: audio (MLow/Opus) and [video](#video-calls) (H.264). The plugin transports media — it does not encode or decode it. You bring the codec: 16 kHz mono PCM for audio, H.264 Annex-B access units for video.
+</Note>
 
 ## Install
 
@@ -26,6 +26,7 @@ Some methods also need an `ffmpeg` binary on `PATH`:
 
 - `loadAudio` decodes the audio file via `ffmpeg`.
 - Streaming audio with `feedLiveAudio` from a file likewise needs `ffmpeg` to produce 16 kHz mono `Float32Array` chunks.
+- Video is never decoded or encoded by the plugin, so `feedLiveVideo` takes H.264 you produce yourself — typically from `ffmpeg`, a hardware encoder, or an already-encoded stream.
 
 ## Wire the plugin
 
@@ -62,6 +63,16 @@ voipPlugin({ maxConcurrentCalls: 2, logLevel: 'warn' })
   Minimum log level for the (chatty) VoIP plugin. Defaults to the host client's level; set it to cap diagnostics independently — for example `'warn'` to keep VoIP noise out of a `trace` host logger.
 </ParamField>
 
+<ParamField path="useOriginalRelayPort" type="boolean" default="false">
+  Dial each relay on the port its `<te2>` endpoint advertises, instead of on the fixed web-client relay port (`3480`).
+
+  Leave it off against WhatsApp's own relays. The endpoints advertise a mix of ports, and a relay reached on `3478` completes the handshake and carries your uplink **without ever forwarding the peer's stream back** — the call goes silently one way. WhatsApp Web gates the same choice behind its own `shouldUseOriginalRelayPort` flag. Turn it on only for a relay deployment that really answers on the port it advertises.
+</ParamField>
+
+<Warning>
+  If a call connects but you only ever hear yourself — no `voip_call_inbound_audio`, no inbound video — check this option first. Dialing the wrong relay port is the usual cause of a one-way call.
+</Warning>
+
 ## The coordinator surface
 
 ### Placing a call
@@ -77,7 +88,7 @@ const callId = await client.voip.startCall({
 </ParamField>
 
 <ParamField path="isVideo" type="boolean" default="false">
-  Flag the call as video in the signaling stanzas. Video media encode/transport is **not implemented**; only audio media flows.
+  Place a video call. H.264 video media then flows alongside audio: send access units with [`feedLiveVideo`](#video-calls) and receive inbound frames on `voip_call_inbound_video`. The media type is fixed at offer time — there is no mid-call upgrade from audio to video.
 </ParamField>
 
 <ParamField path="audioFile" type="string">
@@ -147,6 +158,51 @@ if (bufferedMs >= pauseMs) {
   The watermark contract: pause feeding once `getLiveBufferMs(callId) >= pauseMs`, resume once it drains back to `resumeMs`. `pauseMs` stays below the engine's internal drop threshold, so a producer that respects it never loses audio. If you ignore it, oldest samples are dropped on overflow.
 </Tip>
 
+### Video calls
+
+Video rides on the same session as audio, on its own SSRC and RTP stream. It is active only when the call's `mediaType` is `CallMediaType.Video` — that is, when you passed `isVideo: true` to `startCall`, or when the peer offered a video call you accepted.
+
+```ts
+const callId = await client.voip.startCall({
+  peerJid: '5511999999999@s.whatsapp.net',
+  isVideo: true
+})
+
+// once the call is active, per encoded frame:
+const packets = client.voip.feedLiveVideo(callId, accessUnit, timestampUs)
+```
+
+<ParamField path="feedLiveVideo(callId, data, timestampUs)" type="number">
+  Feed **one complete H.264 Annex-B access unit** (`Uint8Array`, start-code delimited). `timestampUs` is the capture timestamp in **microseconds**; the plugin converts it to the 90 kHz RTP clock. Returns the number of RTP packets sent, or `0` when video media is not active on that call.
+</ParamField>
+
+Packetization follows what WhatsApp's own sender does rather than textbook RFC 6184: the whole access unit is packed as a single NAL before FU-A fragmentation, which keeps SPS/PPS/IDR together for mobile receivers. Key frames are detected from the NAL types in the unit you feed, so send SPS + PPS ahead of each IDR.
+
+#### Receiving video
+
+Two events carry inbound video, and you pick the level you want:
+
+| Event | Payload | Use it when |
+| --- | --- | --- |
+| `voip_call_inbound_video` | `{ call, frame: InboundVideoFrame }` | You want decodable frames. `frame.data` is a complete Annex-B access unit, already reassembled from its RTP fragments; `frame.keyFrame` flags an IDR and `frame.timestamp` is the 90 kHz RTP timestamp. |
+| `voip_call_inbound_video_rtp` | `{ call, packet: InboundVideoRtpPacket }` | You want the raw decrypted RTP — `payloadType` (`97` H.264, `103` its RTX/repair stream), `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`. Useful for forwarding, recording, or your own jitter handling. |
+
+```ts
+client.on('voip_call_inbound_video', ({ call, frame }) => {
+  // frame.data — Annex-B access unit, feed it straight to a decoder
+  decoder.write(frame.data)
+  if (frame.keyFrame) console.log('IDR on', call.callId)
+})
+```
+
+<Tip>
+  Key-frame recovery is automatic. Until the first key frame arrives, the plugin sends RTCP **PLI** and **FIR** feedback to the peer (throttled to one every 300 ms), which is what prompts the phone to emit a fresh IDR. You don't have to request one.
+</Tip>
+
+<Note>
+  The plugin carries video; it does not encode or decode it. Producing H.264 (and displaying what arrives) is your side of the contract — `ffmpeg`, a hardware encoder, or an existing stream. There is also no mid-call mute for video: `stateData.videoOff` reflects what the peer signals, and simply not calling `feedLiveVideo` stops your outbound stream.
+</Note>
+
 ### Snapshots
 
 ```ts
@@ -155,6 +211,10 @@ const all  = client.voip.getCalls()        // readonly CallInfo[]
 ```
 
 `CallInfo` captures everything you need to render UI: `callId`, `peerJid`, `direction`, `mediaType`, `createdAt`, `callerPn`, plus a `stateData` object (`state`, `audioMuted`, `videoOff`, `connectedAt`, `endReason`, `durationSecs`, `acceptBlocked`, …) and derived getters `isInitiator`, `isActive`, `isRinging`, `isEnded`, `canAccept`, `canReject`, `isAcceptBlocked`.
+
+<Note>
+  `callerPn` is the caller's **phone JID**, read from the `caller_pn` attribute of an incoming offer. It's what lets you match a caller the offer identifies only by LID back to a phone number. It does not change media derivation: the peer SSRC and the SRTP keys stay bound to the LID device JID, which is what the peer derives from.
+</Note>
 
 ## Events
 
@@ -166,6 +226,8 @@ Add `voipPlugin()` to `plugins` and these events become available on `client.on`
 | `voip_call_incoming` | `CallInfo` | A new incoming call. |
 | `voip_call_ended` | `CallInfo` | The call ended (any reason). |
 | `voip_call_inbound_audio` | `{ call, pcm }` | Decoded peer audio. `pcm` is 16 kHz mono `Float32Array`. |
+| `voip_call_inbound_video` | `{ call, frame }` | A reassembled inbound H.264 frame — `frame.data` is a complete Annex-B access unit, with `keyFrame` and the 90 kHz `timestamp`. See [Video calls](#video-calls). |
+| `voip_call_inbound_video_rtp` | `{ call, packet }` | The raw decrypted inbound video RTP packet (`payloadType` `97` H.264 / `103` RTX, `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`). |
 | `voip_call_outbound_audio_finished` | `CallInfo` | The preloaded outbound audio finished sending. |
 | `voip_call_error` | `Error` | A non-fatal call error (logging hook). |
 
@@ -212,7 +274,9 @@ All `enum` values are lowercase strings — use the enum constants to avoid typo
 | `EndCallReason.DoNotDisturb` | `'do_not_disturb'` |
 | `EndCallReason.Unknown` | `'unknown'` |
 
-## Audio format
+## Media formats
+
+### Audio
 
 - **Sample rate:** 16 kHz.
 - **Channels:** mono.
@@ -220,6 +284,13 @@ All `enum` values are lowercase strings — use the enum constants to avoid typo
 - **Codec on the wire:** WhatsApp's Opus profile, encoded via `libmlow-wasm`. The RTP payload type is `120` (`PayloadType.WhatsAppOpus`).
 
 Both inbound (`voip_call_inbound_audio`) and outbound (`feedLiveAudio`) are this same `Float32Array` shape — keep your buffers in this format and you can route them straight through.
+
+### Video
+
+- **Codec:** H.264, **Annex-B** byte stream (start-code delimited NAL units).
+- **Unit of exchange:** one complete access unit per `feedLiveVideo` call, and one per `voip_call_inbound_video` event.
+- **Clock:** 90 kHz RTP. You pass capture timestamps in microseconds; inbound `frame.timestamp` is already in RTP units.
+- **RTP payload types:** `97` (`PayloadType.WhatsAppH264`) and `103` (`PayloadType.WhatsAppH264Rtx`, the repair stream).
 
 ## Worked example
 

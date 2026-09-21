@@ -103,6 +103,11 @@ sequenceDiagram
 2. **Resolve devices** — the recipient's device list is resolved (fanout, `src/client/messaging/`), fetching prekey bundles for devices without a session.
 3. **Encrypt** — per device: 1:1 via the Signal ratchet (`SignalProtocol` → `msg`/`pkmsg`), groups via `SenderKeyManager` (`skmsg`) plus sender-key distribution to members who need it. Your own devices get a `deviceSentMessage`.
 4. **Assemble** — `src/transport/node/builders/message.ts` wraps the encrypted participants into one `<message>` stanza with the device identity, participant hash, and `addressing_mode` (pn/lid).
+
+   <Note>
+     The participant hash (`phash`) has **no size ceiling**. It is computed over every resolved device, and the buffers are sized from the input rather than from a fixed cap. This matters on large groups: an 823-member group resolves to over 2100 devices once each member's linked web and desktop companions are counted, and the old 2048 ceiling made such a group unreachable through the library. Before **1.8.2** that threw; now it just works.
+   </Note>
+
 5. **Send & ack** — `WaNodeOrchestrator.sendNode()` encodes and writes it; the coordinator waits for the server `<ack>` and returns a [`WaMessagePublishResult`](/en/guides/sending-messages). Failures are retried per the configured attempts/backoff.
 
 ## Incoming pipeline

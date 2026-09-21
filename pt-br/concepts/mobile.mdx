@@ -1,10 +1,10 @@
 ---
 title: "Conexões mobile"
-description: "Conecte o zapo como client mobile (Android) primário do WhatsApp pelo transporte TCP, em vez de dispositivo companheiro, e veja as limitações envolvidas."
+description: "Conecte o zapo como client mobile (Android ou iOS) primário do WhatsApp pelo transporte TCP, em vez de dispositivo companheiro, e veja as limitações envolvidas."
 icon: "mobile"
 ---
 
-Além do modo **companion** padrão (vinculação via QR / código de pareamento, como o WhatsApp Web), o `zapo` pode conectar como um **client mobile primário** — falando o protocolo do app Android por um socket TCP bruto.
+Além do modo **companion** padrão (vinculação via QR / código de pareamento, como o WhatsApp Web), o `zapo` pode conectar como um **client mobile primário** — falando o protocolo do app do celular por um socket TCP bruto. Logins **Android** e **iOS** são suportados.
 
 <Note>
   O suporte mobile é **estável e funcional.** A única coisa que o `zapo` **não** fornece é uma **API de registro** — solicitar um código por SMS/voz, enviar um OTP ou aprovar um takeover. Registrar um número é complexo e requer um telefone físico, então está intencionalmente fora de escopo. Você conecta com um conjunto de credenciais **já registrado**, e esse caminho é sólido.
@@ -17,7 +17,7 @@ Além do modo **companion** padrão (vinculação via QR / código de pareamento
 | Transporte | WebSocket (`wss://…`) | Socket TCP (`tcp://g.whatsapp.net:443`) |
 | Auth | QR / código de pareamento | Credenciais pré-registradas + fingerprint do dispositivo |
 | Identidade | Dispositivo vinculado | Conta primária |
-| Plataforma | Navegador (`chrome`, …) | `android` |
+| Plataforma | Navegador (`chrome`, …) | `android` ou `ios` |
 | Info do dispositivo | Não obrigatória | **Obrigatória** (fingerprint de hardware) |
 
 ## Habilitando o modo mobile {#enabling-mobile-mode}
@@ -60,9 +60,76 @@ await client.connect()
 
 ### `WaMobileTransportDeviceInfo` {#wamobiletransportdeviceinfo}
 
-`manufacturer`, `device`, `osVersion`, `osBuildNumber`, `appVersion` são obrigatórios; `mcc`, `mnc`, `localeLanguageIso6391`, `localeCountryIso31661Alpha2`, `phoneId`, `deviceBoard`, `deviceModelType`, `business` são opcionais. Um fingerprint **estável** entre execuções importa — persista-o e reutilize os mesmos valores.
+`manufacturer`, `device`, `osVersion`, `osBuildNumber`, `appVersion` são obrigatórios; `os`, `mcc`, `mnc`, `localeLanguageIso6391`, `localeCountryIso31661Alpha2`, `phoneId`, `deviceBoard`, `deviceModelType`, `distributionChannel`, `business` são opcionais. Um fingerprint **estável** entre execuções importa — persista-o e reutilize os mesmos valores.
 
-Passe `business: true` para uma conta WhatsApp Business — o payload de login então anuncia a plataforma `SMB_ANDROID` no `userAgent` em vez do `ANDROID` do consumidor. Sem isso, contas Business são rejeitadas com `<failure reason='401'>` logo após o handshake noise, porque o login sempre reivindicava a plataforma consumidor.
+Passe `business: true` para uma conta WhatsApp Business — o payload de login então anuncia a plataforma `SMB_ANDROID` / `SMB_IOS` no `userAgent` em vez do `ANDROID` / `IOS` do consumidor. Sem isso, contas Business são rejeitadas com `<failure reason='401'>` logo após o handshake noise, porque o login sempre reivindicava a plataforma consumidor.
+
+### Android ou iOS {#android-or-ios}
+
+O discriminador `os` escolhe qual client o payload de login personifica. O padrão é `'android'`, e esse padrão é byte-idêntico ao que as versões anteriores enviavam — sessões existentes não precisam de mudança nenhuma.
+
+```ts
+mobileTransport: {
+  deviceInfo: {
+    os: 'ios',
+    manufacturer: 'Apple',
+    device: 'iPhone 15 Pro',      // nome comercial
+    deviceModelType: 'iPhone16,1', // machine id cru
+    osVersion: '17.4.1',
+    osBuildNumber: '21E236',
+    appVersion: '2.26.36.74',
+    localeLanguageIso6391: 'pt',
+    localeCountryIso31661Alpha2: 'BR',
+    phoneId: '4317d911-60f9-464d-b930-014d73fa3bc4',
+    distributionChannel: 'appstore'
+  }
+}
+```
+
+Os campos não mapeiam da mesma forma nas duas plataformas, e precisam bater com o client real:
+
+| | `os: 'android'` (padrão) | `os: 'ios'` |
+| --- | --- | --- |
+| Plataforma anunciada | `ANDROID` / `SMB_ANDROID` | `IOS` / `SMB_IOS` |
+| `device` | Codename do aparelho (`moto_g52`) | Nome comercial (`iPhone 15 Pro`) |
+| `deviceModelType` | String de modelo opcional | Machine id cru (`iPhone16,1`) |
+| `mcc` / `mnc` / `deviceBoard` | Enviados | **Omitidos** — o client real do iPhone nunca os envia, então são descartados mesmo se você os definir |
+| `distributionChannel` | Ignorado | `'appstore'` (padrão), `'website'`, `'testflight'`, `'internal'` |
+
+<Warning>
+  Um telefone registrado pelo Android nunca conseguia logar no transporte mobile como iPhone, e vice-versa — o payload fixava o user agent Android. Defina `os` de acordo com o client em que o número foi realmente registrado.
+</Warning>
+
+<Note>
+  [`fetchLatestWaMobileVersion()`](/pt-br/concepts/configuration#fetchlatestwamobileversion) acompanha o último release **Android**. Numa sessão iOS, fixe o `appVersion` (ou `mobileAppVersionOverride`) você mesmo em vez de atualizá-lo por esse helper.
+</Note>
+
+### Passando por um proxy {#going-through-a-proxy}
+
+O transporte mobile é um socket TCP bruto, não um WebSocket, então ele alcança o servidor abrindo um **túnel HTTP `CONNECT`** através do proxy configurado na perna [`proxy.ws`](/pt-br/concepts/configuration#proxy).
+
+Esse túnel aceita apenas um formato: um proxy no estilo `http.Agent` apontando para uma url `http:`.
+
+```ts
+import { HttpProxyAgent } from 'http-proxy-agent'
+
+const client = new WaClient({
+  store,
+  sessionId: 'mobile',
+  mobileTransport: { deviceInfo },
+  proxy: { ws: new HttpProxyAgent('http://user:pass@proxy.example.com:8080') }
+}, logger)
+```
+
+Qualquer coisa que o túnel não consiga honrar **falha o `connect()` com um erro acionável** em vez de ser ignorada — um dispatcher undici, um agent SOCKS, uma url de proxy não-`http:` ou um agent que não expõe url nenhuma. Isso é deliberado: descartar o proxy em silêncio discaria `g.whatsapp.net` direto, o oposto do que um deployment que fixa sua saída num proxy pediu.
+
+<Warning>
+  As versões anteriores realmente descartavam em silêncio, então uma sessão mobile conectava direto enquanto parecia estar atrás do proxy. Se você roda sessões mobile atrás de proxy, verifique a saída depois de atualizar.
+</Warning>
+
+<Note>
+  As outras pernas (`mediaUpload`, `mediaDownload`, `linkPreview`) são baseadas em `fetch` e continuam aceitando dispatchers undici normalmente — só a perna `ws` do mobile é restrita. O package [`ws`](/pt-br/installation#optional-peer-dependencies) **não** é necessário numa sessão mobile com proxy; não há WebSocket envolvido.
+</Note>
 
 ## Credenciais {#credentials}
 

@@ -25,13 +25,34 @@ const sqlite = createSqliteStore({
 | --- | --- | --- |
 | `path` | `string` | Database file path. Mutually exclusive with `connection`. |
 | `connection` | `WaSqliteConnection` | Pre-opened connection to reuse. Mutually exclusive with `path`. |
-| `driver` | `WaSqliteDriver` | Native driver selection (`'auto'`, …). Ignored when `connection` is set. |
+| `driver` | `WaSqliteDriver` | Driver selection — `'auto'` (default), `'better-sqlite3'`, `'bun'`, `'node'`. Ignored when `connection` is set. See [choosing a driver](#choosing-a-driver). |
 | `pragmas` | `Record<string, string \| number>` | SQLite pragmas. Ignored when `connection` is set. |
 | `tableNames` | `WaSqliteTableNameOverrides` | Override table names. Ignored when `connection` is set. |
 | `batchSizes` | `WaSqliteBatchSizeSelection` | Tune batch sizes. |
 | `cacheTtlMs` | `{ retryMs?, groupMetadataMs?, chatMetadataMs?, deviceListMs?, messageSecretMs? }` | Cache TTLs. |
 
 Provide exactly one of `path` or `connection`. With `path`, the library opens (and ref-counts) its own connection and closes it on `store.destroy()`. With `connection`, you own the lifecycle — `store.destroy()` leaves it open so you can keep using it elsewhere.
+
+### Choosing a driver
+
+Since **`@zapo-js/store-sqlite` 1.3.0** the store no longer needs a native addon: `better-sqlite3` is an **optional** peer dependency, and the runtime's built-in `node:sqlite` works as a fallback. That makes SQLite persistence available on platforms where the addon can't be built — Termux, musl without prebuilds, locked-down CI.
+
+| `driver` | Requires | Notes |
+| --- | --- | --- |
+| `'better-sqlite3'` | The native addon (build or prebuild) | Fastest row materialization on Node. Does not load under Bun. |
+| `'bun'` | Bun | `bun:sqlite`, ships with the runtime. |
+| `'node'` | Node 22.13+ or Bun 1.4+ | `node:sqlite`, ships with the runtime. Node 22.5–22.12 keeps it behind `--experimental-sqlite` and warns while the module is experimental. |
+| `'auto'` *(default)* | — | `bun:sqlite` under Bun, otherwise `better-sqlite3`, falling back to `node` only when the addon isn't installed. |
+
+Behavior for existing installs is unchanged: with `better-sqlite3` present, `'auto'` still prefers it and never touches `node:sqlite`.
+
+<Note>
+  On Node 20, 21, or 22.5–22.12 without the flag, `node:sqlite` does not exist, so `'auto'` cannot fall back to it — you get the `better-sqlite3` install error, and installing the addon is the real fix there.
+</Note>
+
+The **on-disk format is identical across drivers** — same schema, same migrations — so you can switch an existing database between them without migrating anything.
+
+Write throughput is effectively the same on all three; SQLite itself dominates. `node:sqlite` is slower only when materializing wide or multi-row result sets, since it builds a fresh object per row: roughly 1.3× on a single wide row and 2.5× on a 50-row page with blobs, measured against `better-sqlite3` on Node 22. That cost lands on history/mailbox queries, not on the per-message session writes.
 
 ### Bring your own connection
 
@@ -70,7 +91,7 @@ await store.destroy()
 connection.close() // you opened it, you close it
 ```
 
-Requires the `better-sqlite3` peer dependency.
+`openSqliteConnection` takes the same `driver` option and follows the same resolution order.
 
 ## PostgreSQL
 

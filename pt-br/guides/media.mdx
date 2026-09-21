@@ -67,6 +67,18 @@ await client.message.send(jid, {
 
 Para uma mensagem redonda de **push-to-video** (PTV), use `type: 'ptv'` com o mesmo formato.
 
+<Tip>
+  **Remuxe seu mp4 com `faststart`.** O zapo anexa um *streaming sidecar* à mídia que pode ser tocada progressivamente, o que direciona o destinatário para o engine de download em streaming. Esse engine precisa da box de índice ISO-BMFF `moov` **antes** do `mdat`; com o `moov` no fim do arquivo o player nunca inicia.
+
+  O zapo agora percorre as boxes de nível superior iniciais e simplesmente **pula o sidecar** quando o payload não é faststart, de forma que esse vídeo cai num download comum em vez de falhar ao abrir. Ainda assim você obtém uma reprodução melhor produzindo arquivos faststart desde o início — o WhatsApp Web remuxa todo vídeo que envia exatamente por isso:
+
+  ```bash
+  ffmpeg -i input.mp4 -c copy -movflags +faststart output.mp4
+  ```
+
+  Payloads que não são ISO-BMFF não são afetados: notas de voz Ogg/Opus carregam o índice inline e mantêm o sidecar.
+</Tip>
+
 ## Áudio e notas de voz {#audio--voice-notes}
 
 ```ts

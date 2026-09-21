@@ -103,6 +103,11 @@ sequenceDiagram
 2. **Resolver dispositivos** — a lista de dispositivos do destinatário é resolvida (fanout, `src/client/messaging/`), buscando prekey bundles para dispositivos sem sessão.
 3. **Criptografar** — por dispositivo: 1:1 via o ratchet Signal (`SignalProtocol` → `msg`/`pkmsg`), grupos via `SenderKeyManager` (`skmsg`) mais a distribuição de sender-key aos membros que precisam. Seus próprios dispositivos recebem um `deviceSentMessage`.
 4. **Montar** — `src/transport/node/builders/message.ts` envolve os participantes criptografados em uma única stanza `<message>` com a identidade do dispositivo, o hash de participantes e o `addressing_mode` (pn/lid).
+
+   <Note>
+     O hash de participantes (`phash`) **não tem teto de tamanho**. Ele é calculado sobre todo device resolvido, e os buffers são dimensionados a partir da entrada, não de um limite fixo. Isso importa em grupos grandes: um grupo de 823 membros resolve para mais de 2100 devices quando se contam os companions web e desktop vinculados de cada membro, e o antigo teto de 2048 tornava esse grupo inalcançável pela biblioteca. Antes da **1.8.2** isso lançava erro; agora simplesmente funciona.
+   </Note>
+
 5. **Enviar e ack** — `WaNodeOrchestrator.sendNode()` codifica e escreve; o coordinator aguarda o `<ack>` do servidor e retorna um [`WaMessagePublishResult`](/pt-br/guides/sending-messages). Falhas são reenviadas conforme as tentativas/backoff configurados.
 
 ## Pipeline de entrada {#incoming-pipeline}

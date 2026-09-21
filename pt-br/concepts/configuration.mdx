@@ -93,6 +93,14 @@ new WaClient({
 
 O histórico chega como eventos [`history_sync_chunk`](/pt-br/concepts/events).
 
+<Note>
+  **Autores de mensagem no histórico sincronizado.** As linhas de histórico persistidas resolvem o autor do mesmo jeito que o `buildMsgKey` do WhatsApp Web — o `participant` de nível superior do `WebMessageInfo` vence o `key.participant`, com fallback para a própria conta quando a mensagem foi enviada por ela. Tanto `senderJid` quanto `participantJid` são gravados, batendo com o que o caminho ao vivo persiste.
+
+  Linhas de grupo e broadcast deixam os dois campos **vazios** quando o autor não pode ser resolvido, em vez de nomear o grupo como autor das próprias mensagens; o fallback para o JID da thread vale só em conversas 1:1, onde o JID da thread realmente é a outra parte.
+
+  Linhas gravadas pelo zapo **antes da 1.8.1** não podem ser preenchidas retroativamente — `messageBytes` guarda o `Message` interno, não o `WebMessageInfo`, então o participant nunca foi registrado. Só um sync novo (limpar a mailbox, reparear) repopula esses campos.
+</Note>
+
 ## Timeouts {#timeouts}
 
 Todos em milissegundos; os padrões são ajustados para produção.
@@ -118,7 +126,7 @@ O zapo embarca uma versão de produção testada por transporte. Ocasionalmente 
   Sobrescreve a string de versão anunciada pelo client. Aceita um literal ou um resolver chamado **uma vez por `connect()`** — útil para buscar a versão atual sob demanda sem recriar o client. O formato aceito depende do transporte resolvido para o connect:
 
   - **Web** aceita uma versão de 3 a 5 partes (`2.3000.x[.y.z]`); as 4ª e 5ª partes, quando fornecidas, são anunciadas no payload noise.
-  - **Mobile** aceita exatamente uma app version Android de 4 partes (`2.26.x.y`); ela sobrescreve `mobileTransport.deviceInfo.appVersion` no payload de login.
+  - **Mobile** aceita exatamente uma app version de celular de 4 partes (`2.26.x.y`), Android ou iOS; ela sobrescreve `mobileTransport.deviceInfo.appVersion` no payload de login.
 
   Uma quantidade de partes inválida para o transporte resolvido lança no `connect()`.
 </ParamField>
@@ -179,6 +187,10 @@ Opções: tudo que o fetcher Web aceita (`timeoutMs`, `proxy`, `signal`, `userAg
 - `versionPattern?: RegExp` — sobrescreve o regex de extração. Precisa expor a versão no capture group 1. O padrão combina com um `2.x.x.x` de 4 partes e retorna o primeiro hit na página.
 
 A string parseada precisa ter exatamente quatro partes numéricas; qualquer outra coisa lança (`invalid wa-mobile version parsed from page`). Erros de rede e parsing são lançados — envolva em `try`/`catch` se quiser cair em uma versão hardcoded conhecida.
+
+<Note>
+  A fonte padrão acompanha o release **Android**. Numa [sessão mobile iOS](/pt-br/concepts/mobile#android-or-ios), a versão retornada não descreve o seu client — fixe o `appVersion` você mesmo, ou aponte `url` / `versionPattern` para uma fonte que liste o build iOS.
+</Note>
 
 ## Presença ao conectar {#presence-on-connect}
 
@@ -332,6 +344,20 @@ new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
   Aponte para o proxy apenas as pernas que você precisar — por exemplo, defina só `ws` para tunelar a conexão deixando a mídia transferir diretamente, ou vice-versa.
 </Tip>
 
+### Numa sessão mobile {#proxy-on-a-mobile-session}
+
+Uma [sessão mobile primária](/pt-br/concepts/mobile) disca um socket TCP bruto, então a perna `ws` vira um **túnel HTTP `CONNECT`** e se restringe a um único formato aceito: um proxy no estilo `http.Agent` cuja url seja `http:`.
+
+```ts
+import { HttpProxyAgent } from 'http-proxy-agent'
+
+proxy: { ws: new HttpProxyAgent('http://user:pass@proxy.example.com:8080') }
+```
+
+Todo o resto lança no `connect()` com uma mensagem que nomeia o problema — um dispatcher undici, um `socks-proxy-agent`, uma url de proxy `https:`/`socks5:`, ou um agent sem url. Um proxy que o túnel não consegue honrar nunca é descartado em silêncio, porque isso discaria `g.whatsapp.net` direto.
+
+As outras pernas não mudam: continuam passando por `fetch` e continuam aceitando um dispatcher undici. Veja [Mobile → passando por um proxy](/pt-br/concepts/mobile#going-through-a-proxy).
+
 ## Limpeza da store no logout {#logout-store-clearing}
 
 <ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
@@ -466,7 +492,7 @@ const client = new WaClient(options, new MyLogger('info'))
 ## Plugins {#plugins}
 
 <ParamField path="plugins" type="readonly WaClientPluginDefinition[]">
-  Plugins opcionais de `WaClient` — hooks de comportamento e/ou coordinators expostos em `client[exposeAs]`. Autorados com [`defineWaClientPlugin`](/pt-br/concepts/plugins). O plugin de chamadas de voz (`@zapo-js/voip`) é a implementação de referência; veja a página do [sistema de plugins](/pt-br/concepts/plugins) para saber como conectar e autorar plugins.
+  Plugins opcionais de `WaClient` — hooks de comportamento e/ou coordinators expostos em `client[exposeAs]`. Autorados com [`defineWaClientPlugin`](/pt-br/concepts/plugins). O plugin de chamadas (`@zapo-js/voip`) é a implementação de referência; veja a página do [sistema de plugins](/pt-br/concepts/plugins) para saber como conectar e autorar plugins.
 </ParamField>
 
 ```ts

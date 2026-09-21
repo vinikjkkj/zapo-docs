@@ -14,6 +14,15 @@ O conjunto completo de campos `Proto.IMessage` reconhecidos (localização, loca
 import { proto } from 'zapo-js'
 ```
 
+## Como o tipo da stanza é resolvido {#how-the-stanza-type-is-resolved}
+
+Qualquer que seja o campo preenchido, o zapo classifica a mensagem antes de ela ir para o fio: uma stanza `<message>` carrega um `type` (`text` ou `media`), e uma stanza de mídia precisa carregar também um `mediatype`. **O servidor descarta silenciosamente uma stanza de mídia sem `mediatype`** — o envio recebe ack normalmente e nada chega — então um tipo de conteúdo que cai no default de mídia sem um `mediatype` se perde de forma invisível.
+
+Dois detalhes importam quando você monta um payload na mão:
+
+- **Wrappers são percorridos por dentro.** `deviceSentMessage`, `botForwardedMessage`, `groupStatusMessageV2` e `groupStatusMessage` carregam a mensagem real em `.message`, então o conteúdo interno decide o tipo. Uma imagem encaminhada continua `media` com seu `mediatype`; um status de imagem embrulhado em `groupStatusMessageV2` não sai mais como `type="media"` sem `mediatype` — uma combinação que nenhum client real envia.
+- **A família de rich response de IA classifica como texto.** `richResponseMessage` e um wrapper `botForwardedMessage` puro resolvem para `type="text"`. Antes da **1.9.0** eles caíam no default de mídia e nunca eram entregues.
+
 ## Localizações {#locations}
 
 ```ts

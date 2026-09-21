@@ -120,9 +120,28 @@ Resend requests are best-effort — like wa-web, they are not persisted, so a fa
 | `mutation_send` | `WaAppStateMutationEvent` | An app-state action this client is sending — the outbound counterpart to `mutation`, symmetric to how `message_send` pairs with `message`. `event.source` is always `'local'`. **Optimistic**: emitted as the mutation is enqueued, before the server flush confirms it. |
 | `history_sync_chunk` | `WaHistorySyncChunkEvent` | A chunk of synced message history (initial bootstrap or `message.requestHistorySync` backfill). Skipped only when `history.enabled` is explicitly `false`. Ingestion is **streamed** — the proto reader descends into `conversations` one message at a time, so ingest peak memory stays flat regardless of chunk size. `messagesCount` counts written records, not read ones; a chunk whose bounded park of messages waiting on `Conversation.id` overflows fails and stays unacked (the primary resends), rather than completing with silent drops. |
 | `group_history_bundle` | `WaGroupHistoryBundleEvent` | A group-history bundle another member shared with this account after it joined a group, already downloaded, filtered and persisted. Requires `history.groupBundles: true` — the fetch is opt-in because a third party triggers it. See [Groups → receiving](/en/guides/groups#receiving). |
-| `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. |
+| `offline_resume` | `WaOfflineResumeEvent` | Progress of the post-connect offline-message drain. See [the offline drain](#the-offline-drain) below. |
 | `offline_thread_metadata` | `WaOfflineThreadMetadataEvent` | Preview manifest of the offline queue (per-thread latest-stanza timestamps, optional per-thread read watermarks, optional pending status / notification backlog counts). Sent just before the flush; not guaranteed to arrive. **Use `offline_resume` for progress**, never this. |
 | `mex_notification` | `WaMexNotificationEvent` | MEX (GraphQL) notifications: username, status, LID changes, capping. |
+
+### The offline drain
+
+After connecting, the server flushes whatever queued up while the account was offline. zapo pulls it the way the WhatsApp Web client does: every delivered stanza schedules the next window (throttled to one request per 100 ms) until the queue is empty, so a backlog larger than one server window drains in full on a single connection.
+
+`WaOfflineResumeEvent` reports the progress:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `status` | `'resuming' \| 'complete'` | Whether the drain is still running or finished. |
+| `totalStanzas` | `number` | The server's preview figure for the queue. |
+| `remainingStanzas` | `number` | Counted down from `totalStanzas`. That figure is an **estimate**, so a clean finish can still report a small non-zero remainder. |
+| `forced` | `boolean` | `true` when the client closed the resume because the server went quiet for 60s, instead of the server's terminal `offline` bulletin closing it. |
+
+Read the last two together: a remainder alongside `forced: true` is the cut-short case, where the rest stays queued for the next connection. A remainder with `forced: false` is just the estimate being off.
+
+<Warning>
+  Before **1.8.2** the client requested a single window and never asked for another, so any queue larger than the batch size could not drain — it was force-completed 60s later and grew on every reconnect. If you saw an offline backlog that never cleared, this is the fix.
+</Warning>
 
 ### MEX notification kinds
 

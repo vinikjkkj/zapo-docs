@@ -42,7 +42,7 @@ O pacote principal **não tem dependências de runtime obrigatórias**. Todo o r
     <Tree.File name="@zapo-js/store-redis — backend Redis" />
     <Tree.File name="@zapo-js/store-mongo — backend MongoDB" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
-    <Tree.File name="@zapo-js/voip — chamadas de voz do WhatsApp" />
+    <Tree.File name="@zapo-js/voip — chamadas de voz e vídeo do WhatsApp" />
     <Tree.File name="@zapo-js/wam — paridade de telemetria do WhatsApp Web (analytics)" />
     <Tree.File name="@zapo-js/native — acelerador cripto opcional Rust NAPI + WASM" />
     <Tree.File name="@zapo-js/mcp-server — ferramenta dev: controle por um agente de IA" />
@@ -56,7 +56,7 @@ O `zapo` persiste o estado de autenticação e do Signal por meio de uma [store]
 
 | Pacote | Backend | Melhor para |
 | --- | --- | --- |
-| `@zapo-js/store-sqlite` | SQLite (via `better-sqlite3`) | Local / processo único |
+| `@zapo-js/store-sqlite` | SQLite (`better-sqlite3`, `bun:sqlite` ou o `node:sqlite` embutido) | Local / processo único |
 | `@zapo-js/store-postgres` | PostgreSQL | Distribuído, relacional |
 | `@zapo-js/store-mysql` | MySQL | Distribuído, relacional |
 | `@zapo-js/store-redis` | Redis | Cache + persistência |
@@ -66,6 +66,10 @@ O `zapo` persiste o estado de autenticação e do Signal por meio de uma [store]
 
 ```bash SQLite
 npm install @zapo-js/store-sqlite better-sqlite3
+```
+
+```bash SQLite (sem addon nativo)
+npm install @zapo-js/store-sqlite
 ```
 
 ```bash PostgreSQL
@@ -85,6 +89,10 @@ npm install @zapo-js/store-mongo mongodb
 ```
 
 </CodeGroup>
+
+<Note>
+  `better-sqlite3` é uma peer dependency **opcional**. Pule-a e a store cai para o `node:sqlite`, que vem com o Node 22.13+ e o Bun 1.4+, então nada precisa ser compilado — útil em Termux, musl sem prebuilds ou CI travada. Instale-a quando puder: ela é mais rápida em leituras largas ou de várias linhas. De qualquer forma o arquivo de banco é o mesmo. Veja [escolhendo um driver](/pt-br/reference/stores#choosing-a-driver).
+</Note>
 
 <Note>
   Você também pode rodar sem backend algum — a store em **memória** embutida funciona de imediato e é ótima para testes. Ela apenas não sobrevive a um restart do processo, então você teria que reparear a cada boot.
@@ -130,9 +138,9 @@ Ele invoca `ffmpeg`/`ffprobe` e usa `sharp`, então garanta que esses binários 
   `@zapo-js/media-utils` também lista [`file-type`](https://github.com/sindresorhus/file-type) (`^19`) como peer dependency **opcional**. Instale-o (`npm install file-type`) para habilitar a detecção automática de mimetype — sem ele, a [resolução de mimetype do guia de mídia](/pt-br/guides/media#mimetype-resolution) volta a exigir um `mimetype` explícito em cada envio.
 </Note>
 
-## Chamadas de voz {#voice-calls}
+## Chamadas de voz e vídeo {#voice-calls}
 
-Instale [`@zapo-js/voip`](/pt-br/guides/voip) para fazer e receber chamadas de voz do WhatsApp. Ele é distribuído como um plugin de `WaClient` e puxa duas peer dependencies próprias:
+Instale [`@zapo-js/voip`](/pt-br/guides/voip) para fazer e receber chamadas de voz e vídeo do WhatsApp. Ele é distribuído como um plugin de `WaClient` e puxa duas peer dependencies próprias:
 
 ```bash
 npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm

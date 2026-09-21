@@ -93,6 +93,14 @@ new WaClient({
 
 History arrives as [`history_sync_chunk`](/en/concepts/events) events.
 
+<Note>
+  **Message authors in synced history.** Stored history rows resolve their author the way WhatsApp Web's `buildMsgKey` does — the top-level `WebMessageInfo.participant` wins over `key.participant`, with a self-sent fallback to the account itself. Both `senderJid` and `participantJid` are written, matching what the live path persists.
+
+  Group and broadcast rows leave both fields **empty** when the author cannot be resolved, rather than naming the group as the author of its own messages; the thread-JID fallback applies to 1:1 threads only, where the thread JID really is the other party.
+
+  Rows written by zapo **before 1.8.1** cannot be backfilled — `messageBytes` holds the inner `Message`, not the `WebMessageInfo`, so the participant was never recorded. Only a fresh sync (clear the mailbox, re-pair) repopulates them.
+</Note>
+
 ## Timeouts
 
 All in milliseconds; defaults are tuned for production.
@@ -118,7 +126,7 @@ zapo ships with a tested production version baked in per transport. WhatsApp occ
   Override the version string the client advertises. Either a literal or a resolver invoked **once per `connect()`** — useful for fetching the current version lazily without rebuilding the client. The accepted shape depends on the transport resolved for the connect:
 
   - **Web** takes a 3- to 5-part version (`2.3000.x[.y.z]`); the 4th and 5th parts, when supplied, are advertised in the noise payload.
-  - **Mobile** takes exactly a 4-part Android app version (`2.26.x.y`); it overrides `mobileTransport.deviceInfo.appVersion` in the login payload.
+  - **Mobile** takes exactly a 4-part phone app version (`2.26.x.y`), Android or iOS; it overrides `mobileTransport.deviceInfo.appVersion` in the login payload.
 
   An invalid part count for the resolved transport throws on `connect()`.
 </ParamField>
@@ -179,6 +187,10 @@ Options: everything the Web fetcher accepts (`timeoutMs`, `proxy`, `signal`, `us
 - `versionPattern?: RegExp` — override the extraction regex. Must expose the version in capture group 1. The default matches a 4-part `2.x.x.x` and returns the first hit on the page.
 
 The parsed string must have exactly four numeric parts; anything else throws (`invalid wa-mobile version parsed from page`). Network and parse errors throw — wrap in `try`/`catch` if you want to fall back to a known-good hardcoded version.
+
+<Note>
+  The default source tracks the **Android** release. On an [iOS mobile session](/en/concepts/mobile#android-or-ios) the version it returns does not describe your client — pin `appVersion` yourself, or retarget `url` / `versionPattern` at a source that lists the iOS build.
+</Note>
 
 ## Presence on connect
 
@@ -332,6 +344,20 @@ new ProxyAgent('http://user:pass@[2001:db8::1]:8080')
   Point only the legs you need at a proxy — e.g. set just `ws` to tunnel the connection while letting media transfer directly, or vice-versa.
 </Tip>
 
+### On a mobile session {#proxy-on-a-mobile-session}
+
+A [mobile-primary session](/en/concepts/mobile) dials a raw TCP socket, so the `ws` leg becomes an **HTTP `CONNECT` tunnel** and narrows to a single accepted shape: an `http.Agent`-style proxy whose url is `http:`.
+
+```ts
+import { HttpProxyAgent } from 'http-proxy-agent'
+
+proxy: { ws: new HttpProxyAgent('http://user:pass@proxy.example.com:8080') }
+```
+
+Everything else throws on `connect()` with a message naming the problem — an undici dispatcher, a `socks-proxy-agent`, an `https:`/`socks5:` proxy url, or an agent carrying no url. A proxy the tunnel cannot honor is never dropped silently, because that would dial `g.whatsapp.net` directly.
+
+The other legs are unaffected: they still go through `fetch` and still take an undici dispatcher. See [Mobile → going through a proxy](/en/concepts/mobile#going-through-a-proxy).
+
 ## Logout store clearing
 
 <ParamField path="logoutStoreClear" type="WaLogoutStoreClearOptions">
@@ -466,7 +492,7 @@ const client = new WaClient(options, new MyLogger('info'))
 ## Plugins
 
 <ParamField path="plugins" type="readonly WaClientPluginDefinition[]">
-  Optional `WaClient` plugins — behavior hooks and/or coordinators exposed at `client[exposeAs]`. Authored with [`defineWaClientPlugin`](/en/concepts/plugins). The voice-calling plugin (`@zapo-js/voip`) is the reference implementation; see the [plugin system](/en/concepts/plugins) page for how to wire and author plugins.
+  Optional `WaClient` plugins — behavior hooks and/or coordinators exposed at `client[exposeAs]`. Authored with [`defineWaClientPlugin`](/en/concepts/plugins). The calling plugin (`@zapo-js/voip`) is the reference implementation; see the [plugin system](/en/concepts/plugins) page for how to wire and author plugins.
 </ParamField>
 
 ```ts

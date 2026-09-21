@@ -120,9 +120,28 @@ As requisições de resend são best-effort — como no wa-web, elas não são p
 | `mutation_send` | `WaAppStateMutationEvent` | Uma ação de app-state que este client está enviando — a contrapartida outbound do `mutation`, simétrica a como `message_send` faz par com `message`. `event.source` é sempre `'local'`. **Otimista**: emitido no momento em que a mutation é enfileirada, antes do flush do servidor confirmar. |
 | `history_sync_chunk` | `WaHistorySyncChunkEvent` | Um chunk de histórico de mensagens sincronizado (bootstrap inicial ou backfill via `message.requestHistorySync`). Pulado apenas quando `history.enabled` é explicitamente `false`. O ingest é **streamado** — o reader proto desce em `conversations` uma mensagem por vez, então o pico de memória do ingest fica plano independentemente do tamanho do chunk. `messagesCount` conta registros escritos, não lidos; um chunk cujo park bounded de mensagens esperando `Conversation.id` estoura falha e fica sem ack (o primário reenvia), em vez de completar com drops silenciosos. |
 | `group_history_bundle` | `WaGroupHistoryBundleEvent` | Um bundle de histórico de grupo que outro membro compartilhou com esta conta depois que ela entrou em um grupo, já baixado, filtrado e persistido. Requer `history.groupBundles: true` — o fetch é opt-in porque um terceiro dispara. Veja [Grupos → recebendo](/pt-br/guides/groups#receiving). |
-| `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. |
+| `offline_resume` | `WaOfflineResumeEvent` | Progresso da drenagem de mensagens offline pós-conexão. Veja [a drenagem offline](#the-offline-drain) abaixo. |
 | `offline_thread_metadata` | `WaOfflineThreadMetadataEvent` | Manifesto de preview da fila offline (timestamps do último stanza por thread, watermarks de leitura opcionais por thread, contagens opcionais de backlog de status / notificações). Enviado logo antes do flush; sem garantia de chegada. **Use `offline_resume` para progresso**, nunca este. |
 | `mex_notification` | `WaMexNotificationEvent` | Notificações MEX (GraphQL): nome de usuário, status, mudanças de LID, capping. |
+
+### A drenagem offline {#the-offline-drain}
+
+Depois de conectar, o servidor descarrega tudo que ficou na fila enquanto a conta esteve offline. O zapo puxa isso do mesmo jeito que o client do WhatsApp Web: cada stanza entregue agenda a próxima janela (limitado a uma requisição a cada 100 ms) até a fila esvaziar, então um backlog maior que uma janela do servidor drena por completo numa única conexão.
+
+O `WaOfflineResumeEvent` reporta o progresso:
+
+| Campo | Tipo | Significado |
+| --- | --- | --- |
+| `status` | `'resuming' \| 'complete'` | Se a drenagem ainda está rodando ou terminou. |
+| `totalStanzas` | `number` | O número de preview que o servidor deu para a fila. |
+| `remainingStanzas` | `number` | Contado de forma regressiva a partir de `totalStanzas`. Esse número é uma **estimativa**, então um término limpo ainda pode reportar um resto pequeno diferente de zero. |
+| `forced` | `boolean` | `true` quando o client encerrou o resume porque o servidor ficou 60s em silêncio, em vez de o bulletin terminal `offline` do servidor encerrá-lo. |
+
+Leia os dois últimos juntos: um resto acompanhado de `forced: true` é o caso interrompido, em que o restante fica na fila para a próxima conexão. Um resto com `forced: false` é só a estimativa estando errada.
+
+<Warning>
+  Antes da **1.8.2** o client pedia uma única janela e nunca pedia outra, então qualquer fila maior que o batch size não conseguia drenar — era forçada a completar 60s depois e crescia a cada reconexão. Se você via um backlog offline que nunca limpava, esta é a correção.
+</Warning>
 
 ### Kinds de notificação MEX {#mex-notification-kinds}
 
