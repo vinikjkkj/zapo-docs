@@ -116,6 +116,7 @@
             "icon": "puzzle-piece",
             "pages": [
               "en/guides/voip",
+              "en/guides/voip-media",
               "en/guides/wam"
             ]
           },
@@ -237,6 +238,7 @@
             "icon": "puzzle-piece",
             "pages": [
               "pt-br/guides/voip",
+              "pt-br/guides/voip-media",
               "pt-br/guides/wam"
             ]
           },

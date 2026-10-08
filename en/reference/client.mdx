@@ -29,6 +29,12 @@ See [Configuration](/en/concepts/configuration) for every option.
 
 `client.ignoreKey(input)` drops matching `<message>`, `<receipt>`, `<notification>`, `<presence>`, `<chatstate>`, and `<call>` stanzas before any handler — including the persistence and decryption paths — sees them. The coordinator still sends the appropriate ack so the server stops re-delivering.
 
+<Warning>
+  **`category='peer'` messages from your own devices are never dropped**, whatever the filter says. Those carry protocol traffic between the account's devices — app-state key shares, history sync, PDO responses — so a filter matching your own JID (`{ fromMe: true }` is the common one) used to swallow the app-state key share, leaving the collections blocked on a missing key and re-requesting it on every sync.
+
+  The exemption applies **only** when the sender really is this account, resolved from both `meJid` and `meLid`, so a foreign stanza cannot dodge a filter by stamping the attribute.
+</Warning>
+
 It accepts two shapes:
 
 #### Declarative descriptor — `WaIgnoreKey`

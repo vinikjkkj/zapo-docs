@@ -29,6 +29,12 @@ Veja [Configuração](/pt-br/concepts/configuration) para todas as opções.
 
 `client.ignoreKey(input)` descarta stanzas `<message>`, `<receipt>`, `<notification>`, `<presence>`, `<chatstate>` e `<call>` que casam antes de qualquer handler — incluindo os caminhos de persistência e decifragem — ver. O coordinator ainda envia o ack apropriado para o servidor parar de re-entregar.
 
+<Warning>
+  **Mensagens `category='peer'` vindas dos seus próprios devices nunca são descartadas**, diga o filtro o que disser. Elas carregam tráfego de protocolo entre os devices da conta — compartilhamento de chave de app-state, history sync, respostas de PDO — então um filtro que casava com o seu próprio JID (`{ fromMe: true }` é o comum) engolia o compartilhamento de chave de app-state, deixando as collections travadas numa chave ausente e re-pedindo ela a cada sync.
+
+  A exceção vale **somente** quando o remetente é realmente esta conta, resolvido tanto por `meJid` quanto por `meLid`, então uma stanza estrangeira não consegue escapar de um filtro carimbando o atributo.
+</Warning>
+
 Aceita dois formatos:
 
 #### Descriptor declarativo — `WaIgnoreKey` {#declarative-descriptor--waignorekey}

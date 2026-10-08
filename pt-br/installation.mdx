@@ -43,6 +43,7 @@ O pacote principal **não tem dependências de runtime obrigatórias**. Todo o r
     <Tree.File name="@zapo-js/store-mongo — backend MongoDB" />
     <Tree.File name="@zapo-js/media-utils — thumbnails, probes, waveforms" />
     <Tree.File name="@zapo-js/voip — chamadas de voz e vídeo do WhatsApp" />
+    <Tree.File name="@zapo-js/voip-media — plane de mídia de chamada (Node ou browser)" />
     <Tree.File name="@zapo-js/wam — paridade de telemetria do WhatsApp Web (analytics)" />
     <Tree.File name="@zapo-js/native — acelerador cripto opcional Rust NAPI + WASM" />
     <Tree.File name="@zapo-js/mcp-server — ferramenta dev: controle por um agente de IA" />
@@ -140,14 +141,20 @@ Ele invoca `ffmpeg`/`ffprobe` e usa `sharp`, então garanta que esses binários 
 
 ## Chamadas de voz e vídeo {#voice-calls}
 
-Instale [`@zapo-js/voip`](/pt-br/guides/voip) para fazer e receber chamadas de voz e vídeo do WhatsApp. Ele é distribuído como um plugin de `WaClient` e puxa duas peer dependencies próprias:
+Instale [`@zapo-js/voip`](/pt-br/guides/voip) para fazer e receber chamadas de voz e vídeo do WhatsApp. Ele é distribuído como um plugin de `WaClient`:
 
 ```bash
-npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm-fork
 ```
 
-- **`@roamhq/wrtc`** — SCTP para o transporte de relay.
-- **`libmlow-wasm`** — perfil Opus do WhatsApp, em WebAssembly (sem build nativo).
+- **`@roamhq/wrtc`** — SCTP para o transporte de relay. Carregado sob demanda, na primeira discagem de relay.
+- **`libmlow-wasm-fork`** — perfil Opus (MLow) do WhatsApp, em WebAssembly (sem build nativo).
+
+As duas peers de mídia são **opcionais**: elas só são necessárias onde a mídia roda de fato. Com [mídia remota](/pt-br/guides/voip-media) o processo de signaling não precisa de nenhuma das duas, e você instala o `@zapo-js/voip-media` no bundle do browser.
+
+<Warning>
+  O codec mudou de `libmlow-wasm` para **`libmlow-wasm-fork`** (`^0.2.0`) no `@zapo-js/voip` 1.2.0 — mesma API, mais um build de browser sem import exclusivo de Node. Troque a dependência ao atualizar.
+</Warning>
 
 Veja o [guia de VoIP](/pt-br/guides/voip) para saber como conectar `voipPlugin()` ao client.
 

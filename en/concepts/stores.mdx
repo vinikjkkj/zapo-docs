@@ -187,6 +187,38 @@ createStore({
 
 `limits` caps per-domain entry counts; once exceeded, the L1 evicts LRU. When unset, each domain defaults to the matching memory-provider cap.
 
+### Idle TTL (`ttlMs`) {#idle-ttl}
+
+With `limits` alone, the L1 only ever evicts at the cap — so a long-lived multi-session process keeps every peer it has seen since boot, and memory grows toward the cap times the number of sessions. `cacheLayer.ttlMs` adds a **per-domain idle time**: an entry neither read nor written for that long is dropped by a periodic sweep.
+
+```ts
+cacheLayer: {
+  session: true,
+  identity: true,
+  ttlMs: {
+    sessionMs: 30 * 60_000,
+    identityMs: 30 * 60_000
+    // senderKeyMs, privacyTokenMs
+  }
+}
+```
+
+The TTL bounds **residency, not freshness**. The L1 stays coherent with the backend either way (write-through, or invalidate-on-write), so expiry never changes what a read returns: an expired entry is re-read from the backend on its next use, and **backend rows are never touched**. Size it against that miss cost — each expiry turns the next lookup of that peer into one backend read.
+
+| Detail | Behavior |
+| --- | --- |
+| Validation | Each value must be a safe integer `>= 1000`; anything else throws at `createStore`. |
+| Sweep clock | One timer per store, period = the smallest `ttlMs / 2` clamped to `[1s, 60s]`. An entry goes after at least `ttlMs` idle and less than `ttlMs` + two periods. |
+| Wall-clock steps | Idle time is counted in sweep ticks, so a clock change never expires or preserves an entry. |
+| With a TTL set | The cap evicts by LRU. |
+| Domain with no L1 | A TTL on a domain whose flag is off, or that resolves to `'memory'`/`'none'`, is ignored with a warning on the store `logger`. |
+
+Unset keeps the previous behavior: entries live until `limits` evicts them.
+
+<Note>
+  This lives in the cache wrappers only — the exported memory stores keep their own API and their own `cacheTtlMs`.
+</Note>
+
 ### When to enable it
 
 Turn it on when your backend is a network hop (Redis, Postgres, MySQL, MongoDB) and you send or receive at a rate where the same peers repeat — typical for bots, group fan-out, and multi-tenant gateways. With a local SQLite backend the wins are smaller; measure before flipping it on.

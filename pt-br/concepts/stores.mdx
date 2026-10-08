@@ -187,6 +187,38 @@ createStore({
 
 `limits` define o limite de entradas por domínio; quando excedido, o L1 faz despejo LRU. Sem definir, cada domínio usa o limite padrão do provider de memória correspondente.
 
+### TTL de ociosidade (`ttlMs`) {#idle-ttl}
+
+Só com `limits`, o L1 nunca despeja antes do teto — então um processo multi-sessão de vida longa guarda todo peer visto desde o boot, e a memória cresce em direção ao teto vezes o número de sessões. O `cacheLayer.ttlMs` adiciona um **tempo de ociosidade por domínio**: uma entrada que não é lida nem escrita por esse tempo é removida por uma varredura periódica.
+
+```ts
+cacheLayer: {
+  session: true,
+  identity: true,
+  ttlMs: {
+    sessionMs: 30 * 60_000,
+    identityMs: 30 * 60_000
+    // senderKeyMs, privacyTokenMs
+  }
+}
+```
+
+O TTL limita **residência, não frescor**. O L1 segue coerente com o backend de qualquer forma (write-through, ou invalidate-on-write), então a expiração nunca muda o que uma leitura retorna: uma entrada expirada é relida do backend no próximo uso, e **as linhas do backend nunca são tocadas**. Dimensione contra esse custo de miss — cada expiração transforma a próxima consulta daquele peer em uma leitura do backend.
+
+| Detalhe | Comportamento |
+| --- | --- |
+| Validação | Cada valor precisa ser um inteiro seguro `>= 1000`; qualquer outra coisa lança no `createStore`. |
+| Clock da varredura | Um timer por store, período = o menor `ttlMs / 2` limitado a `[1s, 60s]`. Uma entrada sai depois de pelo menos `ttlMs` ociosa e menos de `ttlMs` + dois períodos. |
+| Saltos de relógio | O tempo ocioso é contado em ticks de varredura, então uma mudança de relógio nunca expira nem preserva uma entrada. |
+| Com TTL definido | O teto despeja por LRU. |
+| Domínio sem L1 | Um TTL num domínio com a flag desligada, ou que resolve para `'memory'`/`'none'`, é ignorado com um warning no `logger` da store. |
+
+Sem definir, o comportamento anterior continua: as entradas vivem até o `limits` despejá-las.
+
+<Note>
+  Isso vive apenas nos wrappers de cache — as memory stores exportadas mantêm a própria API e o próprio `cacheTtlMs`.
+</Note>
+
 ### Quando habilitar {#when-to-enable-it}
 
 Habilite quando seu backend é uma chamada de rede (Redis, Postgres, MySQL, MongoDB) e você envia ou recebe a uma taxa em que os mesmos peers se repetem — típico de bots, fan-out em grupos e gateways multi-tenant. Com um backend SQLite local os ganhos são menores; meça antes de ativar.

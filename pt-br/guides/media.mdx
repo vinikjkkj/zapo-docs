@@ -274,7 +274,13 @@ Retorna `null` quando a mensagem não tem mídia para download, ou quando o prot
 
 ### Pedindo um reupload {#requesting-a-reupload}
 
-O CDN dropa blobs antigos de mídia — um `download*` numa mensagem que veio de history sync pode responder 404/410 bem depois do envio original. `client.message.requestMediaReupload()` roda o round-trip que o WhatsApp Web usa pra recuperar: encripta um recibo `server-error` com a media key da mensagem, envia como ack e espera a notificação `mediaretry` que o device primário do remetente responde. No `success` só o `directPath` muda — media key, hashes e length da mensagem original continuam válidos, então baixar com o novo path espalhado funciona.
+O CDN dropa blobs antigos de mídia — um `download*` numa mensagem que veio de history sync pode responder 404/410 bem depois do envio original. `client.message.requestMediaReupload()` roda o round-trip que o WhatsApp Web usa pra recuperar: encripta um recibo `server-error` com a media key da mensagem, envia como ack e espera a notificação `mediaretry` que o device primário do remetente responde. No `success` você recebe um `directPath` novo para baixar.
+
+<Warning>
+  **`result: 'success'` não garante que o arquivo seja recuperável.** Alguns primários re-encriptam o arquivo a cada re-upload: a resposta volta `success` com um path novo, mas o blob re-servido não bate mais com o `fileEncSha256` original, e o `downloadBytes()` lança um MAC mismatch. Nada no round-trip carrega material de chave para o novo ciphertext, então quando isso acontece a mensagem é **irrecuperável por esta API**.
+
+  Trate o download depois de um reupload como algo que ainda pode falhar, e um MAC mismatch ali como o caso de re-chaveamento, não como corrupção.
+</Warning>
 
 ```ts
 client.on('message', async (event) => {
@@ -290,10 +296,16 @@ client.on('message', async (event) => {
       console.warn('reupload', retry.result) // 'not_found' | 'decryption_error' | 'general_error'
       return
     }
-    await client.message.downloadToFile(
-      { imageMessage: { ...image, directPath: retry.directPath } },
-      './incoming.jpg'
-    )
+    try {
+      await client.message.downloadToFile(
+        { imageMessage: { ...image, directPath: retry.directPath } },
+        './incoming.jpg'
+      )
+    } catch {
+      // O primário re-chaveou o blob: o path novo não bate mais com o
+      // mediaKey/fileEncSha256 original. Não há mais o que tentar.
+      console.warn('media re-keyed on reupload; unrecoverable')
+    }
   }
 })
 ```

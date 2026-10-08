@@ -13,20 +13,25 @@ icon: "phone"
 ## Install
 
 ```bash
-npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm
+npm install @zapo-js/voip @roamhq/wrtc libmlow-wasm-fork
 ```
 
-The package has three peer dependencies, all required at runtime:
+Only `zapo-js` is required. The media peers are **optional** since 1.2.0 — install them when the media runs in this process, which is the default:
 
-- **`@roamhq/wrtc`** (`>= 0.10.0`) — provides SCTP for the relay transport.
-- **`libmlow-wasm`** (`^0.1.1`) — WhatsApp's Opus profile, compiled to WebAssembly. No native build step.
-- **`zapo-js`** (`^1.0.0`) — the host client.
+| Package | Needed for | Notes |
+| --- | --- | --- |
+| `zapo-js` | always | The host client. |
+| `libmlow-wasm-fork` (`^0.2.0`) | local media | WhatsApp's Opus (MLow) profile as WebAssembly. No native build step. |
+| `@roamhq/wrtc` (`>= 0.10.0`) | local media | SCTP for the relay transport. Loaded lazily, when a call first dials a relay. |
+| `ffmpeg` on `PATH` | `loadAudio` | Decoding a pre-recorded audio file. |
 
-Some methods also need an `ffmpeg` binary on `PATH`:
+<Warning>
+  **`libmlow-wasm` → `libmlow-wasm-fork`.** The codec moved packages in `@zapo-js/voip` 1.2.0. Same API and encoder controls, but with a browser build that carries no Node-only import, so a bundler takes it as-is. Install `libmlow-wasm-fork` wherever you had `libmlow-wasm`.
+</Warning>
 
-- `loadAudio` decodes the audio file via `ffmpeg`.
-- Streaming audio with `feedLiveAudio` from a file likewise needs `ffmpeg` to produce 16 kHz mono `Float32Array` chunks.
-- Video is never decoded or encoded by the plugin, so `feedLiveVideo` takes H.264 you produce yourself — typically from `ffmpeg`, a hardware encoder, or an already-encoded stream.
+With [remote media](/en/guides/voip-media), neither media peer is needed here at all — the media runs on the host that has the microphone.
+
+Video is never encoded or decoded by the plugin, so `feedLiveVideo` takes H.264 you produce yourself — from `ffmpeg`, a hardware encoder, or an already-encoded stream.
 
 ## Wire the plugin
 
@@ -63,15 +68,25 @@ voipPlugin({ maxConcurrentCalls: 2, logLevel: 'warn' })
   Minimum log level for the (chatty) VoIP plugin. Defaults to the host client's level; set it to cap diagnostics independently — for example `'warn'` to keep VoIP noise out of a `trace` host logger.
 </ParamField>
 
-<ParamField path="useOriginalRelayPort" type="boolean" default="false">
+<ParamField path="useOriginalRelayPort" type="boolean">
   Dial each relay on the port its `<te2>` endpoint advertises, instead of on the fixed web-client relay port (`3480`).
 
-  Leave it off against WhatsApp's own relays. The endpoints advertise a mix of ports, and a relay reached on `3478` completes the handshake and carries your uplink **without ever forwarding the peer's stream back** — the call goes silently one way. WhatsApp Web gates the same choice behind its own `shouldUseOriginalRelayPort` flag. Turn it on only for a relay deployment that really answers on the port it advertises.
+  **The default depends on the session and is resolved per call:** `true` on a companion, `false` on a mobile primary. The wire never says which port a relay answers on, and measurement settled it — a companion's legs open only on the advertised port, a primary's only on `3480`. Passing the option explicitly still wins.
+
+  Either way a leg that does not open within 5s, or opens and hears nothing within 4s, is **redialled once on the other port** when there is one; an endpoint already advertising `3480` has none. So a wrong first guess costs a few seconds, not the call.
 </ParamField>
 
-<Warning>
-  If a call connects but you only ever hear yourself — no `voip_call_inbound_audio`, no inbound video — check this option first. Dialing the wrong relay port is the usual cause of a one-way call.
-</Warning>
+<ParamField path="useRawUdpTransport" type="boolean" default="false">
+  Talk to each relay over a plain connected UDP socket — no ICE, DTLS or SCTP — dialling the port the relay advertises. SRTP and the jitter pipeline are unchanged.
+
+  <Warning>
+    This is an experiment, not a tuning knob. It buys nothing where it works (relays the WebRTC path already reaches) and is unproven where it would matter: on one measured relay that WebRTC cannot reach, the same sequence sent 1761 uplink packets and got nothing back, and appeared to pull the peer's stream off the leg that *had* been carrying it. Each leg polices itself — one that sends media and sees none come back within a few seconds closes itself so the previous path can take over.
+  </Warning>
+</ParamField>
+
+<ParamField path="media" type="{ mode: 'local' | 'remote' }" default="{ mode: 'local' }">
+  Where the call's media runs. `'local'` carries it in this process on `@roamhq/wrtc` and `libmlow-wasm-fork`. `'remote'` carries none of it here — see [Media on another host](/en/guides/voip-media).
+</ParamField>
 
 ## The coordinator surface
 
@@ -124,12 +139,66 @@ Decodes `audioPath` via `ffmpeg` and queues it as the outbound audio, played onc
 
 For an unbounded or live source (TTS stream, ongoing capture) use external audio mode instead — see below.
 
-### Mute
+### Mute, and the peer's mic
 
 ```ts
 client.voip.setMute(callId, true)   // mute local outbound audio
 client.voip.setMute(callId, false)  // unmute
 ```
+
+`setMute` stops your own capture **and announces the new state to the peer** on a `<mute_v2>` stanza, which is what draws a mic-off indicator on the other side. Capture keeps ticking and feeds silence, so the stream and its SSRC stay alive and unmuting takes effect on the next frame. The same state is announced once just after the call goes active, which gives the peer something to render on a call that is never muted.
+
+It stays `void` at every layer: the stanza leaves fire-and-forget and a failed send is only logged, since the microphone is off either way. A redundant toggle, an inactive call and an unknown `callId` all send nothing.
+
+The peer's own announcements land on `stateData.peerAudioMuted` and fire `voip_call_peer_mute`:
+
+```ts
+client.on('voip_call_peer_mute', ({ call, muted }) => {
+  console.log(call.callId, muted ? 'peer muted' : 'peer unmuted')
+})
+```
+
+<Note>
+  Muting **another** participant rides the same stanza under a second attribute (`request-state`) and is **not implemented**: WhatsApp restricts it to group calls, this package only places 1:1 calls, and a client that receives such a request on a 1:1 call drops it. An incoming one is logged and ignored. A `<mute_v2>` sent by another device of this same account is ignored too.
+</Note>
+
+### Raise hand
+
+Raising a hand is **durable state**, not a one-off notification: the peer keeps seeing the hand until it is lowered, and each participant only ever controls its own. Announcing a state already in force sends nothing, in either direction.
+
+```ts
+await client.voip.setHandRaised(callId, true)
+await client.voip.setHandRaised(callId, false)
+
+client.on('voip_call_hand_raise', ({ call, participantJid, raised }) => {
+  console.log(participantJid, raised ? 'raised a hand' : 'lowered a hand')
+  console.log('hands up:', [...call.raisedHands])
+})
+```
+
+Your own state is `call.stateData.handRaised`; the remote ones are the device JIDs in `call.raisedHands`, each surviving until that participant lowers the hand or the call ends. The call has to be active. `setHandRaised` throws on an unknown `callId` or a failed send.
+
+<Note>
+  A raised hand travels as one of two distinct message types, and the peer picks which by a gate this side cannot see: a `<user_action action='raise_hand'>` envelope, or an older top-level `<raise_hand>`. Both are read and both produce the same state and the same event; zapo announces its own hand with the first.
+</Note>
+
+### Reactions
+
+An emoji reaction is **not** a call stanza. It rides the call's own media socket as an RTP packet on the app-data stream, protected with the same per-JID end-to-end key as the audio, so it needs no second transport.
+
+```ts
+client.voip.sendReaction(callId, '❤️')
+
+client.on('voip_call_reaction', ({ call, reaction }) => {
+  console.log(reaction.reaction) // the glyph itself, never an index
+})
+```
+
+`sendReaction` returns `false` when nothing went on the wire — the call is not active, or its app-data stream is not open yet. Nothing negotiates the payload type of that stream (each side registers its own and the offer carries none), so a reaction can go out before any inbound packet has arrived.
+
+<Warning>
+  Reactions are momentary and stateless: nothing is recorded on `CallInfo`, so a listener that misses the event has nowhere to read it back from.
+</Warning>
 
 ### Live outbound audio (external mode)
 
@@ -173,10 +242,22 @@ const packets = client.voip.feedLiveVideo(callId, accessUnit, timestampUs)
 ```
 
 <ParamField path="feedLiveVideo(callId, data, timestampUs)" type="number">
-  Feed **one complete H.264 Annex-B access unit** (`Uint8Array`, start-code delimited). `timestampUs` is the capture timestamp in **microseconds**; the plugin converts it to the 90 kHz RTP clock. Returns the number of RTP packets sent, or `0` when video media is not active on that call.
+  Feed **one complete H.264 Annex-B access unit** (`Uint8Array`, start-code delimited). `timestampUs` is the capture timestamp in **microseconds**; the plugin converts it to the 90 kHz RTP clock. Returns the number of RTP packets sent, or `0` when nothing went out — video media is not active on that call, or your frames are [still held](#your-first-frames-are-held).
 </ParamField>
 
-Packetization follows what WhatsApp's own sender does rather than textbook RFC 6184: the whole access unit is packed as a single NAL before FU-A fragmentation, which keeps SPS/PPS/IDR together for mobile receivers. Key frames are detected from the NAL types in the unit you feed, so send SPS + PPS ahead of each IDR.
+Key frames are detected from the NAL types in the unit you feed, so send SPS + PPS ahead of each IDR.
+
+#### Your first frames are held {#your-first-frames-are-held}
+
+WhatsApp Web sets up the stream for your video some time *after* the accept, and a first packet that lands before that stream exists leaves your video stuck at its key frames for the rest of the call. So zapo holds your frames until the peer is ready:
+
+| Situation | Held until | Cap |
+| --- | --- | --- |
+| Video call from the start (either side) | the peer's first `<mute_v2>` after the accept, + 150 ms | 2s |
+| Upgrade the **peer** asked for | the peer turns its camera on (`WA_VIDEO_STATE.Enabled`), + 300 ms | 3s |
+| Upgrade **this side** asked for | not held | — |
+
+`feedLiveVideo` returns `0` while held, and the stream opens on the first key frame fed after the hold lifts — so a source with a long key-frame interval adds up to one interval on top.
 
 #### Receiving video
 
@@ -184,7 +265,7 @@ Two events carry inbound video, and you pick the level you want:
 
 | Event | Payload | Use it when |
 | --- | --- | --- |
-| `voip_call_inbound_video` | `{ call, frame: InboundVideoFrame }` | You want decodable frames. `frame.data` is a complete Annex-B access unit, already reassembled from its RTP fragments; `frame.keyFrame` flags an IDR and `frame.timestamp` is the 90 kHz RTP timestamp. |
+| `voip_call_inbound_video` | `{ call, frame: InboundVideoFrame }` | You want decodable frames. `frame.data` is a complete Annex-B access unit, already reassembled from its RTP fragments; `frame.keyFrame` flags an IDR, `frame.timestamp` is the 90 kHz RTP timestamp, and `frame.ssrc` is the stream it came from, so two senders' frames never interleave unmarked. |
 | `voip_call_inbound_video_rtp` | `{ call, packet: InboundVideoRtpPacket }` | You want the raw decrypted RTP — `payloadType` (`97` H.264, `103` its RTX/repair stream), `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`. Useful for forwarding, recording, or your own jitter handling. |
 
 ```ts
@@ -203,6 +284,95 @@ client.on('voip_call_inbound_video', ({ call, frame }) => {
   The plugin carries video; it does not encode or decode it. Producing H.264 (and displaying what arrives) is your side of the contract — `ffmpeg`, a hardware encoder, or an existing stream. There is also no mid-call mute for video: `stateData.videoOff` reflects what the peer signals, and simply not calling `feedLiveVideo` stops your outbound stream.
 </Note>
 
+### Audio to video, mid-call
+
+A voice call becomes a video call without a new offer: both sides negotiate it with `<video>` stanzas and the call, its transport and its crypto carry on untouched.
+
+It is a **handshake, not an announcement**. The request leaves as `UpgradeRequestV2` (the 1:1 code), no video RTP leaves before the peer accepts, and the wait is bounded by the same five-second guard timer the peer runs.
+
+```ts
+import { WA_VIDEO_UPGRADE_RESULT } from '@zapo-js/voip'
+
+const result = await client.voip.requestVideoUpgrade(callId)
+if (result === WA_VIDEO_UPGRADE_RESULT.Accepted) {
+  client.voip.feedLiveVideo(callId, annexBAccessUnit, timestampUs)
+}
+```
+
+The ways of *not* getting video are kept apart, because they mean different things:
+
+| Result | Meaning |
+| --- | --- |
+| `'accepted'` | The peer accepted; `feedLiveVideo` now reaches the wire. |
+| `'rejected'` | A person declined. |
+| `'rejected_by_timeout'` | Nobody there answered it. |
+| `'error'` | The peer agreed to upgrade and could not. |
+| `'timeout'` | Silence — says nothing about whether the request was ever seen. |
+| `'cancelled'` | This side withdrew it with `cancelVideoUpgrade`. |
+
+Answering one the peer asked for:
+
+```ts
+import { WA_VIDEO_STATE } from '@zapo-js/voip'
+
+client.on('voip_call_peer_video_state', async ({ call, change }) => {
+  if (change.state === WA_VIDEO_STATE.UpgradeRequestV2) {
+    await client.voip.acceptVideoUpgrade(call.callId)
+    // or: await client.voip.rejectVideoUpgrade(call.callId)
+  }
+})
+```
+
+`acceptVideoUpgrade` opens the local video sender on a call negotiated as audio — the RTP session and the video SSRCs the relay has to know about, neither of which an audio call has — then announces the camera to the peer as its own `<video>`. Without that announcement the peer is told the upgrade was accepted and never told the video went live.
+
+`cancelVideoUpgrade(callId)` withdraws a request this side sent before the peer answers; the pending `requestVideoUpgrade` then resolves `'cancelled'`.
+
+<Note>
+  `change.state` is the raw wire number, which is exactly the ordinal of the exported `WA_VIDEO_STATE` — there is no separate wire enum and nothing is translated on either side. `change` also carries `transactionId`, `deviceOrientation`, `decoderCodec` (`dec`, what the peer can receive), `encoderCodec` (`enc`, what its encoder produces) and `supportedCodecs` (`enc_supported`, a bitmask; `null` means omitted, not unsupported).
+</Note>
+
+<Warning>
+  The order of the handshake is taken from the peer's own signalling code and from the enum of the current WhatsApp Web build, which agree with each other. It has not been confirmed against a two-sided wire capture.
+</Warning>
+
+### Screen share
+
+A screen share is **not a second stream**. It travels on the video stream the call already has, on the same SSRCs and the same payload type — so a share is a statement about what the picture *is*, not a new media path. Nothing on the wire moves when one starts.
+
+```ts
+await client.voip.setScreenShare(callId, true)
+// every access unit fed from here on is what the peer renders as the screen
+client.voip.feedLiveVideo(callId, screenAccessUnit, timestampUs)
+
+await client.voip.setScreenShare(callId, false)
+```
+
+That is the mechanism of the announced version, `WA_SCREEN_SHARE_SEND_VERSION` (`V2`): the sharer's camera is off for as long as the share lasts and the screen takes its place. **Stop feeding the camera before starting a share and resume after stopping it.** Your own state is `call.stateData.screenSharing`.
+
+`setScreenShare` throws on an unknown `callId` or a failed send, and — when *starting* a share only — on a group call, or on a call that carries no video yet (agree an [upgrade](#audio-to-video-mid-call) first). A failure throws with nothing changed, so a peer that never heard is never believed to be rendering.
+
+Reading the peer's share:
+
+```ts
+import { WA_SCREEN_SHARE_STATE } from '@zapo-js/voip'
+
+client.on('voip_call_screen_share', ({ call, share }) => {
+  if (share.state === WA_SCREEN_SHARE_STATE.Started) {
+    console.log('peer is sharing', share.screenWidth, 'x', share.screenHeight)
+  }
+})
+```
+
+Nothing is answered — the state is an announcement, and the picture arrives as ordinary H.264 on the sender's video stream, which the receive path already handles. Every field of `PeerScreenShare` (`state`, `requestState`, `version`, `screenWidth`, `screenHeight`, `deviceOrientation`) is `null` when the stanza did not carry it, and unknown numbers pass through rather than collapsing into a known name. The last value stays on `call.peerScreenShare`, so a `voip_call_state` listener can read it without subscribing separately.
+
+<Warning>
+  `frame.ssrc` does **not** tell a peer's camera from its screen: a share derives the same SSRCs the camera does. `call.peerScreenShare` is the only thing that says the peer is sharing.
+</Warning>
+
+<Note>
+  From `WA_SCREEN_SHARE_VERSION.V3` on, a sharer runs screen and camera at once as two streams — but a screen share has no SSRC space of its own, and how a `V3` sender lays two streams over the one space is not established. zapo therefore shares at `V2` and never announces `V3`.
+</Note>
+
 ### Snapshots
 
 ```ts
@@ -210,7 +380,16 @@ const call = client.voip.getCall(callId)   // CallInfo | null
 const all  = client.voip.getCalls()        // readonly CallInfo[]
 ```
 
-`CallInfo` captures everything you need to render UI: `callId`, `peerJid`, `direction`, `mediaType`, `createdAt`, `callerPn`, plus a `stateData` object (`state`, `audioMuted`, `videoOff`, `connectedAt`, `endReason`, `durationSecs`, `acceptBlocked`, …) and derived getters `isInitiator`, `isActive`, `isRinging`, `isEnded`, `canAccept`, `canReject`, `isAcceptBlocked`.
+`CallInfo` captures everything you need to render UI: `callId`, `peerJid`, `callCreator`, `direction`, `mediaType`, `createdAt`, `callerPn`, `groupJid`, plus derived getters `isInitiator`, `isActive`, `isRinging`, `isEnded`, `canAccept`, `canReject`, `isAcceptBlocked`.
+
+| Field | Type | What it holds |
+| --- | --- | --- |
+| `stateData` | `CallStateData` | `state`, `audioMuted`, `peerAudioMuted`, `videoOff`, `handRaised`, `screenSharing`, `connectedAt`, `acceptedAt`, `endedAt`, `endReason`, `durationSecs`, `silenced`, `acceptBlocked`. |
+| `raisedHands` | `Set<string>` | Remote participants whose hand is up, keyed by the device JID the stanza arrived from. An entry survives until that participant lowers it. |
+| `peerScreenShare` | `PeerScreenShare?` | Last screen-share state the peer reported. Updated in place. |
+| `peerVideoState` | `PeerVideoStateChange?` | Last `<video>` the peer announced. Absent until it sends one — a call negotiated as video never does. |
+| `voipSettings` | `WaVoipSettings?` | Server configuration from the offer's `<voip_settings>` node (`rtcp_interval_ms`, `disable_rtcp_remb`, …), parsed once on arrival. Absent when the node did not come or could not be read; consumers then stay on the compiled defaults. |
+| `electedRelayIdx` | `number?` | Which relay leg is currently carrying outbound media. |
 
 <Note>
   `callerPn` is the caller's **phone JID**, read from the `caller_pn` attribute of an incoming offer. It's what lets you match a caller the offer identifies only by LID back to a phone number. It does not change media derivation: the peer SSRC and the SRTP keys stay bound to the LID device JID, which is what the peer derives from.
@@ -228,8 +407,18 @@ Add `voipPlugin()` to `plugins` and these events become available on `client.on`
 | `voip_call_inbound_audio` | `{ call, pcm }` | Decoded peer audio. `pcm` is 16 kHz mono `Float32Array`. |
 | `voip_call_inbound_video` | `{ call, frame }` | A reassembled inbound H.264 frame — `frame.data` is a complete Annex-B access unit, with `keyFrame` and the 90 kHz `timestamp`. See [Video calls](#video-calls). |
 | `voip_call_inbound_video_rtp` | `{ call, packet }` | The raw decrypted inbound video RTP packet (`payloadType` `97` H.264 / `103` RTX, `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`). |
+| `voip_call_peer_mute` | `{ call, muted }` | The peer announced a change of its own microphone state. Once per change; the same value stays on `stateData.peerAudioMuted`. |
+| `voip_call_hand_raise` | `{ call, participantJid, raised }` | A remote participant raised or lowered its hand. Durable — the participant stays in `call.raisedHands` until it lowers it. |
+| `voip_call_screen_share` | `{ call, share }` | The peer reported a screen-share state change. See [Screen share](#screen-share). |
+| `voip_call_peer_video_state` | `{ call, change }` | The peer announced a video state change — which is also how it asks for a [video upgrade](#audio-to-video-mid-call). |
+| `voip_call_reaction` | `{ call, reaction }` | A participant sent an emoji reaction. Momentary and stateless. |
+| `voip_call_media` | `{ call, message }` | A media-plan change for a remote media host. **Remote media only** — see [Media on another host](/en/guides/voip-media). Carries SRTP keys and relay credentials. |
 | `voip_call_outbound_audio_finished` | `CallInfo` | The preloaded outbound audio finished sending. |
 | `voip_call_error` | `Error` | A non-fatal call error (logging hook). |
+
+<Note>
+  `voip_call_inbound_audio` is paced by the jitter buffer at one 60 ms tick of 960 samples. Concealed loss and buffer underrun arrive as audio and silence respectively, so the stream keeps the call's timebase; a tick with nothing queued at all is skipped instead.
+</Note>
 
 ## Enums
 
@@ -271,8 +460,49 @@ All `enum` values are lowercase strings — use the enum constants to avoid typo
 | `EndCallReason.Busy` | `'busy'` |
 | `EndCallReason.Cancelled` | `'cancelled'` |
 | `EndCallReason.Failed` | `'failed'` |
+| `EndCallReason.RelayLost` | `'relay_lost'` — the call had a media path and lost it, with no leg left to carry it. |
+| `EndCallReason.AcceptedElsewhere` | `'accepted_elsewhere'` — another device of this account answered the incoming call. |
+| `EndCallReason.RejectedElsewhere` | `'rejected_elsewhere'` — another device of this account declined it. |
 | `EndCallReason.DoNotDisturb` | `'do_not_disturb'` |
 | `EndCallReason.Unknown` | `'unknown'` |
+
+<Note>
+  `AcceptedElsewhere` / `RejectedElsewhere` are what you render as "answered on another device" instead of a missed call. An `<accept>` from another of your devices on a call this one is receiving ends it as `AcceptedElsewhere` without sending anything, rather than running the outgoing-accept flow and ringing until it times out.
+</Note>
+
+### `WA_VIDEO_STATE`
+
+The raw wire numbers a `<video>` carries — `change.state` on `voip_call_peer_video_state` is the ordinal itself.
+
+| Constant | Value | Meaning |
+| --- | --- | --- |
+| `Disabled` | `0` | Camera off. |
+| `Enabled` | `1` | Camera on. |
+| `Paused` | `2` | |
+| `UpgradeRequest` | `3` | Upgrade request of a **group** call. |
+| `UpgradeAccept` | `4` | The upgrade is on; video is about to flow. |
+| `UpgradeReject` | `5` | The peer refused. |
+| `Stopped` | `6` | |
+| `UpgradeRejectByTimeout` | `7` | The receiver of a request never answered and gave up. |
+| `UpgradeCancel` | `8` | The requester withdrew. |
+| `UpgradeCancelByTimeout` | `9` | The requester withdrew on its own timer. |
+| `UnknownPeer` | `10` | |
+| `UpgradeRequestV2` | `11` | Upgrade request of a **1:1** call — the only kind zapo places. |
+| `Xr2dCodecAvatarEnabled` | `12` | |
+| `Error` | `20` | |
+
+`WA_VIDEO_UPGRADE_TIMEOUT_MS` (`5000`) is the guard timer both sides run.
+
+### `WA_SCREEN_SHARE_STATE` and `WA_SCREEN_SHARE_VERSION`
+
+| `WA_SCREEN_SHARE_STATE` | Value |
+| --- | --- |
+| `NotSupported` | `0` |
+| `Started` | `1` |
+| `Stopped` | `2` |
+| `Failed` | `3` |
+
+`WA_SCREEN_SHARE_VERSION` runs `Invalid: -1`, `Legacy: 0`, `V1`…`V4`. It decides whether a share is a **second** video stream or a **replacement** for the camera: up to `V2` the screen is the call's one video stream and the camera is forced off; from `V3` the sharer runs both at once. `Invalid` is negative on purpose — the client's own sentinel for "no version", not a version that can travel. zapo announces `WA_SCREEN_SHARE_SEND_VERSION`, which is `V2`.
 
 ## Media formats
 
@@ -343,6 +573,9 @@ For a fuller example — placing outgoing calls, preloaded vs streamed playback,
 ## See also
 
 <CardGroup cols={2}>
+  <Card title="Media on another host" icon="globe" href="/en/guides/voip-media" arrow>
+    Run a call's media in the browser with `@zapo-js/voip-media` while signaling stays on the server.
+  </Card>
   <Card title="Plugin system" icon="puzzle-piece" href="/en/concepts/plugins" arrow>
     How `voipPlugin()` plugs into `WaClient`, and how to author your own.
   </Card>

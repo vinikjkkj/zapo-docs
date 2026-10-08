@@ -132,6 +132,11 @@ await client.message.send(jid, {
 
 A single-select list of rows grouped into sections:
 
+<Note>
+  A list **to a group** goes out with a different stanza shape than the same list in a direct chat: the group takes it only when `type=media`, `mediatype=list` and the `<biz><list>` companion node travel together, while a direct send keeps the flat text shape. zapo picks the right one for you. Before **1.10.0** a group list was nacked with `479` while the identical message went through 1:1.
+</Note>
+
+
 ```ts
 await client.message.send(jid, {
   listMessage: {

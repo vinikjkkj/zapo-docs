@@ -130,6 +130,11 @@ await client.message.send(jid, {
 
 ## Menu de lista {#list-menu}
 
+<Note>
+  Uma lista **para um grupo** sai com um formato de stanza diferente da mesma lista numa conversa direta: o grupo só a aceita quando `type=media`, `mediatype=list` e o nó companheiro `<biz><list>` viajam juntos, enquanto um envio direto mantém o formato de texto plano. O zapo escolhe o certo pra você. Antes da **1.10.0** uma lista em grupo era nackeada com `479` enquanto a mensagem idêntica passava no 1:1.
+</Note>
+
+
 Uma lista single-select de rows agrupadas em sections:
 
 ```ts
