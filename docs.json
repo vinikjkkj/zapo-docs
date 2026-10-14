@@ -115,9 +115,14 @@
             "group": "Plugins",
             "icon": "puzzle-piece",
             "pages": [
-              "en/guides/voip",
-              "en/guides/voip-groups",
-              "en/guides/voip-media",
+              {
+                "group": "VoIP",
+                "pages": [
+                  "en/guides/voip",
+                  "en/guides/voip-groups",
+                  "en/guides/voip-media"
+                ]
+              },
               "en/guides/wam"
             ]
           },
@@ -238,9 +243,14 @@
             "group": "Plugins",
             "icon": "puzzle-piece",
             "pages": [
-              "pt-br/guides/voip",
-              "pt-br/guides/voip-groups",
-              "pt-br/guides/voip-media",
+              {
+                "group": "VoIP",
+                "pages": [
+                  "pt-br/guides/voip",
+                  "pt-br/guides/voip-groups",
+                  "pt-br/guides/voip-media"
+                ]
+              },
               "pt-br/guides/wam"
             ]
           },
