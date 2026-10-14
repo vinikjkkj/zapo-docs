@@ -56,6 +56,10 @@ O `@zapo-js/voip-media` já é uma dependência do `@zapo-js/voip`, então o ser
   O browser precisa de um **contexto seguro** — HTTPS ou `localhost`. Tanto o microfone (`getUserMedia`) quanto o `AudioWorklet` dependem disso.
 </Warning>
 
+<Warning>
+  **O `@zapo-js/voip-media` 0.3.0 estreitou a superfície pública** para o que um host de mídia realmente usa. O plane de chamada, o host web e o protocolo de mídia remota desta página não foram afetados, mas os internos de baixo nível saíram: as classes de SRTP e SRTCP, `RtpPacket` / `RtpSession` e os builders de RTCP, `PayloadType`, o depacketizer e o packetizer de H.264 (o `isH264KeyFrame` fica), `MLowCodec`, `WaJitterBuffer` e `WaMediaClock`, `WaSctpRelay` e `TRUE_WEB_CLIENT_RELAY_PORT`, e o stream de app-data. Se você alcançava algum deles, fixe a `0.2.x` e abra uma issue descrevendo para quê.
+</Warning>
+
 ## A divisão {#the-split}
 
 O que fica no servidor e o que se muda:
@@ -78,6 +82,10 @@ Por causa dessa divisão, isto lança ou fica em silêncio no servidor com mídi
 </Warning>
 
 Todo o resto da chamada — aceitar, encerrar, eventos de estado, mute, mãos, screen share, upgrades — fica exatamente onde estava.
+
+<Warning>
+  **Chamadas em grupo precisam de um host que declare `group/1` e `raw-udp`.** O host de browser não consegue: um browser não tem socket UDP cru. O signaling reporta um host que não consegue carregar a chamada uma vez em `voip_call_error`. Veja [features de host](#host-features) e [Chamadas em grupo](/pt-br/guides/voip-groups).
+</Warning>
 
 ## Conectando o lado servidor {#wiring-the-server-side}
 
@@ -143,7 +151,11 @@ interface WaCallMediaMessage {
 }
 ```
 
-O plano é a descrição de mídia que o host precisa: `keys` (material SRTP), `relays` (endpoints e credenciais), `ssrcs`, `settings` e `video`. Uma mensagem `full` carrega tudo; as outras carregam só as seções que mudaram.
+O plano é a descrição de mídia que o host precisa: `keys` (material SRTP), `relays` (endpoints e credenciais), `ssrcs`, `settings`, `video` e — numa chamada em grupo — `group`. Uma mensagem `full` carrega tudo; as outras carregam só as seções que mudaram.
+
+A seção `group` lista cada remetente com seus SSRCs, material de chaveamento de recepção e pid de roster. Um host que a aplica chaveia SRTP e SRTCP **por remetente**, decodifica cada um no próprio decoder MLow, mixa para playout, e descarta pacotes de SSRCs que o plano não lista.
+
+Relays numa chamada em grupo vêm em **gerações**: uma mais nova é discada imediatamente, mesmo com legs ainda abertas. O envio fica na geração mais nova a menos que a mídia do peer continue chegando só numa mais antiga, e uma geração antiga é retirada quando mídia autenticada do peer chega na mais nova. Um relay que apenas re-emite as credenciais é religado no lugar, no mesmo socket ou conexão.
 
 ### Host → servidor: `WaCallMediaEventMessage` {#host-server-wacallmediaeventmessage}
 
@@ -157,10 +169,32 @@ interface WaCallMediaEventMessage {
 
 | `event.type` | Payload | Significado |
 | --- | --- | --- |
-| `'active'` | — | A mídia começou a fluir: a chamada foi aceita e uma leg de relay está no ar. |
+| `'host'` | `features: readonly string[]` | **O que o host consegue aplicar**, enviado uma vez antes de qualquer outro evento. Um host anterior a este evento não envia nenhum, e um signaling antigo ignora. Veja [features de host](#host-features). |
+| `'active'` | `reportsRelayAnswers?: boolean` | A mídia começou a fluir: a chamada foi aceita e uma leg de relay está no ar. A flag é definida por um host que envia `relay_answered`, para o signaling distinguir de um antigo. |
 | `'relay_lost'` | `reason: string` | Não resta nenhuma leg de relay. O signaling encerra a chamada ([`EndCallReason.RelayLost`](/pt-br/guides/voip#endcallreason)). |
-| `'reaction'` | `reaction: WaCallReaction` | Uma reação com emoji in-band chegou do peer. |
+| `'relay_answered'` | `name: string`, `rttMs?: number` | Um relay respondeu a uma das legs do host pela primeira vez, uma vez por nome de relay. O signaling nomeia só esses no `<relaylatency>` dele. |
+| `'reaction'` | `reaction: WaCallReaction`, `senderId?: string` | Uma reação com emoji in-band. O `senderId` nomeia o remetente de grupo de onde veio. |
+| `'sender_media'` | `senderId: string`, `receiving: boolean` | A mídia de um remetente de grupo começou ou parou de chegar. Disparado por transição: `false` depois de um silêncio que **o host escolheu**, não um estado que o peer anunciou. |
 | `'resync'` | `lastSeq: number \| null` | O host perdeu uma mensagem e precisa do plano inteiro de novo. |
+
+<Note>
+  O `relay_answered` importa para a qualidade da chamada, não para contabilidade. O signaling antes nomeava todo relay que discava no `<relaylatency>`, inclusive os que esta rede nunca alcança — um peer que medisse esse relay como o mais rápido o elegia, e nenhuma mídia dele chegava. Agora um relay só é nomeado depois de ter respondido. Um host anterior à 0.2.0 não reporta respostas, então o signaling cai para nomear todo relay que disca.
+</Note>
+
+### Features de host {#host-features}
+
+O evento `host` é como um host de mídia declara o que consegue aplicar, para o signaling poder recusar uma chamada que o host não consegue carregar em vez de falhar no meio. As constantes são exportadas:
+
+| Constante | Valor | Significa que o host |
+| --- | --- | --- |
+| `WA_CALL_MEDIA_FEATURE_GROUP` | `'group/1'` | Aplica `group`, `relays.generation`, `transport` por relay e `ssrcs.selfLayers`, e tira o frame do relay da mídia de entrada. |
+| `WA_CALL_MEDIA_FEATURE_RAW_UDP` | `'raw-udp'` | Consegue discar legs de relay em UDP cru. |
+| `WA_CALL_MEDIA_FEATURE_GROUP_ATTRIBUTION` | `'group-attribution/1'` | Nomeia o remetente de grupo em reações e vídeo, e envia `sender_media`. |
+| `WA_CALL_MEDIA_FEATURE_GROUP_VIDEO` | `'group-video/1'` | Pede ao relay as `group.videoSubscriptions`. |
+
+<Warning>
+  **Uma chamada em grupo precisa de `group/1` e `raw-udp`.** Um browser não tem como abrir um socket UDP cru, então o host de browser não consegue carregar uma chamada em grupo hoje — o signaling reporta isso uma vez em `voip_call_error`. Veja [Chamadas em grupo](/pt-br/guides/voip-groups).
+</Warning>
 
 ### Codificação {#encoding}
 
@@ -251,7 +285,39 @@ O `WaWebCallAudio.start(sink, options?)` carrega o áudio entre o microfone e o 
   URL do módulo do worklet. Padrão: uma Blob URL. Sob uma CSP que proíbe `blob:`, sirva o `WA_CALL_AUDIO_WORKLET_SOURCE` exportado como arquivo e passe a URL dele aqui.
 </ParamField>
 
+<ParamField path="output" type="string">
+  Id do dispositivo de saída, vindo de `enumerateDevices()`, para o contexto que o adapter cria: passado como o `sinkId` do construtor do `AudioContext`, ou para o `setSinkId` onde o construtor ignora (Chrome, Edge). Onde nenhum dos dois se aplica, qualquer um além do padrão (`''`) **faz o `start` falhar**. Recusado junto com `audioContext`.
+</ParamField>
+
 O `stop()` libera apenas o que o adapter adquiriu, e uma chamada repetida retorna a mesma promise.
+
+#### Hold, troca de dispositivo e saída {#hold-device-switching-and-output}
+
+Três métodos cobrem o que uma UI de chamada precisa no meio da chamada:
+
+```ts
+audio.setPlayoutMuted(true)              // hold: silencia o alto-falante
+audio.setMicrophone(anotherStream)       // troca o dispositivo de entrada
+await audio.setOutput(deviceId)          // troca o dispositivo de saída
+```
+
+<ParamField path="setPlayoutMuted(muted)" type="void">
+  Silencia o alto-falante ao longo de alguns milissegundos por uma rampa de ganho — o que você quer para *hold*. **O playout continua sendo puxado enquanto mutado**, então o jitter buffer segue drenando e a chamada retoma em sincronia em vez de reproduzir áudio velho. No-op depois do `stop()`.
+
+  Isso não é mute: silencia o que *você ouve*. Mutar o seu microfone, e contar isso ao peer, é o [`client.voip.setMute`](/pt-br/guides/voip#mute-and-the-peers-mic) do lado do signaling.
+</ParamField>
+
+<ParamField path="setMicrophone(stream)" type="void">
+  Captura de `stream`, trocando **apenas o source node** — o worklet e o contexto ficam, então a chamada não engasga. O stream continua seu para parar. Se o contexto o recusar, isto lança e o **microfone atual continua rodando**.
+</ParamField>
+
+<ParamField path="setOutput(sinkId)" type="Promise<void>">
+  Toca no dispositivo de saída `sinkId`, sendo `''` o padrão. Funciona via `setSinkId` (Chrome, Edge) no contexto que o adapter criou.
+
+  Rejeita num contexto que você passou — aquele mantém a saída própria. Rejeita com um `NotSupportedError` para qualquer dispositivo não-padrão onde o browser não tem `setSinkId`. Resolve se o `stop()` encerrar a chamada no meio da troca, qualquer que tenha sido o resultado.
+
+  **Aguarde antes de pedir outra saída:** trocas sobrepostas não têm ordem garantida.
+</ParamField>
 
 <Note>
   O Firefox recusa um microfone numa sample rate estrangeira. O adapter lida com isso: se ele é dono do contexto e a taxa de 16 kHz é recusada, ele reabre na taxa do dispositivo e tenta de novo.
@@ -365,7 +431,15 @@ As opções estendem as do próprio plane, mais:
 </ParamField>
 
 <Note>
-  `onActive` e `onRelayLost` **não** são seus para definir — o receiver é dono deles e os transforma nos eventos `active` e `relay_lost` que manda de volta ao signaling.
+  `onActive`, `onRelayLost` e `onRelayAnswered` **não** são seus para definir — o receiver é dono deles e os transforma nos eventos `active`, `relay_lost` e `relay_answered` que manda de volta ao signaling.
+</Note>
+
+<Warning>
+  **Buffers entregues a um sink podem ser reaproveitados.** O `WaCallAudioSink.pushCapture` e o `WaCallVideoSink.sendVideoFrame` têm permissão de reaproveitar os `samples` / `data` que recebem depois que a chamada retorna. Se você guardar uma referência — para gravar, analisar, enfileirar — **copie primeiro**. Isso é novo no `@zapo-js/voip-media` 0.3.0 e é uma corrupção silenciosa se passar batido.
+</Warning>
+
+<Note>
+  Um `logger` não precisa mais expor `level`: um sem ele é tratado como emitindo todos os níveis. O `isLogLevelEnabled(logger, level)` e o tipo `LogLevel` são exportados para código que queira limitar o próprio trabalho como o package faz — logs de trace por pacote só são construídos quando `trace` está habilitado.
 </Note>
 
 ### Estatísticas da chamada {#call-statistics}

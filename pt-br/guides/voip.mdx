@@ -7,8 +7,12 @@ icon: "phone"
 `@zapo-js/voip` é o plugin oficial de chamadas para `zapo-js`. Ele se apoia no [sistema de plugins](/pt-br/concepts/plugins), expõe um `WaVoipCoordinator` em `client.voip` e emite eventos `voip_*` no host client.
 
 <Note>
-  Desde o **`@zapo-js/voip` 1.1.0**, as chamadas são bidirecionais nos dois tipos de mídia: áudio (MLow/Opus) e [vídeo](#video-calls) (H.264). O plugin transporta mídia — ele não codifica nem decodifica. O codec é sua parte do contrato: PCM 16 kHz mono para áudio, access units H.264 Annex-B para vídeo.
+  As chamadas são bidirecionais nos dois tipos de mídia: áudio (MLow/Opus) e [vídeo](#video-calls) (H.264). O plugin transporta mídia — ele não codifica nem decodifica. O codec é sua parte do contrato: PCM 16 kHz mono para áudio, access units H.264 Annex-B para vídeo.
 </Note>
+
+<Info>
+  Esta página cobre **chamadas 1:1**. Desde a **1.4.0** o zapo também faz e atende **chamadas em grupo**, que compartilham toda esta superfície e acrescentam um roster mais atribuição por participante — veja [Chamadas em grupo](/pt-br/guides/voip-groups).
+</Info>
 
 ## Instalação {#install}
 
@@ -88,6 +92,18 @@ voipPlugin({ maxConcurrentCalls: 2, logLevel: 'warn' })
   Onde a mídia da chamada roda. `'local'` carrega ela neste processo, sobre `@roamhq/wrtc` e `libmlow-wasm-fork`. `'remote'` não carrega nada dela aqui — veja [Mídia em outro host](/pt-br/guides/voip-media).
 </ParamField>
 
+<ParamField path="mlowRed" type="boolean | MLowRedOptions" default="false">
+  Envia MLow RED: cada pacote carrega a cópia em baixa taxa do frame anterior, e então o frame em si, de modo que um único pacote perdido possa ser reconstruído. **Ligar isso desliga o DTX.** Com mídia remota, passe para o `WaCallMediaReceiver` do host em vez daqui.
+</ParamField>
+
+<ParamField path="mlowCompanionModel" type="Uint8Array | ArrayBuffer | string">
+  Pesos do pós-filtro do decoder MLow Companion — os bytes do `mlow_companion_v1.pte`, ou um caminho lido na primeira chamada. **Não vem com o package**, e custa cerca de **40× a CPU de decode**; pesos que falham ao carregar deixam as chamadas decodificando sem ele. Com mídia remota, passe para o host em vez daqui.
+</ParamField>
+
+<ParamField path="participantAudio" type="boolean" default="false">
+  Emite `voip_call_participant_audio`: o áudio decodificado de cada participante de chamada em grupo separado, antes da mixagem. Desligado por padrão, já que cada frame é copiado para isso, e **só com mídia local**. Veja [Chamadas em grupo](/pt-br/guides/voip-groups#participant-media).
+</ParamField>
+
 ## A superfície do coordinator {#the-coordinator-surface}
 
 ### Iniciando uma chamada {#placing-a-call}
@@ -98,8 +114,10 @@ const callId = await client.voip.startCall({
 })
 ```
 
+O `startCall` recebe uma **union discriminada**: ou o formato 1:1 abaixo, ou o formato de grupo, nunca uma mistura. Para o formato de grupo veja [Chamadas em grupo](/pt-br/guides/voip-groups#placing-one).
+
 <ParamField path="peerJid" type="string" required>
-  JID bare ou de dispositivo a chamar.
+  JID bare ou de dispositivo a chamar. Obrigatório numa chamada 1:1; proibido junto com `groupJid`.
 </ParamField>
 
 <ParamField path="isVideo" type="boolean" default="false">
@@ -128,6 +146,8 @@ await client.voip.endCall(callId, EndCallReason.Busy)
 - `acceptCall(callId)` — aceita uma chamada de entrada tocando. Lança se `callId` for desconhecido ou não estiver em um estado aceitável.
 - `rejectCall(callId, reason?)` — rejeita uma chamada de entrada tocando (reason padrão `Declined`). Envia a stanza de reject e em seguida desmonta a chamada.
 - `endCall(callId, reason?)` — encerra uma chamada ativa ou conectando (reason padrão `UserEnded`). No-op se a chamada for desconhecida ou já estiver encerrada.
+
+Numa **chamada em grupo** estes se comportam de forma diferente, e dois outros métodos se aplicam — `leaveCall` e `joinCall`. Veja [Sair versus encerrar](/pt-br/guides/voip-groups#leaving-versus-ending) e [Tocando, re-tocando e entrando](/pt-br/guides/voip-groups#ringing-re-ringing-and-joining).
 
 ### Áudio de saída pré-carregado {#preloaded-outbound-audio}
 
@@ -349,7 +369,9 @@ await client.voip.setScreenShare(callId, false)
 
 Esse é o mecanismo da versão anunciada, `WA_SCREEN_SHARE_SEND_VERSION` (`V2`): a câmera de quem compartilha fica desligada enquanto o share durar e a tela toma o lugar dela. **Pare de alimentar a câmera antes de iniciar um share e retome depois de parar.** O seu estado é `call.stateData.screenSharing`.
 
-O `setScreenShare` lança em um `callId` desconhecido ou num envio que falha, e — apenas ao *iniciar* um share — numa chamada em grupo, ou numa chamada que ainda não carrega vídeo (negocie um [upgrade](#audio-to-video-mid-call) antes). Uma falha lança sem ter mudado nada, então um peer que nunca ouviu nunca é tido como estando renderizando.
+Um início ou fim carrega `screen_share_id`, contado por chamada a partir de 1, como os clients oficiais enviam.
+
+O `setScreenShare` lança em um `callId` desconhecido ou num envio que falha, e — apenas ao *iniciar* um share — numa chamada que ainda não carrega vídeo (negocie um [upgrade](#audio-to-video-mid-call), ou chame `setVideoEnabled` numa chamada em grupo, antes). Uma falha lança sem ter mudado nada, então um peer que nunca ouviu nunca é tido como estando renderizando.
 
 Lendo o share do peer:
 
@@ -388,8 +410,13 @@ const all  = client.voip.getCalls()        // readonly CallInfo[]
 | `raisedHands` | `Set<string>` | Participantes remotos com a mão levantada, indexados pelo JID de device de onde a stanza chegou. Uma entrada sobrevive até aquele participante abaixar a mão. |
 | `peerScreenShare` | `PeerScreenShare?` | Último estado de screen share que o peer reportou. Atualizado no lugar. |
 | `peerVideoState` | `PeerVideoStateChange?` | Último `<video>` que o peer anunciou. Ausente até ele enviar um — uma chamada negociada como vídeo nunca envia. |
-| `voipSettings` | `WaVoipSettings?` | Configuração do servidor vinda do nó `<voip_settings>` da oferta (`rtcp_interval_ms`, `disable_rtcp_remb`, …), parseada uma vez na chegada. Ausente quando o nó não veio ou não pôde ser lido; os consumidores então ficam nos defaults compilados. |
+| `voipSettings` | `WaVoipSettings?` | Configuração do servidor vinda do nó `<voip_settings>` da oferta, parseada uma vez na chegada. Ausente quando o nó não veio ou não pôde ser lido; os consumidores então ficam nos defaults compilados. Toda chave aplicada é um campo tipado — `disableRtcpRemb`, `rtcpIntervalMs`, `audioFrameMs`, `audioMaxFramesPerPacket`, `videoStateTxnRecvEnforce`, `heartbeatIntervalMs`, `appDataStream`, `appDataStreamVersion`, `sframe`, `sframeRx` — ao lado dos leitores crus `getFlag` / `getNumber` / `getText`. |
 | `electedRelayIdx` | `number?` | Qual leg de relay está carregando a mídia de saída no momento. |
+| `participantMedia` | `Map<string, WaCallParticipantMedia>` | Por device remoto, o que ele anunciou por último sobre a mídia dele: `{ deviceJid, senderId?, audioMuted?, video?, screenShare?, receiving? }`. Preenchido em chamadas 1:1 também, então código escrito contra ele serve para os dois casos. |
+| `groupComposition` | `WaGroupComposition?` | Quem está numa [chamada em grupo](/pt-br/guides/voip-groups#who-is-on-the-call). Ausente numa chamada 1:1. |
+| `joinable` | `boolean` | A flag `joinable` da oferta. **Não é um teste de chamada em grupo** — o WhatsApp Web marca as ofertas 1:1 dele como joinable também. Use `isGroupCall`. |
+
+O `isGroupCall` se junta aos getters derivados: verdadeiro quando a chamada nomeia um grupo, carrega um roster, ou o manager a marcou como tal.
 
 <Note>
   `callerPn` é o **JID de telefone** de quem ligou, lido do atributo `caller_pn` de uma oferta de entrada. É o que permite associar a um número de telefone alguém que a oferta identifica apenas por LID. Ele não muda a derivação de mídia: o SSRC do peer e as chaves SRTP continuam presos ao JID de device do LID, que é o que o peer deriva.
@@ -405,19 +432,28 @@ Adicione `voipPlugin()` a `plugins` e estes eventos ficam disponíveis em `clien
 | `voip_call_incoming` | `CallInfo` | Uma nova chamada de entrada. |
 | `voip_call_ended` | `CallInfo` | A chamada encerrou (qualquer razão). |
 | `voip_call_inbound_audio` | `{ call, pcm }` | Áudio decodificado do peer. `pcm` é `Float32Array` 16 kHz mono. |
-| `voip_call_inbound_video` | `{ call, frame }` | Um frame H.264 de entrada já remontado — `frame.data` é uma access unit Annex-B completa, com `keyFrame` e o `timestamp` de 90 kHz. Veja [Chamadas de vídeo](#video-calls). |
-| `voip_call_inbound_video_rtp` | `{ call, packet }` | O pacote RTP de vídeo de entrada decriptado, cru (`payloadType` `97` H.264 / `103` RTX, `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`). |
-| `voip_call_peer_mute` | `{ call, muted }` | O peer anunciou uma mudança no próprio estado de microfone. Uma vez por mudança; o mesmo valor fica em `stateData.peerAudioMuted`. |
+| `voip_call_inbound_video` | `{ call, frame, participantJid? }` | Um frame H.264 de entrada já remontado — `frame.data` é uma access unit Annex-B completa, com `keyFrame` e o `timestamp` de 90 kHz. Veja [Chamadas de vídeo](#video-calls). |
+| `voip_call_inbound_video_rtp` | `{ call, packet, participantJid? }` | O pacote RTP de vídeo de entrada decriptado, cru (`payloadType` `97` H.264 / `103` RTX, `sequenceNumber`, `timestamp`, `ssrc`, `marker`, `payload`). |
+| `voip_call_peer_mute` | `{ call, muted, participantJid? }` | Um participante anunciou uma mudança no próprio estado de microfone. Uma vez por mudança. Numa chamada 1:1 o valor também fica em `stateData.peerAudioMuted`. |
+| `voip_call_mute_requested` | `{ call, participantJid, requestState }` | Um participante de chamada em grupo pediu que **este lado** mutasse. Nada é aplicado. |
 | `voip_call_hand_raise` | `{ call, participantJid, raised }` | Um participante remoto levantou ou abaixou a mão. Durável — o participante fica em `call.raisedHands` até abaixar. |
-| `voip_call_screen_share` | `{ call, share }` | O peer reportou uma mudança de estado de screen share. Veja [Compartilhamento de tela](#screen-share). |
-| `voip_call_peer_video_state` | `{ call, change }` | O peer anunciou uma mudança de estado de vídeo — que também é como ele pede um [upgrade de vídeo](#audio-to-video-mid-call). |
-| `voip_call_reaction` | `{ call, reaction }` | Um participante enviou uma reação com emoji. Momentânea e sem estado. |
+| `voip_call_screen_share` | `{ call, share, participantJid? }` | Um participante reportou uma mudança de estado de screen share. Veja [Compartilhamento de tela](#screen-share). |
+| `voip_call_peer_video_state` | `{ call, change, participantJid? }` | Um participante anunciou uma mudança de estado de vídeo — que também é como um peer 1:1 pede um [upgrade de vídeo](#audio-to-video-mid-call). |
+| `voip_call_reaction` | `{ call, reaction, participantJid? }` | Um participante enviou uma reação com emoji. Momentânea e sem estado. |
+| `voip_call_participants_changed` | `{ call, diff }` | Quem entrou numa chamada em grupo, saiu dela ou trocou de device. Veja [Chamadas em grupo](/pt-br/guides/voip-groups#who-is-on-the-call). |
+| `voip_call_participant_media` | `{ call, participantJid, receiving }` | A mídia de um participante de grupo começou ou parou de chegar, julgado localmente a partir dos pacotes recebidos. |
+| `voip_call_participant_audio` | `{ call, participantJid, pcm }` | O áudio decodificado de um participante de grupo, antes da mixagem. Requer a opção `participantAudio`; só com mídia local. |
+| `voip_call_video_upgraded` | `{ call, participantJid }` | Um participante transformou uma chamada em grupo numa chamada de vídeo. `participantJid` é `null` quando o servidor não nomeou quem. |
 | `voip_call_media` | `{ call, message }` | Uma mudança de plano de mídia para um host de mídia remoto. **Só com mídia remota** — veja [Mídia em outro host](/pt-br/guides/voip-media). Carrega chaves SRTP e credenciais de relay. |
 | `voip_call_outbound_audio_finished` | `CallInfo` | O áudio pré-carregado de saída terminou de enviar. |
 | `voip_call_error` | `Error` | Um erro de chamada não-fatal (hook de logging). |
 
 <Note>
-  O `voip_call_inbound_audio` é ritmado pelo jitter buffer num tick de 60 ms com 960 samples. Perda ocultada e underrun do buffer chegam como áudio e silêncio respectivamente, então o stream mantém a base de tempo da chamada; um tick sem nada enfileirado é pulado.
+  O `voip_call_inbound_audio` é ritmado pelo jitter buffer num tick de 60 ms com 960 samples. Perda ocultada e underrun do buffer chegam como áudio e silêncio respectivamente, então o stream mantém a base de tempo da chamada; um tick sem nada enfileirado é pulado. O áudio decodificado é copiado para ele **apenas enquanto houver um listener** — inclusive um adicionado depois da chamada começar — então deixar sem assinar não custa nada.
+</Note>
+
+<Note>
+  **O `participantJid` nomeia o device remetente** em todo evento que o carrega, então um listener serve tanto para 1:1 quanto para grupo. Ele é opcional porque uma chamada 1:1 tem só um peer, e porque a atribuição depende de o host de mídia conseguir distinguir remetentes. Os eventos de nível de manager (`client.voip.on('call_*')`) o recebem como **argumento final**, então listeners escritos antes da 1.4.0 continuam funcionando.
 </Note>
 
 ## Enums {#enums}
@@ -461,6 +497,8 @@ Todos os valores do `enum` são strings minúsculas — use as constantes do enu
 | `EndCallReason.Cancelled` | `'cancelled'` |
 | `EndCallReason.Failed` | `'failed'` |
 | `EndCallReason.RelayLost` | `'relay_lost'` — a chamada tinha um caminho de mídia e o perdeu, sem nenhuma leg restante para carregá-lo. |
+| `EndCallReason.SetupFailed` | `'setup_failed'` — o servidor recusou a nossa oferta com um ack de erro. O peer, ou a própria chamada num grupo, recebe um terminate `setup_failed` em vez de a chamada seguir tocando. |
+| `EndCallReason.Invisible` | `'invisible'` — o servidor tirou este lado de uma **chamada em grupo que segue**, porque os outros pararam de receber a mídia dele. Reentre com `joinCall`. |
 | `EndCallReason.AcceptedElsewhere` | `'accepted_elsewhere'` — outro device desta conta atendeu a chamada de entrada. |
 | `EndCallReason.RejectedElsewhere` | `'rejected_elsewhere'` — outro device desta conta recusou. |
 | `EndCallReason.DoNotDisturb` | `'do_not_disturb'` |
@@ -573,6 +611,9 @@ Para um exemplo mais completo — colocando chamadas de saída, playback pré-ca
 ## Veja também {#see-also}
 
 <CardGroup cols={2}>
+  <Card title="Chamadas em grupo" icon="users" href="/pt-br/guides/voip-groups" arrow>
+    Fazer, atender, entrar e sair de uma chamada em grupo, e a superfície por participante.
+  </Card>
   <Card title="Mídia em outro host" icon="globe" href="/pt-br/guides/voip-media" arrow>
     Rode a mídia de uma chamada no browser com `@zapo-js/voip-media` enquanto o signaling fica no servidor.
   </Card>

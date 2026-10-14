@@ -56,6 +56,10 @@ npm install @zapo-js/voip-media libmlow-wasm-fork
   The browser needs a **secure context** — HTTPS or `localhost`. Both the microphone (`getUserMedia`) and the `AudioWorklet` are gated on it.
 </Warning>
 
+<Warning>
+  **`@zapo-js/voip-media` 0.3.0 narrowed its public surface** to what a media host actually uses. The call plane, the web host and the remote-media protocol on this page are unaffected, but the low-level internals are gone: the SRTP and SRTCP classes, `RtpPacket` / `RtpSession` and the RTCP builders, `PayloadType`, the H.264 depacketizer and packetizer (`isH264KeyFrame` stays), `MLowCodec`, `WaJitterBuffer` and `WaMediaClock`, `WaSctpRelay` and `TRUE_WEB_CLIENT_RELAY_PORT`, and the app-data stream. If you reached into those, pin `0.2.x` and open an issue describing what for.
+</Warning>
+
 ## The split
 
 What stays on the server, and what moves:
@@ -78,6 +82,10 @@ Because of that split, these throw or go quiet on the server with remote media:
 </Warning>
 
 Everything else about the call — accepting, ending, state events, mute, hands, screen share, upgrades — stays exactly where it was.
+
+<Warning>
+  **Group calls need a host that declares `group/1` and `raw-udp`.** The browser host cannot: a browser has no raw UDP socket. Signaling reports a host that cannot carry the call once on `voip_call_error`. See [host features](#host-features) and [Group calls](/en/guides/voip-groups).
+</Warning>
 
 ## Wiring the server side
 
@@ -143,7 +151,11 @@ interface WaCallMediaMessage {
 }
 ```
 
-The plan is the media description the host needs: `keys` (SRTP material), `relays` (endpoints and credentials), `ssrcs`, `settings` and `video`. A `full` message holds all of it; the others hold only the sections that changed.
+The plan is the media description the host needs: `keys` (SRTP material), `relays` (endpoints and credentials), `ssrcs`, `settings`, `video` and — on a group call — `group`. A `full` message holds all of it; the others hold only the sections that changed.
+
+The `group` section lists every sender with its SSRCs, receive keying material and roster pid. A host that applies it keys SRTP and SRTCP **per sender**, decodes each on its own MLow decoder, mixes them for playout, and drops packets from SSRCs the plan does not list.
+
+Relays on a group call come in **generations**: a newer one is dialled at once, even with legs still open. Sending stays on the newest generation unless peer media keeps arriving only on an older one, and an older generation is retired once authenticated peer media arrives on the newer one. A relay that only re-issues its credentials is rebound in place, on the same socket or connection.
 
 ### Host → server: `WaCallMediaEventMessage`
 
@@ -157,10 +169,32 @@ interface WaCallMediaEventMessage {
 
 | `event.type` | Payload | Meaning |
 | --- | --- | --- |
-| `'active'` | — | Media started flowing: the call is accepted and a relay leg is up. |
+| `'host'` | `features: readonly string[]` | **What the host can apply**, sent once before any other event. A host older than this event sends none, and older signaling ignores it. See [host features](#host-features). |
+| `'active'` | `reportsRelayAnswers?: boolean` | Media started flowing: the call is accepted and a relay leg is up. The flag is set by a host that sends `relay_answered`, so signaling can tell it from an older one. |
 | `'relay_lost'` | `reason: string` | No relay leg is left. Signaling ends the call ([`EndCallReason.RelayLost`](/en/guides/voip#endcallreason)). |
-| `'reaction'` | `reaction: WaCallReaction` | An in-band emoji reaction arrived from the peer. |
+| `'relay_answered'` | `name: string`, `rttMs?: number` | A relay answered one of the host's legs for the first time, once per relay name. Signaling names only those in its `<relaylatency>`. |
+| `'reaction'` | `reaction: WaCallReaction`, `senderId?: string` | An in-band emoji reaction. `senderId` names the group sender it came from. |
+| `'sender_media'` | `senderId: string`, `receiving: boolean` | A group sender's media started or stopped arriving. Edge-triggered: `false` after a silence **the host chose**, not a state the peer announced. |
 | `'resync'` | `lastSeq: number \| null` | The host missed a message and needs the whole plan again. |
+
+<Note>
+  `relay_answered` matters for call quality, not bookkeeping. Signaling used to name every relay it dialled in its `<relaylatency>`, including ones this network never reaches — a peer that measured such a relay as its fastest elected it, and none of its media arrived. A relay is now named only once it has answered. A host older than 0.2.0 reports no answers, so signaling falls back to naming every relay it dials.
+</Note>
+
+### Host features {#host-features}
+
+The `host` event is how a media host declares what it can apply, so signaling can refuse a call the host cannot carry instead of failing halfway. The constants are exported:
+
+| Constant | Value | Means the host |
+| --- | --- | --- |
+| `WA_CALL_MEDIA_FEATURE_GROUP` | `'group/1'` | Applies `group`, `relays.generation`, per-relay `transport` and `ssrcs.selfLayers`, and takes the relay's frame off inbound media. |
+| `WA_CALL_MEDIA_FEATURE_RAW_UDP` | `'raw-udp'` | Can dial raw UDP relay legs. |
+| `WA_CALL_MEDIA_FEATURE_GROUP_ATTRIBUTION` | `'group-attribution/1'` | Names the group sender on reactions and video, and sends `sender_media`. |
+| `WA_CALL_MEDIA_FEATURE_GROUP_VIDEO` | `'group-video/1'` | Asks the relay for `group.videoSubscriptions`. |
+
+<Warning>
+  **A group call needs `group/1` and `raw-udp`.** A browser has no way to open a raw UDP socket, so the browser host cannot carry a group call today — signaling reports it once on `voip_call_error`. See [Group calls](/en/guides/voip-groups).
+</Warning>
 
 ### Encoding
 
@@ -251,7 +285,39 @@ The accept stays on the server on purpose: it is a `<call>` stanza, and only the
   URL of the worklet module. Default: a Blob URL. Under a CSP that forbids `blob:`, serve the exported `WA_CALL_AUDIO_WORKLET_SOURCE` as a file and pass its URL here.
 </ParamField>
 
+<ParamField path="output" type="string">
+  Output device id, from `enumerateDevices()`, for the context the adapter creates: passed as the `AudioContext` constructor's `sinkId`, or to `setSinkId` where the constructor ignores it (Chrome, Edge). Where neither applies, anything but the default (`''`) **fails `start`**. Refused together with `audioContext`.
+</ParamField>
+
 `stop()` releases only what the adapter acquired, and a repeat call returns the same promise.
+
+#### Hold, device switching and output {#hold-device-switching-and-output}
+
+Three methods cover what a call UI needs mid-call:
+
+```ts
+audio.setPlayoutMuted(true)              // hold: silence the speaker
+audio.setMicrophone(anotherStream)       // switch input device
+await audio.setOutput(deviceId)          // switch output device
+```
+
+<ParamField path="setPlayoutMuted(muted)" type="void">
+  Silences the speaker over a few milliseconds through a gain ramp — what you want for *hold*. **Playout is still pulled while muted**, so the jitter buffer keeps draining and the call resumes in step instead of replaying stale audio. No-op after `stop()`.
+
+  This is not mute: it silences what *you hear*. Muting your microphone, and telling the peer about it, is [`client.voip.setMute`](/en/guides/voip#mute-and-the-peers-mic) on the signaling side.
+</ParamField>
+
+<ParamField path="setMicrophone(stream)" type="void">
+  Captures from `stream`, swapping **only the source node** — the worklet and the context stay, so the call does not glitch. The stream stays yours to stop. If the context refuses it, this throws and the **current microphone keeps running**.
+</ParamField>
+
+<ParamField path="setOutput(sinkId)" type="Promise<void>">
+  Plays to the output device `sinkId`, `''` being the default. Works through `setSinkId` (Chrome, Edge) on the context the adapter created.
+
+  Rejects on a context you passed in — that one keeps its own output. Rejects with a `NotSupportedError` for any non-default device where the browser has no `setSinkId`. Resolves if `stop()` ends the call mid-switch, whatever the switch did.
+
+  **Await it before asking for another output:** overlapping switches have no guaranteed order.
+</ParamField>
 
 <Note>
   Firefox refuses a microphone at a foreign sample rate. The adapter handles it: if it owns the context and the 16 kHz rate is refused, it reopens at the device rate and retries.
@@ -365,7 +431,15 @@ Options extend the plane's own, plus:
 </ParamField>
 
 <Note>
-  `onActive` and `onRelayLost` are **not** yours to set — the receiver owns them and turns them into the `active` and `relay_lost` events it sends back to signaling.
+  `onActive`, `onRelayLost` and `onRelayAnswered` are **not** yours to set — the receiver owns them and turns them into the `active`, `relay_lost` and `relay_answered` events it sends back to signaling.
+</Note>
+
+<Warning>
+  **Buffers handed to a sink may be reused.** `WaCallAudioSink.pushCapture` and `WaCallVideoSink.sendVideoFrame` are allowed to reuse the `samples` / `data` they are given once the call returns. If you keep a reference — to record, to analyze, to queue — **copy it first**. This is new in `@zapo-js/voip-media` 0.3.0 and is a silent corruption if you miss it.
+</Warning>
+
+<Note>
+  A `logger` no longer has to expose `level`: one without it is treated as emitting every level. `isLogLevelEnabled(logger, level)` and the `LogLevel` type are exported for code that wants to gate its own work the way the package does — per-packet trace logs are only built when `trace` is enabled.
 </Note>
 
 ### Call statistics

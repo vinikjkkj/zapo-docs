@@ -1,0 +1,275 @@
+---
+title: "Chamadas em grupo"
+description: "Faça, atenda, entre e saia de chamadas em grupo do WhatsApp com @zapo-js/voip — o modelo de roster e composição, atribuição por participante, pedidos de mute, vídeo em grupo e o heartbeat que mantém este lado na chamada."
+icon: "users"
+---
+
+Uma chamada em grupo é uma chamada endereçada à **própria chamada** (`<call-id>@call`), e não a um peer, com um roster que o servidor mantém e empurra. Desde o **`@zapo-js/voip` 1.4.0** o zapo consegue fazer uma, atender uma, acompanhar quem está nela e sair dela.
+
+Tudo da [página de chamadas 1:1](/pt-br/guides/voip) continua valendo — mute, levantar a mão, reações, vídeo, screen share — com uma diferença que atravessa tudo: **todo anúncio remoto nomeia o device de onde veio**, porque existe mais de um peer.
+
+<Warning>
+  Uma chamada em grupo precisa de um host de mídia capaz de carregá-la. O host de **browser ainda não consegue**: mídia em grupo exige legs de relay em UDP cru, que um browser não tem como abrir. Um host de [mídia remota](/pt-br/guides/voip-media) que não consegue carregar a chamada é reportado uma vez em `voip_call_error`.
+</Warning>
+
+## Fazendo uma {#placing-one}
+
+O `startCall` recebe ou o formato 1:1 ou o formato de grupo, nunca os dois — são uma union discriminada, então o TypeScript recusa a mistura.
+
+```ts
+const callId = await client.voip.startCall({
+  groupJid: '120363431977320048@g.us',
+  participants: [
+    { jid: '112984198234339@lid' },
+    { jid: '184478207058035@lid', devices: ['184478207058035@lid', '184478207058035:1@lid'] }
+  ]
+})
+```
+
+<ParamField path="groupJid" type="string" required>
+  O grupo (`…@g.us`) a que esta chamada pertence. A presença dele é o que torna a oferta uma oferta de grupo; `peerJid` não é lido.
+</ParamField>
+
+<ParamField path="participants" type="readonly CallOfferParticipant[]" required>
+  Quem chamar, **nós mesmos de fora**. Cada um é `{ jid, devices? }`: `jid` é a conta a chamar (um LID), e `devices` são os JIDs de device dela, no máximo cinco. Omita `devices` e eles são resolvidos, caindo para o device primário da conta.
+</ParamField>
+
+`isVideo` e `audioFile` funcionam como numa chamada 1:1. A chamada **conecta quando o roster do servidor lista outra pessoa conectada** — não quando a oferta recebe ack.
+
+## Atendendo uma {#answering-one}
+
+Uma chamada em grupo de entrada chega em `voip_call_incoming` como qualquer outra, e o `acceptCall` a atende.
+
+```ts
+client.on('voip_call_incoming', async (call) => {
+  if (!call.isGroupCall) return
+  console.log('group call on', call.groupJid, 'from', call.callCreator)
+  await client.voip.acceptCall(call.callId)
+})
+```
+
+Um callee de grupo faz preaccept, accept e decline **para a própria chamada**, então uma chamada que este lado recusa o lista como *convidado* em vez de ainda tocando para todos os outros.
+
+### Diferenciando grupo de 1:1 {#telling-a-group-call-from-a-11-call}
+
+Use `call.isGroupCall`. Os campos por trás dele são mais sutis do que parecem:
+
+| Campo | O que significa |
+| --- | --- |
+| `isGroupCall` | O teste confiável. Verdadeiro quando o manager a marcou como tal, quando ela nomeia um grupo, ou quando carrega um roster. |
+| `groupJid` | Definido quando a chamada **pertence a um grupo**. Uma chamada 1:1 que cresce para grupo convidando este lado não nomeia grupo nenhum, e ainda é uma chamada em grupo. |
+| `joinable` | **Não diz nada sobre isso.** O WhatsApp Web marca as ofertas 1:1 dele como joinable também, então uma chamada joinable mantém as regras de 1:1 e nunca é lembrada para um join. |
+
+## Quem está na chamada {#who-is-on-the-call}
+
+O `call.groupComposition` guarda o roster que este client incorporou: um `WaCallGroupParticipant` por conta, mais o `transaction-id` da última atualização aplicada.
+
+```ts
+interface WaCallGroupParticipant {
+  readonly jid: string                  // a conta
+  readonly devices: readonly string[]   // primário primeiro, no máximo cinco; vazio quando nacked
+  readonly state?: string               // um de WA_CALL_PARTICIPANT_STATE
+  readonly nacked?: boolean             // o nack in-band, que sobrepõe o state
+  readonly devicePids?: Readonly<Record<string, number>>
+}
+```
+
+Toda mudança chega em `voip_call_participants_changed` — das atualizações de roster do servidor, ou de um participante desligando:
+
+```ts
+client.on('voip_call_participants_changed', ({ call, diff }) => {
+  console.log('joined', diff.added.map((p) => p.jid))
+  console.log('left', diff.removed.map((r) => r.jid))
+  console.log('now on the call', call.groupComposition?.participants.length)
+})
+```
+
+O `diff` é um `WaGroupCompositionDiff`, e as listas dele não se sobrepõem:
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `added` | `WaCallGroupParticipant[]` | Recém-entrados na chamada. |
+| `removed` | `WaGroupRemoval[]` | `{ jid, participant, cause }`, com a causa sendo um de `WA_GROUP_REMOVAL_CAUSE`. |
+| `switched` | `WaGroupDeviceSwitch[]` | Um participante que trocou seu único device por outro. Os streams são recriados e o device antigo é terminado com `device_switch`; as chaves ficam. |
+| `devicesAdded` / `devicesRemoved` | `WaGroupDeviceChange[]` | O conjunto de devices de um participante mudou sem ele entrar nem sair. |
+| `rekeyRequired` | `boolean` | Se a mudança cruzou a fronteira de chave por participante. |
+| `rekeyReason` | `WaGroupRekeyReason \| null` | `participant_added`, `participant_removed`, ou `update_flag` quando o servidor pediu independente do que o diff mostrou. |
+
+<Note>
+  Um `<device pid>` que muda **não** é uma mudança de quem está na chamada, e nem um roster que chega velho — uma atualização cujo `transaction-id` está atrás do último aplicado é descartada em vez de incorporada.
+</Note>
+
+O `WA_GROUP_REMOVAL_CAUSE` distingue por que alguém saiu: `absent` (deixado de fora de um roster, que é sempre a chamada inteira), `departed` (`terminated` / `invalid`), `departed_unexpected` (`rejected`, `timedout`, `cancel_offer`) e `nacked`. O `WA_CALL_PARTICIPANT_STATE` carrega os states crus do roster — `connected`, `outgoing`, `receipt`, `rejected`, `terminated`, `timedout`, `creating`, `invisible`, `visible`, `cancel_offer`, `invited`, `invalid`.
+
+## Sair versus encerrar {#leaving-versus-ending}
+
+```ts
+await client.voip.leaveCall(callId)  // sai; a chamada segue para quem ficar
+await client.voip.endCall(callId)    // numa chamada em grupo, exatamente o mesmo
+```
+
+**Nenhum membro consegue encerrar uma chamada em grupo para todos**, inclusive quem criou. Os dois métodos enviam um terminate à própria chamada, o que tira este lado dela; a chamada acaba para todos quando o último membro sai, e o servidor então envia `group_call_ended`. De qualquer forma a chamada local terminou e o `voip_call_ended` dispara.
+
+- O `leaveCall` **lança numa chamada 1:1**.
+- Uma chamada que perde o caminho de mídia sai, em vez de encerrá-la para os outros.
+- Deste lado, **o terminate de um participante tira só aquele participante** de uma chamada estabelecida. Só o `group_call_ended`, ou o servidor tirando este lado, encerra.
+- Quando o último outro membro sai, o servidor encerra a chamada numa fração de segundo — não existe um estado em que este lado espera sozinho.
+
+## Permanecendo na chamada {#staying-on-the-call}
+
+Todo membro conectado, este lado incluído, envia à chamada um **heartbeat a cada 10 segundos** enquanto estiver nela (o `heartbeat_interval_s` do `<voip_settings>` do servidor sobrepõe o padrão).
+
+Os membros também observam a mídia uns dos outros. Quando nenhuma mídia de um membro chega a este lado por cerca de **20 segundos** enquanto a dos outros chega, este lado o reporta ao servidor como invisível (`peer_state`) — os clients oficiais fazem o mesmo depois de cerca de 30. O servidor então tira aquele membro da chamada.
+
+<Note>
+  Quando esse membro é **este lado**, a chamada segue sem ele: o `voip_call_ended` dispara com `EndCallReason.Invisible`, nada é enviado, e a chamada pode ser reentrada com `joinCall`.
+</Note>
+
+## Tocando, re-tocando e entrando {#ringing-re-ringing-and-joining}
+
+Uma chamada em grupo que este lado **recusou, deixou tocar até o fim, saiu, ou de que foi tirado como invisível** pode ser entrada enquanto ela segue, sob o mesmo call id.
+
+```ts
+import { EndCallReason } from '@zapo-js/voip'
+
+client.on('voip_call_ended', async (call) => {
+  if (call.isGroupCall && call.stateData.endReason === EndCallReason.Timeout) {
+    await client.voip.joinCall(call.callId) // perdeu: entre de qualquer forma
+  }
+})
+```
+
+O `joinCall` envia um accept à própria chamada, como o *join* do client oficial faz, e a chamada então passa por `voip_call_state` como uma aceita: o servidor responde com o relay e pede a este lado para chavear a chamada.
+
+Ele lança quando nenhuma chamada dessas é conhecida aqui, quando este lado já está nela, ou no limite de `maxConcurrentCalls`. Ele só conhece chamadas **cuja oferta chegou a este lado**, e esquece uma quando o servidor envia `group_call_ended`, quando ela é entrada, ou quando um novo toque dela chega.
+
+<Warning>
+  Um membro que nunca recebeu a oferta **não consegue entrar daqui**. Sem a oferta, nada além de um `group_update` diria que a chamada existe.
+</Warning>
+
+Dois encerramentos conduzidos pelo servidor a esperar enquanto toca:
+
+| O que aconteceu | Como aparece |
+| --- | --- |
+| Este lado deixou a chamada tocar sem atender (~45s) | `voip_call_ended` com `EndCallReason.Timeout`; nada é enviado, a chamada segue para os outros. |
+| Um participante toca para este lado de novo | Um **novo** `voip_call_incoming` para o mesmo call id, sem relay até o servidor enviar um. |
+
+## Recursos em chamada {#in-call-features}
+
+Mute, levantar a mão, reações, vídeo e screen share todos funcionam. Os nossos anúncios vão para a própria chamada, e os remotos nomeiam quem os enviou.
+
+```ts
+client.on('voip_call_peer_mute', ({ participantJid, muted }) => {
+  console.log(participantJid, muted ? 'muted' : 'unmuted')
+})
+
+client.on('voip_call_inbound_video', ({ participantJid, frame }) => {
+  render(participantJid, frame) // um stream por remetente
+})
+```
+
+<Warning>
+  **Os campos de estado de 1:1 ficam `undefined` numa chamada em grupo.** `stateData.peerAudioMuted`, `peerVideoState` e `peerScreenShare` descrevem *o* peer, e uma chamada em grupo não tem um. Leia o `call.participantMedia` no lugar — um `Map` indexado por JID de device de `WaCallParticipantMedia`: `{ deviceJid, senderId?, audioMuted?, video?, screenShare?, receiving? }`. Ele é preenchido em chamadas 1:1 também, então código escrito contra ele serve para os dois casos.
+</Warning>
+
+### Mute {#mute}
+
+```ts
+await client.voip.requestParticipantMute(callId, participantJid)
+```
+
+Um **pedido**, não uma ação: ele vai para o device daquele participante, o alvo decide, e um `voip_call_peer_mute` vem depois se ele obedecer. Lança em um `callId` desconhecido, numa chamada 1:1, ou num envio que falha.
+
+Um pedido direcionado a este lado chega em `voip_call_mute_requested` e **nunca é aplicado** — obedeça com `setMute(callId, true)` se quiser:
+
+```ts
+client.on('voip_call_mute_requested', ({ call, participantJid, requestState }) => {
+  // requestState é cru; WA_MUTE_REQUEST_STATE.Mute é '1'
+  client.voip.setMute(call.callId, true)
+})
+```
+
+<Note>
+  O WhatsApp Web se recusa a pedir que um celular mute, então uma conta mobile raramente recebe um.
+</Note>
+
+### Vídeo {#video}
+
+Toda câmera que está ligada chega a este lado **sem subscription** — um stream por remetente, atribuído por `participantJid`.
+
+```ts
+await client.voip.setVideoEnabled(callId, true)   // nossa câmera ligada
+client.voip.feedLiveVideo(callId, accessUnit, timestampUs)
+await client.voip.setVideoEnabled(callId, false)  // e desligada
+```
+
+O `setVideoEnabled` lança numa chamada 1:1, que liga o vídeo pelo [`requestVideoUpgrade`](/pt-br/guides/voip#audio-to-video-mid-call).
+
+Numa chamada em grupo que é de áudio, o `requestVideoUpgrade` pede **ao servidor** que transforme a chamada inteira numa chamada de vídeo. Todo membro então vê `voip_call_video_upgraded`, e nada é respondido: quem pediu fica com a câmera ligada quando o servidor confirmar, e toda outra câmera fica desligada até o dono chamar `setVideoEnabled`.
+
+```ts
+client.on('voip_call_video_upgraded', ({ call, participantJid }) => {
+  // participantJid é null quando o servidor não nomeou quem
+  console.log('now a video call', call.mediaType)
+})
+```
+
+<ParamField path="setVideoSubscriptions(callId, subscriptions)" type="void">
+  Escolhe de quem a chamada pede vídeo ao relay, e em qual qualidade — um array de `CallVideoSubscription` (`{ participantJid, quality? }`, com a qualidade sendo um de `WA_VIDEO_QUALITY`: `Default`, `Low`, `Medium`, `High`, `Hd`). `null` volta ao padrão, todo participante com a câmera ligada.
+
+  **Ainda não é enviado ao relay**: o vídeo chega sem isso, e um host de mídia que não consegue carregar ignora. Lança em um `callId` desconhecido.
+</ParamField>
+
+### Screen share {#screen-share}
+
+O `setScreenShare` funciona e é enviado à chamada. Um início ou fim de share carrega `screen_share_id`, contado por chamada a partir de 1, como os clients oficiais enviam.
+
+<Warning>
+  Os clients **desktop** do WhatsApp se recusam a mostrar um share numa chamada em grupo. Os mobile aceitam, o que ainda não foi confirmado contra uma chamada ao vivo.
+</Warning>
+
+### Mídia dos participantes {#participant-media}
+
+O `voip_call_participant_media` reporta quando a mídia de um participante começa ou para de chegar a este lado — julgado **localmente a partir dos pacotes recebidos**, não de algo que o peer anunciou, e disparado por transição:
+
+```ts
+client.on('voip_call_participant_media', ({ participantJid, receiving }) => {
+  console.log(participantJid, receiving ? 'media flowing' : 'gone quiet')
+})
+```
+
+Com a opção `participantAudio` do plugin, o `voip_call_participant_audio` adicionalmente carrega **o áudio decodificado de cada participante separado, antes da mixagem** que o `voip_call_inbound_audio` carrega:
+
+```ts
+plugins: [voipPlugin({ participantAudio: true })]
+```
+
+Ele é desligado por padrão porque cada frame é copiado para isso, e é **só com mídia local**.
+
+### Reações {#reactions}
+
+Recebidas por remetente sem configuração nenhuma; o `participantJid` é definido quando o host de mídia consegue atribuí-las. Limpar uma reação não é reportado.
+
+## Chaves e relays {#keys-and-relays}
+
+Uma oferta de grupo **não carrega chave**. A chamada é chaveada pelo `enc_rekey` que um participante envia quando este lado entra, respondido com um receipt e retido quando chega antes da própria oferta. Quando o servidor faz deste lado o rekey master, ele cunha a chave e a envia a todo device conectado.
+
+O device de cada participante é decriptado com a chave dele. O plano de mídia carrega uma chave por device remoto e declara os streams deste lado por layer. O `groupSenderId(callId, deviceJid)` calcula o id opaco de um remetente — o SSRC de áudio principal dele em hex, estável durante a chamada — que é como o host de mídia nomeia remetentes.
+
+Quando o servidor **move a chamada para outro relay** no meio dela, a mídia vai junto, e é rediscada quando o servidor re-credencia o relay em que ela está: por UDP cru na porta anunciada quando o novo relay não carrega credencial de ICE, do jeito comum quando carrega.
+
+## Sem suporte {#not-supported}
+
+- Convidar ou remover alguém **no meio da chamada**.
+- Chamadas em grupo no **host de mídia de browser** (veja o aviso no topo).
+
+## Veja também {#see-also}
+
+<CardGroup cols={2}>
+  <Card title="Chamadas (VoIP)" icon="phone" href="/pt-br/guides/voip" arrow>
+    A superfície 1:1 em que toda chamada em grupo se apoia, e a referência completa de eventos e enums.
+  </Card>
+  <Card title="Mídia em outro host" icon="globe" href="/pt-br/guides/voip-media" arrow>
+    Rodar a mídia da chamada em outro lugar, e as features que um host precisa declarar para carregar uma chamada em grupo.
+  </Card>
+</CardGroup>
