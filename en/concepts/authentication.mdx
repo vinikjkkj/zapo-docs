@@ -79,6 +79,22 @@ await client.connect()
   `requestPairingCode(phoneNumber, shouldShowPushNotification?, customCode?)` requires an active connection and returns the code as a string. On the phone, open **Linked devices → Link with phone number instead**.
 </Note>
 
+<Note>
+  **A pending code survives a reconnect.** The server delivers `primary_hello` only to the connection that sent the `companion_hello`, so a dropped socket used to kill a code silently — the user typed it and pairing timed out with nothing said. Since **1.11.0** the pending code is re-registered on the new connection with the same digits, the way WhatsApp Web refreshes one, and the QR just emitted for that connection stays valid.
+
+  If that re-registration fails, the code is dropped and `auth_pairing_required` fires again with **`forceManual: true`** — render a fresh code rather than waiting.
+</Note>
+
+### After the phone accepts {#after-the-phone-accepts}
+
+Pairing does not end when the phone confirms. The server ends the unregistered connection with a `stream:error` 515, and only then does the client reconnect and log in as a registered device.
+
+zapo waits for that signal — the first of a 515, the server closing the socket, or a 15s fallback — and restarts exactly once.
+
+<Warning>
+  Before **1.11.0** the client closed the socket about 3 ms after answering `pair-success`, while the signing frame was still only queued in the WebSocket. A companion paired through that early close was listed **without a key-index** and removed by the primary shortly after. If you saw devices silently unlinking right after a successful pair, this was it.
+</Warning>
+
 ## Passkey-gated linking (Shortcake)
 
 For some accounts, WhatsApp's server refuses the plain QR / pairing-code flow and demands a **WebAuthn passkey assertion** from the account owner's authenticator before a companion can link. The wire protocol behind this is documented in depth in [WhatsApp passkey & Shortcake linking](/en/reverse-engineering/passkey-linking); this section covers how to opt in on the client side.

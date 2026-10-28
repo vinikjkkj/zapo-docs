@@ -189,6 +189,10 @@ await client.message.send(jid, {
 
 É o mesmo formato de wire dos cards PIX / review-and-pay em [Pagamentos](#payments-pix--review-and-pay) abaixo — só o `name` do botão e o `buttonParamsJson` mudam.
 
+<Note>
+  **Formulários multi-etapa no Android.** O zapo nomeia o flow no nó companheiro `<biz>` a partir do seu primeiro botão: uma mensagem cujo primeiro botão é `form_message` envia `<native_flow name="form_message"/>` em vez do genérico `"mixed"`. O client Android lê o nome desse nó e só trata `form_message` como formulário, então antes da **1.11.0** formulários multi-etapa apareciam como não suportados lá. `payment_info` e `review_and_pay` já eram nomeados assim.
+</Note>
+
 ## Produto {#product}
 
 Envie um produto do catálogo. O `productImage` interno precisa estar pré-uploadado:

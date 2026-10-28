@@ -77,7 +77,8 @@ new WaClient({
   Controla o processamento dos chunks de `historySyncNotification` — tanto o bootstrap inicial que o WhatsApp envia após o pareamento quanto o backfill sob demanda disparado por [`message.requestHistorySync`](/pt-br/guides/receiving-messages#requesting-older-history).
 
   - `enabled?: boolean` — processa os chunks de histórico recebidos. **Padrão `true`.** Defina como `false` para descartá-los silenciosamente (útil quando você não persiste mailbox/threads/contacts e o download da conversa só gastaria banda). A lib ainda envia ack do chunk para o servidor parar de re-enviar, igual ao wa-web.
-  - `requireFullSync?: boolean` — solicita o arquivo completo em vez de apenas os chats recentes.
+  - `requireFullSync?: boolean` — solicita o arquivo completo em vez de apenas os chats recentes. **Tem precedência sobre o `requireFullSync` de nível superior**, e não tem efeito numa sessão já pareada: ele viaja no `DeviceProps` do pareamento. Antes da **1.11.0** este aqui nunca era lido — só a opção de nível superior chegava ao `DeviceProps` — então quem o definia aqui nunca pedia de fato o download completo ao primário.
+  - `sink?: WaHistorySyncSink` — streama cada registro decodificado para o seu próprio callback. Veja [Streamando histórico para um sink](#streaming-history-to-a-sink).
   - `groupBundles?: boolean` — opta por baixar o bundle de histórico de grupo que um membro pode compartilhar depois que alguém entra em um grupo; emite [`group_history_bundle`](/pt-br/concepts/events#state-history--mex). **Off por padrão** — um bundle é mídia que um terceiro empurra para esta conta sem solicitação, então o fetch é opt-in. Bundles endereçados a outros membros são descartados de qualquer forma. Veja [Grupos → compartilhando histórico do grupo](/pt-br/guides/groups#sharing-group-history).
 
   Os chunks são descriptografados, inflados e parseados **incrementalmente** — uma mensagem por vez fica viva enquanto o stream proto desce em `conversations`, então um chat grande que materializaria em centenas de MB de objetos JS fica plano. Bundles de histórico de grupo passam pelo mesmo tratamento. Não tem knob voltado ao consumidor; o pico de memória durante o ingest simplesmente deixou de acompanhar o tamanho do chunk.
@@ -91,7 +92,60 @@ new WaClient({
 }, logger)
 ```
 
-O histórico chega como eventos [`history_sync_chunk`](/pt-br/concepts/events).
+O histórico chega como eventos [`history_sync_chunk`](/pt-br/concepts/events), que reportam contagens. Para ver os **registros em si**, use um sink.
+
+### Streamando histórico para um sink {#streaming-history-to-a-sink}
+
+O `history.sink` te entrega cada campo do histórico decodificado **conforme ele streama**, uma chamada por registro, antes de qualquer coisa ser escrita numa store. Funciona com todos os domínios de store desligados, o que o torna o caminho para despejar histórico num sistema seu — um índice de busca, um warehouse, outro banco — sem pagar pela mailbox do zapo antes.
+
+```ts
+new WaClient({
+  store,
+  sessionId: 'default',
+  history: {
+    sink: {
+      async item(item, chunk) {
+        if (item.kind === 'conversations.messages') {
+          await myIndex.add(item.conversationId, item.value)
+        }
+      },
+      async commit(chunk) {
+        await myIndex.flush(chunk.id)
+      },
+      async abort(chunk, error) {
+        await myIndex.discard(chunk.id)
+      }
+    }
+  }
+}, logger)
+```
+
+| Método | Quando | Notas |
+| --- | --- | --- |
+| `item(item, chunk)` | Por registro, na ordem do fio | **Obrigatório.** Uma promise retornada pausa o stream até ela resolver. |
+| `commit(chunk)` | Quando o chunk foi verificado e aplicado | Opcional. O receipt sai **depois** que ela resolve, então o primário espera por você. Recebe o `WaHistorySyncChunkEvent` completo com as contagens. |
+| `abort(chunk, error)` | O chunk falhou depois de itens possivelmente terem sido entregues | Opcional. |
+
+O `item.kind` é o campo do proto `HistorySync` de onde o registro veio, com uma chamada por elemento em campos repetidos. Dois kinds merecem atenção:
+
+- **`'conversations.messages'`** — uma mensagem, carregando `conversationId` ao lado do `HistorySyncMsg`. Inclui stubs e registros sem conteúdo, que as stores pulam.
+- **`'conversations'`** — os metadados da conversa, **sem** `messages`. As mensagens da conversa vêm antes dos metadados no fio, então elas streamam primeiro e a conversa chega no fechamento dela.
+
+O `chunk` é um `WaHistorySyncChunkRef` — `id` (a protocol message que carregou a notificação) e `syncType` (o `HistorySyncType` numérico).
+
+<Warning>
+  **Itens podem repetir, então deduplique por `key.id`.** Eles são entregues *antes* do MAC do chunk ser verificado, e um chunk abortado é reenviado pelo primário — o que significa que os mesmos registros chegam de novo. O `commit` / `abort` são indexados pelo id da mensagem carregadora porque os chunks rodam concorrentemente.
+</Warning>
+
+<Warning>
+  **Um sink lento pausa o download.** O timeout de mídia termina nos headers, não no corpo, então um sink que bloqueia não faz a transferência dar timeout — mas segura o chunk, e o receipt junto. Mantenha o `item` barato e faça batch das suas próprias escritas.
+</Warning>
+
+<Note>
+  Com um sink, o chunk `INITIAL_STATUS_V3` é baixado e entregue **só ao sink** — ele nunca emite `history_sync_chunk`. Todo o resto continua emitindo o evento como antes, então um sink é aditivo.
+
+  O `enabled: false` pula o sink também: nada é baixado.
+</Note>
 
 <Note>
   **Autores de mensagem no histórico sincronizado.** As linhas de histórico persistidas resolvem o autor do mesmo jeito que o `buildMsgKey` do WhatsApp Web — o `participant` de nível superior do `WebMessageInfo` vence o `key.participant`, com fallback para a própria conta quando a mensagem foi enviada por ela. Tanto `senderJid` quanto `participantJid` são gravados, batendo com o que o caminho ao vivo persiste.
@@ -377,6 +431,10 @@ As outras pernas não mudam: continuam passando por `fetch` e continuam aceitand
 ## Logging {#logging}
 
 O `WaClient` aceita um `Logger` como segundo argumento do construtor. Se você omitir, um `ConsoleLogger('info')` padrão é usado. Níveis, do mais baixo ao mais alto: `trace`, `debug`, `info`, `warn`, `error`.
+
+<Note>
+  Um **noop logger** reporta `error` como nível, não `trace`. O nível é lido para pular trabalho que só existe para ser logado — o node transport formata cada stanza como XML em `trace` — então um noop logger alegando `trace` fazia esse trabalho rodar à toa. Se você escrever o seu próprio logger silencioso, reporte um nível alto em vez de um baixo.
+</Note>
 
 Duas implementações vêm com o pacote.
 

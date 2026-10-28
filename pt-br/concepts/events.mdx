@@ -59,7 +59,7 @@ Veja [Reconexão](/pt-br/guides/reconnection) para o padrão de tratamento.
 
 | Evento | Payload | Descrição |
 | --- | --- | --- |
-| `message` | `WaIncomingMessageEvent` | Uma stanza `<message>` inbound foi descriptografada. |
+| `message` | `WaIncomingMessageEvent` | Uma stanza `<message>` inbound foi descriptografada. Um payload que carrega **apenas** uma distribuição de sender key e o `messageContextInfo` dela é encanamento de protocolo, não uma mensagem, e não é emitido (desde a 1.11.0). |
 | `message_send` | `WaOutgoingMessageEvent` | Uma mensagem outbound que este client está enviando, com o `Proto.IMessage` descriptografado — a contrapartida simétrica do `message`. Permite que plugins / loggers observem forwards, reações, polls, mídia que a stanza de wire esconde. |
 | `message_addon` | `WaIncomingAddonEvent` | Reações, votos em enquetes, comentários (addons descriptografados). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Mensagens de protocolo (edições, revogações, …). |

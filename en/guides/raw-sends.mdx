@@ -189,6 +189,10 @@ await client.message.send(jid, {
 
 This is the same wire shape as the PIX / review-and-pay cards in [Payments](#payments-pix--review-and-pay) below — only the button `name` and `buttonParamsJson` differ.
 
+<Note>
+  **Multi-step forms on Android.** zapo names the flow in the `<biz>` companion node from your first button: a message whose first button is `form_message` sends `<native_flow name="form_message"/>` instead of the generic `"mixed"`. The Android client reads the name from that node and only treats `form_message` as a form, so before **1.11.0** multi-step forms rendered as unsupported there. `payment_info` and `review_and_pay` were already named this way.
+</Note>
+
 ## Product
 
 Send a catalog product. The inner `productImage` must already be uploaded:

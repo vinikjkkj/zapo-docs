@@ -91,13 +91,12 @@ const results = await client.profile.getLidsByPhoneNumbers([
 ])
 
 for (const r of results) {
-  // SignalLidSyncResult: { queriedJid, phoneJid, lidJid, exists, invalid }
-  console.log(r.queriedJid, '→', r.phoneJid, '→', r.lidJid,
-    '(exists:', r.exists, 'invalid:', r.invalid, ')')
+  // SignalLidSyncResult: { queriedJid, phoneJid, lidJid, exists, invalid, status, error? }
+  console.log(r.queriedJid, '→', r.lidJid, `(${r.status})`)
 }
 ```
 
-Each `SignalLidSyncResult` carries five fields:
+Each `SignalLidSyncResult` carries:
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -106,6 +105,31 @@ Each `SignalLidSyncResult` carries five fields:
 | `lidJid` | `string \| null` | The LID for this account. `null` when the server has no LID mapping. |
 | `exists` | `boolean` | The number is a well-formed WhatsApp account. |
 | `invalid` | `boolean` | The server rejected the number as malformed — distinct from a well-formed number that simply has no WhatsApp account (`exists: false`, `invalid: false`). |
+| `status` | `SignalLidSyncStatus` | **Why** `exists` is what it is. See below. |
+| `error` | `SignalLidSyncError?` | `{ code?, text?, backoffSeconds? }` — the server's reason, when it gave one. |
+
+### Telling "no account" from "no answer" {#telling-no-account-from-no-answer}
+
+Before **1.11.0** a number with no WhatsApp account, a number the usync did not answer for, a contact error and a usync protocol error all came back identically as `exists: false, invalid: false` — so a caller could not tell a real negative from a failed lookup, and retrying was a guess. `status` separates them:
+
+| `status` | Meaning | Retry? |
+| --- | --- | --- |
+| `'in'` | The number has a WhatsApp account. `lidJid` is set when the server mapped one. | — |
+| `'out'` | The number has **no** WhatsApp account. A real, final answer. | No. |
+| `'invalid'` | The server rejected the number as malformed. | No — fix the input. |
+| `'error'` | The server reported an error for this entry. | Yes, honoring `error.backoffSeconds`. |
+| `'unanswered'` | The server gave **no verdict** for this entry. | Yes. |
+
+```ts
+const retryable = results.filter((r) => r.status === 'error' || r.status === 'unanswered')
+const notOnWhatsApp = results.filter((r) => r.status === 'out')
+```
+
+<Note>
+  A usync **protocol** error is attached to every entry that got no verdict, so a whole failed query surfaces as `'unanswered'` entries carrying the same `error` rather than as silent negatives.
+
+  A `<user>` node with no `jid` — how the server reports a rejected number — is no longer dropped: its contact echo maps it back to the number you queried and the verdict comes from the contact type, as WhatsApp Web does. `exists` and `invalid` keep the meanings they always had.
+</Note>
 
 ## LID changes
 
@@ -137,5 +161,25 @@ Several app-state schemas track the relationship and sync it across your devices
 Signal sessions are keyed by the canonical JID (PN or LID) plus device id. `zapo` canonicalizes hosted server variants (`hosted.lid` → `lid`, hosted → `s.whatsapp.net`) before lookups, and maintains sessions for both addressing forms. If you ever need to force a fresh session sync for a peer, use:
 
 ```ts
+// Ensure a session exists (does nothing when one already does)
 await client.message.syncSignalSession(jid)
+
+// Rebuild a stale session, keeping the identity
+await client.message.syncSignalSession(jid, { force: true })
+
+// Rebuild it as an identity change: fetches with reason="identity"
+// and reissues the trusted-contact token
+await client.message.syncSignalSession(jid, { reasonIdentity: true })
 ```
+
+| Option | Effect |
+| --- | --- |
+| *(none)* | Only **ensures** a session exists. An existing session is left alone. |
+| `force` | Drops the session, keeping the identity, and fetches a fresh one. |
+| `reasonIdentity` | Drops the session and fetches with `reason="identity"`, reissuing the trusted-contact token. Wins over `force`. |
+
+<Warning>
+  With no options this call only ensures a session, so before **1.11.0** a **stale session was never replaced** and `reason="identity"` never reached the wire. If you were calling it to recover from a broken session, pass `{ force: true }`.
+
+  The old boolean form (`syncSignalSession(jid, true)`) maps to `reasonIdentity` and is **deprecated**.
+</Warning>

@@ -120,6 +120,36 @@ await client.message.send(jid, content, { forward: { score: 4 } })
   To send a single message with **no** expiration into a group with disappearing-mode on, prefer `disableGroupEphemeralAutoInject: true` over `expirationSeconds: 0` — the latter still writes `expiration=0` into the outgoing `contextInfo`. Same story for `disableDirectEphemeralAutoInject` in 1:1 chats.
 </Tip>
 
+## Message-level context (`messageContextInfo`)
+
+`contextInfo` above lands on the **content** submessage — that is where a quote, mentions and the expiration go. A few things live one level up, on the `Message` itself, and since **1.11.0** every typed content takes an optional `messageContextInfo` for them:
+
+```ts
+await client.message.send(jid, {
+  type: 'image',
+  media: './photo-2.jpg',
+  messageContextInfo: {
+    messageAssociation: {
+      associationType: proto.MessageAssociation.AssociationType.MEDIA_ALBUM,
+      parentMessageKey: { id: albumParentId, remoteJid: jid, fromMe: true }
+    }
+  }
+})
+```
+
+The motivating case is **albums**: linking a child to its parent needs `messageAssociation`, which previously meant uploading the media and building the whole proto by hand.
+
+<Warning>
+  `messageAssociation.parentMessageKey.remoteJid` must be the **resolved chat JID** — the LID in a LID chat, not the PN. A mismatch there silently fails to group the album.
+</Warning>
+
+Two rules decide what wins:
+
+- **Fields the builder already sets win over yours.** A pin's add-on duration, for instance, is stamped by the builder and your value is ignored.
+- **The send pipeline still merges its own metadata in** — the message secret and device-list metadata are added on top of what you pass.
+
+Raw `Proto.IMessage` content is passed through untouched, so a hand-built proto keeps full control.
+
 ## Sending to a username
 
 A username handle (`@alice`) is not an addressable JID on its own. Resolve it to the account's LID with `client.profile.resolveUsername` first, then send to that JID — the send API takes the JID exactly like any other 1:1 recipient.

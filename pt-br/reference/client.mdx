@@ -153,7 +153,7 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Bufferiza mídia descriptografada na memória — apenas mídia pequena; limite com `options.maxBytes`. |
 | `requestMediaReupload` | `(event\|request, options?) => Promise<WaMediaRetryResult>` | Pede pro device primário do remetente re-servir mídia cujo blob no CDN retornou 404/410 — tipicamente mídia velha vinda de history sync. Encripta um recibo `server-error` com a media key da mensagem e espera a notificação `mediaretry` que o primário responde; no `success`, só o `directPath` muda (media key, hashes e length continuam válidos). Mensagens de newsletter e sem mídia baixável são rejeitadas. **Não** lança em `not_found` / `general_error` — cheque `result.result`. Veja [Mídia → pedindo um reupload](/pt-br/guides/media#requesting-a-reupload). |
 | `tryDecryptAddon` | `(event) => Promise<void>` | Descriptografa um addon (voto em enquete, reação, …) e emite `message_addon`. Chamado automaticamente por padrão; opt-out com `addons: { autoDecrypt: false }` para chamar você mesmo. |
-| `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` | Força a atualização da(s) sessão(ões) Signal de um JID; `reasonIdentity` também reemite o token de contato confiável. |
+| `syncSignalSession` | `(jid, options?) => Promise<void>` | Sincroniza a(s) sessão(ões) Signal de um JID. Sem opções apenas **garante** que existe uma; `{ force: true }` reconstrói mantendo a identidade, `{ reasonIdentity: true }` reconstrói como mudança de identidade e reemite o token de contato confiável. O segundo argumento booleano está deprecado — veja [Sessões Signal](/pt-br/concepts/identities#signal-sessions). |
 | `getReachoutTimelock` | `() => Promise<WaReachoutTimelock>` | Timelock do lado do servidor que limita o cold outreach a não-contatos. |
 | `getNewChatMessageCapping` | `(type?) => Promise<WaMessageCappingInfo>` | Cota de mensagens por ciclo aplicada a threads de chats novos (cota, usado, ciclo, status). |
 
@@ -333,7 +333,7 @@ O `WaIgnoreKeyContext` carrega os mesmos campos contra os quais o descriptor cas
 | `checkUsernameAvailability` | `(username) => Promise<WaUsernameAvailabilityResult>` | Disponibilidade + sugestões. |
 | `setUsernameKey` | `(pin) => Promise<boolean>` | Define o PIN de recuperação do username. Lança antes de qualquer round-trip quando `pin` não tem exatamente 4 dígitos. |
 | `getAboutStatus` | `(jid) => Promise<string \| null>` | Texto "Sobre" via MEX. |
-| `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/pt-br/concepts/identities#mapping-a-phone-number-to-its-lid) para números de telefone. |
+| `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/pt-br/concepts/identities#mapping-a-phone-number-to-its-lid) para números de telefone. Cada resultado carrega um `status` (`'in'`, `'out'`, `'invalid'`, `'error'`, `'unanswered'`) que separa um negativo real de uma consulta que falhou. |
 
 ---
 

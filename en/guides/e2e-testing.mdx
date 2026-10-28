@@ -57,6 +57,10 @@ await server.stop()
 
 `testHooks.noiseRootCa` trusts the fake server's certificate **without** bypassing verification — the full cert-chain check still runs.
 
+<Note>
+  Since **`@zapo-js/fake-server` 1.3.1** the server sends `stream:error` 515 after a companion answers `pair-success`, exactly as the real one does, so a client under test restarts on the server's signal rather than on a timeout. Pairing tests written against an older fake server may have been passing for the wrong reason — see [After the phone accepts](/en/concepts/authentication#after-the-phone-accepts).
+</Note>
+
 ### Pinning across processes
 
 `listen()` mints a fresh random root CA per start and exposes the public half on `server.noiseRootCa` — perfect for the in-process test above, where the client is built after the server is listening. A client in a **separate process** has to pin the trust anchor before it dials, and at that point the server is not yet listening: there's nothing to read back.

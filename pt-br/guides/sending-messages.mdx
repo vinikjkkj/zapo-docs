@@ -120,6 +120,36 @@ await client.message.send(jid, content, { forward: { score: 4 } })
   Para enviar uma única mensagem **sem** expiração para um grupo com disappearing-mode ligado, prefira `disableGroupEphemeralAutoInject: true` em vez de `expirationSeconds: 0` — o último ainda grava `expiration=0` no `contextInfo` de saída. Mesma história para `disableDirectEphemeralAutoInject` em chats 1:1.
 </Tip>
 
+## Contexto de nível de mensagem (`messageContextInfo`) {#message-level-context-messagecontextinfo}
+
+O `contextInfo` acima cai na submensagem de **conteúdo** — é lá que ficam a citação, as menções e a expiração. Algumas coisas vivem um nível acima, no próprio `Message`, e desde a **1.11.0** todo conteúdo tipado aceita um `messageContextInfo` opcional para elas:
+
+```ts
+await client.message.send(jid, {
+  type: 'image',
+  media: './photo-2.jpg',
+  messageContextInfo: {
+    messageAssociation: {
+      associationType: proto.MessageAssociation.AssociationType.MEDIA_ALBUM,
+      parentMessageKey: { id: albumParentId, remoteJid: jid, fromMe: true }
+    }
+  }
+})
+```
+
+O caso motivador são os **álbuns**: ligar um filho ao pai precisa do `messageAssociation`, o que antes significava subir a mídia e montar o proto inteiro na mão.
+
+<Warning>
+  O `messageAssociation.parentMessageKey.remoteJid` precisa ser o **JID de chat resolvido** — o LID num chat LID, não o PN. Uma divergência ali falha silenciosamente em agrupar o álbum.
+</Warning>
+
+Duas regras decidem o que vence:
+
+- **Campos que o builder já define vencem os seus.** A duração de add-on de um pin, por exemplo, é carimbada pelo builder e o seu valor é ignorado.
+- **O pipeline de envio ainda mescla os metadados dele** — o message secret e os metadados de device list são adicionados por cima do que você passa.
+
+Conteúdo `Proto.IMessage` bruto passa intocado, então um proto montado à mão mantém controle total.
+
 ## Enviando pra um username {#sending-to-a-username}
 
 Um handle de username (`@alice`) não é um JID endereçável sozinho. Resolva pro LID da conta com `client.profile.resolveUsername` primeiro, e depois envie pra esse JID — a API de envio recebe o JID exatamente como qualquer outro destinatário 1:1.

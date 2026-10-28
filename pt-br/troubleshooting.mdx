@@ -10,6 +10,22 @@ icon: "circle-question"
   Quase certamente você está usando o **store em memória**, que perde as credenciais quando o processo encerra. Use um [backend](/pt-br/reference/stores) durável (SQLite, Postgres, …) para o domínio `auth` e mantenha um **`sessionId` estável** entre execuções — trocá-lo órfã as credenciais anteriores. Veja [Stores](/pt-br/concepts/stores).
 </Accordion>
 
+<Accordion title='Logs dizem "received socket payload before noise session init"' icon="plug">
+  Corrigido na **1.11.0** — atualize. Um evento `close` atrasado de um socket cujo `close()` já havia dado timeout chegava aos handlers vivos e derrubava a **nova** sessão noise, deixando o novo socket aberto sem sessão e sem reconexão, então todo payload posterior era descartado com essa mensagem. Eventos de socket e sessões noise agora ficam presos à conexão a que pertencem.
+</Accordion>
+
+<Accordion title="Um companion recém-pareado some de Aparelhos conectados" icon="link-slash">
+  Corrigido na **1.11.0** — atualize. O client fechava o socket cerca de 3 ms depois de responder o `pair-success`, enquanto o frame de assinatura ainda estava enfileirado, então o dispositivo era listado **sem key-index** e o primário o removia. O pareamento agora espera o `stream:error` 515 do servidor antes de reiniciar. Veja [Depois que o telefone aceita](/pt-br/concepts/authentication#after-the-phone-accepts).
+</Accordion>
+
+<Accordion title="Um código de pareamento para de funcionar após uma desconexão breve" icon="hashtag">
+  Corrigido na **1.11.0** — atualize. O `primary_hello` só chega à conexão que enviou o `companion_hello`, então uma reconexão matava o código em silêncio. O zapo agora re-registra um código pendente na nova conexão; se isso falhar, o `auth_pairing_required` dispara com `forceManual: true` para você renderizar um novo.
+</Accordion>
+
+<Accordion title="Mensagens de grupo somem quando a sender key chega" icon="users-slash">
+  Corrigido na **1.11.0** — atualize. Quando uma stanza carregava tanto um `pkmsg` com a sender key quanto um `skmsg` que falhava ao descriptografar, o `pkmsg` bem-sucedido suprimia o retry receipt, e a mensagem de grupo simplesmente se perdia. Um `skmsg` que falha agora dispara um retry receipt mesmo quando outro `<enc>` da mesma stanza descriptografou.
+</Accordion>
+
 <Accordion title="O cliente não reconecta após uma queda" icon="arrows-rotate">
   É proposital — o `zapo` **não** reconecta sozinho. Escute o evento `connection` com `status: 'close'` e chame `connect()` de novo (pule quando `isLogout` for true). Veja o [padrão de reconexão](/pt-br/guides/reconnection).
 </Accordion>

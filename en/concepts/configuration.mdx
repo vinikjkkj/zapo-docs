@@ -77,7 +77,8 @@ new WaClient({
   Controls processing of `historySyncNotification` chunks — both the initial bootstrap WhatsApp pushes after pairing and the on-demand backfill triggered by [`message.requestHistorySync`](/en/guides/receiving-messages#requesting-older-history).
 
   - `enabled?: boolean` — process incoming history chunks. **Default `true`.** Set to `false` to drop them silently (useful when you don't persist mailbox/threads/contacts and the conversation download would just burn bandwidth). The lib still acks the chunk so the server stops re-sending it, matching wa-web.
-  - `requireFullSync?: boolean` — request the full archive instead of just recent chats.
+  - `requireFullSync?: boolean` — request the full archive instead of just recent chats. **Takes precedence over the top-level `requireFullSync`**, and has no effect on an already-paired session: it travels in the pairing `DeviceProps`. Before **1.11.0** this one was never read — only the top-level option reached `DeviceProps` — so a caller setting it here never actually asked the primary for a full download.
+  - `sink?: WaHistorySyncSink` — stream every decoded record to your own callback. See [Streaming history to a sink](#streaming-history-to-a-sink).
   - `groupBundles?: boolean` — opt into downloading the group-history bundle a member may share after somebody joins a group; emits [`group_history_bundle`](/en/concepts/events#state-history--mex). **Off by default** — a bundle is media a third party pushes at this account unprompted, so fetching it is opt-in. Bundles addressed to other members are dropped either way. See [Groups → sharing group history](/en/guides/groups#sharing-group-history).
 
   Chunks are decrypted, inflated, and parsed **incrementally** — one message is alive at a time as the proto stream descends into `conversations`, so a large chat that would materialize into hundreds of MB of JS objects stays flat. Group history bundles get the same treatment. There is no consumer-facing knob; peak memory during ingest just stopped tracking chunk size.
@@ -91,7 +92,60 @@ new WaClient({
 }, logger)
 ```
 
-History arrives as [`history_sync_chunk`](/en/concepts/events) events.
+History arrives as [`history_sync_chunk`](/en/concepts/events) events, which report counts. To see the **records themselves**, use a sink.
+
+### Streaming history to a sink {#streaming-history-to-a-sink}
+
+`history.sink` hands you every field of the decoded history **as it streams**, one call per record, before anything is written to a store. It works with every store domain off, which makes it the way to pipe history into a system of your own — a search index, a warehouse, another database — without paying for zapo's mailbox first.
+
+```ts
+new WaClient({
+  store,
+  sessionId: 'default',
+  history: {
+    sink: {
+      async item(item, chunk) {
+        if (item.kind === 'conversations.messages') {
+          await myIndex.add(item.conversationId, item.value)
+        }
+      },
+      async commit(chunk) {
+        await myIndex.flush(chunk.id)
+      },
+      async abort(chunk, error) {
+        await myIndex.discard(chunk.id)
+      }
+    }
+  }
+}, logger)
+```
+
+| Method | When | Notes |
+| --- | --- | --- |
+| `item(item, chunk)` | Per record, in wire order | **Required.** A returned promise pauses the stream until it settles. |
+| `commit(chunk)` | Once the chunk verified and applied | Optional. The receipt goes out **after** it resolves, so the primary waits for you. Receives the full `WaHistorySyncChunkEvent` with its counts. |
+| `abort(chunk, error)` | The chunk failed after items may have been delivered | Optional. |
+
+`item.kind` is the `HistorySync` proto field the record came from, with one call per element for repeated fields. Two kinds deserve attention:
+
+- **`'conversations.messages'`** — a message, carrying `conversationId` alongside the `HistorySyncMsg`. It includes stubs and records with no content, which the stores skip.
+- **`'conversations'`** — the conversation metadata, **without** `messages`. Conversation messages precede their metadata on the wire, so the messages stream out first and the conversation arrives at its close.
+
+`chunk` is a `WaHistorySyncChunkRef` — `id` (the protocol message that carried the notification) and `syncType` (the numeric `HistorySyncType`).
+
+<Warning>
+  **Items can repeat, so dedupe by `key.id`.** They are delivered *before* the chunk MAC is verified, and an aborted chunk is resent by the primary — which means the same records arrive again. `commit` / `abort` are keyed by the carrier message id because chunks run concurrently.
+</Warning>
+
+<Warning>
+  **A slow sink pauses the download.** The media timeout ends at the headers, not at the body, so a sink that blocks does not time the transfer out — but it does hold the chunk, and the receipt with it. Keep `item` cheap and batch your own writes.
+</Warning>
+
+<Note>
+  With a sink, the `INITIAL_STATUS_V3` chunk is downloaded and delivered **to the sink alone** — it never emits `history_sync_chunk`. Everything else keeps emitting the event as before, so a sink is additive.
+
+  `enabled: false` skips the sink too: nothing is downloaded at all.
+</Note>
 
 <Note>
   **Message authors in synced history.** Stored history rows resolve their author the way WhatsApp Web's `buildMsgKey` does — the top-level `WebMessageInfo.participant` wins over `key.participant`, with a self-sent fallback to the account itself. Both `senderJid` and `participantJid` are written, matching what the live path persists.
@@ -377,6 +431,10 @@ The other legs are unaffected: they still go through `fetch` and still take an u
 ## Logging {#logging}
 
 `WaClient` accepts a `Logger` as the second constructor argument. Omit it and a default `ConsoleLogger('info')` is used. Levels, lowest to highest: `trace`, `debug`, `info`, `warn`, `error`.
+
+<Note>
+  A **noop logger** reports `error` as its level, not `trace`. The level is read to skip work that only exists to be logged — the node transport formats every stanza as XML at `trace` — so a noop logger claiming `trace` made that work run for nothing. If you write your own silent logger, report a high level rather than a low one.
+</Note>
 
 Two implementations ship with the package.
 

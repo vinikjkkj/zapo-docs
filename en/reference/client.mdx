@@ -153,7 +153,7 @@ client.ignoreKey((m) => {
 | `downloadBytes` | `(source, options?) => Promise<Uint8Array>` | Buffers decrypted media into memory — small media only; cap with `options.maxBytes`. |
 | `requestMediaReupload` | `(event\|request, options?) => Promise<WaMediaRetryResult>` | Asks the sender's primary device to re-serve media whose CDN blob returned 404/410 — typically old history-synced media. Encrypts a `server-error` receipt with the message's media key and awaits the `mediaretry` notification the primary answers with; on `success`, only `directPath` changes (media key, hashes, and length stay valid). Newsletter messages and messages without downloadable media are rejected. Does **not** throw on `not_found` / `general_error` — check `result.result`. See [Media → requesting a reupload](/en/guides/media#requesting-a-reupload). |
 | `tryDecryptAddon` | `(event) => Promise<void>` | Decrypts an addon (poll vote, reaction, …) and emits `message_addon`. Auto-called by default; opt out with `addons: { autoDecrypt: false }` to call it yourself. |
-| `syncSignalSession` | `(jid, reasonIdentity?) => Promise<void>` | Force-refreshes the Signal session(s) for a JID; `reasonIdentity` also reissues the trusted-contact token. |
+| `syncSignalSession` | `(jid, options?) => Promise<void>` | Syncs the Signal session(s) for a JID. With no options it only **ensures** one exists; `{ force: true }` rebuilds it keeping the identity, `{ reasonIdentity: true }` rebuilds it as an identity change and reissues the trusted-contact token. The boolean second argument is deprecated — see [Signal sessions](/en/concepts/identities#signal-sessions). |
 | `getReachoutTimelock` | `() => Promise<WaReachoutTimelock>` | Server-side timelock that throttles cold outreach to non-contacts. |
 | `getNewChatMessageCapping` | `(type?) => Promise<WaMessageCappingInfo>` | Per-cycle message quota applied to new-chat threads (quota, used, cycle, status). |
 
@@ -333,7 +333,7 @@ client.ignoreKey((m) => {
 | `checkUsernameAvailability` | `(username) => Promise<WaUsernameAvailabilityResult>` | Availability + suggestions. |
 | `setUsernameKey` | `(pin) => Promise<boolean>` | Set the username recovery PIN. Throws before any round-trip when `pin` is not exactly 4 digits. |
 | `getAboutStatus` | `(jid) => Promise<string \| null>` | "About" text via MEX. |
-| `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/en/concepts/identities#mapping-a-phone-number-to-its-lid) for phone numbers. |
+| `getLidsByPhoneNumbers` | `(phoneNumbers) => Promise<readonly SignalLidSyncResult[]>` | Resolve [LIDs](/en/concepts/identities#mapping-a-phone-number-to-its-lid) for phone numbers. Each result carries a `status` (`'in'`, `'out'`, `'invalid'`, `'error'`, `'unanswered'`) that separates a real negative from a failed lookup. |
 
 ---
 

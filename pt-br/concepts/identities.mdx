@@ -91,13 +91,12 @@ const results = await client.profile.getLidsByPhoneNumbers([
 ])
 
 for (const r of results) {
-  // SignalLidSyncResult: { queriedJid, phoneJid, lidJid, exists, invalid }
-  console.log(r.queriedJid, '→', r.phoneJid, '→', r.lidJid,
-    '(exists:', r.exists, 'invalid:', r.invalid, ')')
+  // SignalLidSyncResult: { queriedJid, phoneJid, lidJid, exists, invalid, status, error? }
+  console.log(r.queriedJid, '→', r.lidJid, `(${r.status})`)
 }
 ```
 
-Cada `SignalLidSyncResult` carrega cinco campos:
+Cada `SignalLidSyncResult` carrega:
 
 | Campo | Tipo | Notas |
 | --- | --- | --- |
@@ -106,6 +105,31 @@ Cada `SignalLidSyncResult` carrega cinco campos:
 | `lidJid` | `string \| null` | O LID desta conta. `null` quando o servidor não tem mapeamento LID. |
 | `exists` | `boolean` | O número é uma conta WhatsApp bem-formada. |
 | `invalid` | `boolean` | O servidor rejeitou o número como malformado — distinto de um número bem-formado que simplesmente não tem conta WhatsApp (`exists: false`, `invalid: false`). |
+| `status` | `SignalLidSyncStatus` | **Por que** o `exists` é o que é. Veja abaixo. |
+| `error` | `SignalLidSyncError?` | `{ code?, text?, backoffSeconds? }` — o motivo do servidor, quando ele deu um. |
+
+### Diferenciando "sem conta" de "sem resposta" {#telling-no-account-from-no-answer}
+
+Antes da **1.11.0**, um número sem conta WhatsApp, um número para o qual o usync não respondeu, um erro de contato e um erro de protocolo do usync voltavam todos idênticos como `exists: false, invalid: false` — então quem chamava não conseguia distinguir um negativo real de uma consulta que falhou, e retentar era chute. O `status` separa os casos:
+
+| `status` | Significado | Retentar? |
+| --- | --- | --- |
+| `'in'` | O número tem conta WhatsApp. O `lidJid` vem preenchido quando o servidor mapeou um. | — |
+| `'out'` | O número **não** tem conta WhatsApp. Uma resposta real e definitiva. | Não. |
+| `'invalid'` | O servidor rejeitou o número como malformado. | Não — corrija a entrada. |
+| `'error'` | O servidor reportou um erro para esta entrada. | Sim, respeitando o `error.backoffSeconds`. |
+| `'unanswered'` | O servidor **não deu veredito** para esta entrada. | Sim. |
+
+```ts
+const retryable = results.filter((r) => r.status === 'error' || r.status === 'unanswered')
+const notOnWhatsApp = results.filter((r) => r.status === 'out')
+```
+
+<Note>
+  Um erro de **protocolo** do usync é anexado a toda entrada que ficou sem veredito, então uma consulta inteira que falhou aparece como entradas `'unanswered'` carregando o mesmo `error`, em vez de negativos silenciosos.
+
+  Um nó `<user>` sem `jid` — como o servidor reporta um número rejeitado — não é mais descartado: o eco de contato dele mapeia de volta ao número consultado e o veredito vem do tipo do contato, como o WhatsApp Web faz. O `exists` e o `invalid` mantêm os significados que sempre tiveram.
+</Note>
 
 ## Mudanças de LID {#lid-changes}
 
@@ -137,5 +161,25 @@ Vários schemas de app-state rastreiam o relacionamento e o sincronizam entre se
 As sessões Signal são indexadas pelo JID canônico (PN ou LID) mais o id do dispositivo. O `zapo` canonicaliza as variantes de servidor hospedado (`hosted.lid` → `lid`, hosted → `s.whatsapp.net`) antes das buscas, e mantém sessões para ambas as formas de endereçamento. Se você algum dia precisar forçar uma nova sincronização de sessão para um peer, use:
 
 ```ts
+// Garante que existe uma sessão (não faz nada quando já existe)
 await client.message.syncSignalSession(jid)
+
+// Reconstrói uma sessão velha, mantendo a identidade
+await client.message.syncSignalSession(jid, { force: true })
+
+// Reconstrói como mudança de identidade: busca com reason="identity"
+// e reemite o trusted-contact token
+await client.message.syncSignalSession(jid, { reasonIdentity: true })
 ```
+
+| Opção | Efeito |
+| --- | --- |
+| *(nenhuma)* | Apenas **garante** que existe uma sessão. Uma sessão existente é deixada em paz. |
+| `force` | Derruba a sessão, mantendo a identidade, e busca uma nova. |
+| `reasonIdentity` | Derruba a sessão e busca com `reason="identity"`, reemitindo o trusted-contact token. Vence o `force`. |
+
+<Warning>
+  Sem opções esta chamada só garante uma sessão, então antes da **1.11.0** uma **sessão velha nunca era substituída** e o `reason="identity"` nunca chegava ao fio. Se você chamava isso para se recuperar de uma sessão quebrada, passe `{ force: true }`.
+
+  A antiga forma booleana (`syncSignalSession(jid, true)`) mapeia para `reasonIdentity` e está **deprecada**.
+</Warning>

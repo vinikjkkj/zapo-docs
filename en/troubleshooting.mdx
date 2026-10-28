@@ -10,6 +10,22 @@ icon: "circle-question"
   You're almost certainly running on the **in-memory store**, which loses credentials when the process exits. Use a durable [backend](/en/reference/stores) (SQLite, Postgres, …) for the `auth` domain, and keep a **stable `sessionId`** across runs — changing it orphans the previous credentials. See [Stores](/en/concepts/stores).
 </Accordion>
 
+<Accordion title='Logs say "received socket payload before noise session init"' icon="plug">
+  Fixed in **1.11.0** — upgrade. A late `close` event from a socket whose `close()` had already timed out reached the live handlers and tore down the **new** noise session, leaving the new socket open with no session and no reconnect, so every later payload was dropped with that message. Socket events and noise sessions are now bound to the connection they belong to.
+</Accordion>
+
+<Accordion title="A freshly paired companion disappears from Linked devices" icon="link-slash">
+  Fixed in **1.11.0** — upgrade. The client used to close the socket about 3 ms after answering `pair-success`, while the signing frame was still queued, so the device was listed **without a key-index** and the primary removed it. Pairing now waits for the server's `stream:error` 515 before restarting. See [After the phone accepts](/en/concepts/authentication#after-the-phone-accepts).
+</Accordion>
+
+<Accordion title="A pairing code stops working after a brief disconnect" icon="hashtag">
+  Fixed in **1.11.0** — upgrade. `primary_hello` only reaches the connection that sent the `companion_hello`, so a reconnect silently killed the code. zapo now re-registers a pending code on the new connection; if that fails, `auth_pairing_required` fires with `forceManual: true` so you can render a fresh one.
+</Accordion>
+
+<Accordion title="Group messages go missing when the sender key arrives" icon="users-slash">
+  Fixed in **1.11.0** — upgrade. When one stanza carried both a `pkmsg` with the sender key and an `skmsg` that failed to decrypt, the successful `pkmsg` suppressed the retry receipt, so the group message was simply lost. A failed `skmsg` now triggers a retry receipt even when another `<enc>` of the same stanza decrypted.
+</Accordion>
+
 <Accordion title="The client doesn't reconnect after a drop" icon="arrows-rotate">
   By design — `zapo` does **not** auto-reconnect. Listen for the `connection` event with `status: 'close'` and call `connect()` again (skip it when `isLogout` is true). See the [reconnection pattern](/en/guides/reconnection).
 </Accordion>

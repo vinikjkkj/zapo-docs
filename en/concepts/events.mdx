@@ -59,7 +59,7 @@ See [Reconnection](/en/guides/reconnection) for the handling pattern.
 
 | Event | Payload | Description |
 | --- | --- | --- |
-| `message` | `WaIncomingMessageEvent` | An inbound `<message>` stanza was decrypted. |
+| `message` | `WaIncomingMessageEvent` | An inbound `<message>` stanza was decrypted. A payload carrying **only** a sender-key distribution and its `messageContextInfo` is protocol plumbing, not a message, and is not emitted (since 1.11.0). |
 | `message_send` | `WaOutgoingMessageEvent` | An outbound message this client is sending, with its decrypted `Proto.IMessage` — the symmetric counterpart to `message`. Lets plugins / loggers observe forwards, reactions, polls, media the wire stanza hides. |
 | `message_addon` | `WaIncomingAddonEvent` | Reactions, poll votes, comments (decrypted addons). |
 | `message_protocol` | `WaIncomingProtocolMessageEvent` | Protocol messages (edits, revokes, …). |

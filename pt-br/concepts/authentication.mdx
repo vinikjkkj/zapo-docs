@@ -79,6 +79,22 @@ await client.connect()
   `requestPairingCode(phoneNumber, shouldShowPushNotification?, customCode?)` requer uma conexão ativa e retorna o código como uma string. No telefone, abra **Aparelhos conectados → Conectar com número de telefone**.
 </Note>
 
+<Note>
+  **Um código pendente sobrevive a uma reconexão.** O servidor entrega o `primary_hello` apenas à conexão que enviou o `companion_hello`, então um socket que caía matava o código em silêncio — o usuário digitava e o pareamento dava timeout sem dizer nada. Desde a **1.11.0** o código pendente é re-registrado na nova conexão com os mesmos dígitos, do jeito que o WhatsApp Web faz ao atualizar um, e o QR recém-emitido para aquela conexão continua válido.
+
+  Se esse re-registro falhar, o código é descartado e o `auth_pairing_required` dispara de novo com **`forceManual: true`** — renderize um código novo em vez de esperar.
+</Note>
+
+### Depois que o telefone aceita {#after-the-phone-accepts}
+
+O pareamento não termina quando o telefone confirma. O servidor encerra a conexão não registrada com um `stream:error` 515, e só então o client reconecta e faz login como dispositivo registrado.
+
+O zapo espera por esse sinal — o primeiro entre um 515, o servidor fechando o socket, ou um fallback de 15s — e reinicia exatamente uma vez.
+
+<Warning>
+  Antes da **1.11.0** o client fechava o socket cerca de 3 ms depois de responder o `pair-success`, enquanto o frame de assinatura ainda estava só enfileirado no WebSocket. Um companion pareado através desse fechamento precoce era listado **sem key-index** e removido pelo primário pouco depois. Se você via dispositivos se desvinculando sozinhos logo após um pareamento bem-sucedido, era isso.
+</Warning>
+
 ## Linking com passkey (Shortcake) {#passkey-gated-linking-shortcake}
 
 Para algumas contas, o servidor do WhatsApp recusa o fluxo normal de QR / código de pareamento e exige uma **assertion WebAuthn de passkey** do authenticator do dono da conta antes de um companion conseguir linkar. O protocolo de fio por trás disso está documentado em detalhe em [WhatsApp passkey & Shortcake linking](/pt-br/reverse-engineering/passkey-linking); esta seção cobre como opt-in no lado do client.
