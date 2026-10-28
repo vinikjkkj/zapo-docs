@@ -74,7 +74,7 @@ function spawn(sessionId: string): WaClient {
 
 Para processos multi-tenant longos, três opções — cada uma com escopo diferente:
 
-- **`await client.logout()`** — remoção lógica. Apaga o estado persistente daquele `sessionId` (sujeito a [`logoutStoreClear`](/pt-br/concepts/configuration#logoutStoreClear)) e desvincula o device no servidor. O bundle continua no map interno da store até você destruí-lo ou o processo terminar; um `WaClient({ store, sessionId })` posterior com o mesmo id reutiliza o mesmo bundle.
+- **`await client.logout()`** — remoção lógica. Apaga o estado persistente daquele `sessionId` (sujeito a [`logoutStoreClear`](/pt-br/concepts/configuration#logout-store-clearing)) e desvincula o device no servidor. O bundle continua no map interno da store até você destruí-lo ou o processo terminar; um `WaClient({ store, sessionId })` posterior com o mesmo id reutiliza o mesmo bundle.
 - **`await storeSession.destroy()`** — reclaim mid-process. Derruba as stores por domínio da sessão **e evicta o bundle do map interno** (o `sessionId` é liberado assim que a destruição começa), então um `store.session(id)` concorrente ou posterior constrói um bundle **fresco**. O teardown é idempotente — chamadas repetidas aguardam o mesmo promise in-flight — e falhas de teardown são logadas, nunca lançadas.
 - **`await store.destroy()`** — shutdown do processo. Derruba toda sessão viva e os backends registrados. `store.session()` lança erro depois; a store é single-shot.
 
